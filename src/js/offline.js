@@ -7,8 +7,16 @@ const MANIFEST_KEY = 'prawko_offline_manifest';
 const OFFLINE_CACHE = 'prawko-offline-media-v1';
 const BATCH_SIZE = 6;
 
-function getMediaRequest(url) {
-  return new Request(url, { mode: 'no-cors', cache: 'no-store' });
+function toAbsoluteMediaUrl(url) {
+  return new URL(url, document.baseURI).href;
+}
+
+function getMediaRequest(url, { noCors = false } = {}) {
+  const abs = toAbsoluteMediaUrl(url);
+  const sameOrigin = new URL(abs).origin === location.origin;
+  if (noCors) return new Request(abs, { mode: 'no-cors', cache: 'reload' });
+  if (sameOrigin) return new Request(abs, { mode: 'same-origin', cache: 'reload' });
+  return new Request(abs, { mode: 'cors', cache: 'reload' });
 }
 
 export function getDownloadedCategories() {
@@ -43,7 +51,7 @@ function getCategoryMediaUrls(categoryData) {
     if (!q.media || seen.has(q.media)) continue;
     seen.add(q.media);
     const prefix = q.mediaType === 'video' ? 'vid' : 'img';
-    mediaUrls.push(`${MEDIA_BASE}/${prefix}/${encodeURIComponent(q.media)}`);
+    mediaUrls.push(toAbsoluteMediaUrl(`${MEDIA_BASE}/${prefix}/${encodeURIComponent(q.media)}`));
   }
   return mediaUrls;
 }
@@ -94,9 +102,20 @@ export async function downloadCategoryMedia(categoryId, onProgress) {
 
     const batch = mediaUrls.slice(i, i + BATCH_SIZE);
     const results = await Promise.allSettled(batch.map(async (url) => {
-      const request = getMediaRequest(url);
-      const response = await fetch(request, { signal: controller.signal });
-      if (cache) await cache.put(request, response.clone());
+      let request = getMediaRequest(url);
+      let response;
+      try {
+        response = await fetch(request, { signal: controller.signal });
+      } catch (err) {
+        if (err?.name === 'AbortError') throw err;
+        request = getMediaRequest(url, { noCors: true });
+        response = await fetch(request, { signal: controller.signal });
+      }
+      if (cache && (response.ok || response.type === 'opaque')) {
+        await cache.put(new Request(toAbsoluteMediaUrl(url)), response.clone());
+      } else if (!response.ok && response.type !== 'opaque') {
+        throw new Error(`Media fetch failed: ${response.status}`);
+      }
     }));
 
     for (const r of results) {
@@ -149,7 +168,10 @@ export async function reconcileDownloadedCategories() {
     }
     let isComplete = true;
     for (const url of urls) {
-      const cached = await cache.match(getMediaRequest(url));
+      const abs = toAbsoluteMediaUrl(url);
+      const cached = (await cache.match(getMediaRequest(url)))
+        || (await cache.match(abs))
+        || (await cache.match(getMediaRequest(url, { noCors: true })));
       if (!cached) {
         isComplete = false;
         break;

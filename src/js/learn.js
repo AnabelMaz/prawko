@@ -381,9 +381,10 @@ function showLearnQuestion() {
     btn.addEventListener('click', () => handleLearnAnswer(btn.dataset.answer));
   });
 
-  // Check for previously answered
+  // Lock only previously *correct* answers. Wrong ones stay at the front of
+  // the queue so they can be answered again instead of forcing Next-only.
   const prevAnswer = getLearnAnswerForQuestion(state.category, q.id);
-  if (prevAnswer) {
+  if (prevAnswer && prevAnswer === q.correct) {
     state.answered = true;
     state.givenAnswer = prevAnswer;
     highlightAnswer(document.querySelector('.answers'), prevAnswer, q.correct);
