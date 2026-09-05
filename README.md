@@ -1,6 +1,6 @@
 # 🚗 Prawko — Egzamin na prawo jazdy
 
-**https://szkocot.github.io/prawko/**
+To **fork** projektu [szkocot/prawko](https://github.com/szkocot/prawko) (demo źródła: https://szkocot.github.io/prawko/). Tutaj zostaje układ stacji WORD, skórki Image/PWPW, profile lokalne i przebudowana nauka. Małe, samodzielne łatki mogą iść do repozytorium źródłowego; ta kopia trzyma pełną wersję.
 
 Aplikacja webowa (PWA) do nauki i symulacji egzaminu na prawo jazdy w Polsce. Zawiera wszystkie 3719 oficjalnych pytań egzaminacyjnych z bazy Ministerstwa Infrastruktury.
 
@@ -59,11 +59,15 @@ https://www.gov.pl/web/infrastruktura/prawo-jazdy
 - **Treść pytań**: licencja CC BY-SA 4.0
 - **Materiały audiowizualne**: licencja CC BY-NC-ND 4.0
 
+## Licencja kodu
+
+Kod aplikacji jest na [ISC](LICENSE) (tak jak w `package.json` źródła). Przy kopiowaniu zostaw zastrzeżenie praw. Mediów z MI nie wrzucamy do gita (`src/media`).
+
 ---
 
 # 🚗 Prawko — Polish Driving License Exam
 
-**https://szkocot.github.io/prawko/**
+This is a **fork** of [szkocot/prawko](https://github.com/szkocot/prawko) (upstream demo: https://szkocot.github.io/prawko/). It keeps a WORD station layout, Image/PWPW skins, local profiles, and a rebuilt learn mode. Small standalone fixes can still go upstream; this repository holds the full local product.
 
 A PWA web app for Polish driving license exam preparation. Contains all 3,719 official exam questions from the Ministry of Infrastructure database.
 
@@ -96,4 +100,6 @@ https://www.gov.pl/web/infrastruktura/prawo-jazdy
 
 ## License
 
-This app is non-commercial. See the "Źródło danych" section in the app for full attribution.
+Application **code** is [ISC](LICENSE) (same as upstream `package.json`). Keep the copyright notice when you copy it.
+
+Ministry **question text** is CC BY-SA 4.0. Ministry **photos and films** are CC BY-NC-ND 4.0: non-commercial, no derivatives, do not commit `src/media` to git. See the in-app "Źródło danych" page for attribution.

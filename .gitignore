@@ -18,6 +18,9 @@ venv/
 .idea/
 .cursor/
 
+# OneDrive/editor conflict copies
+*-NODE-Oczkowscy.*
+
 # Media (hosted on Backblaze B2, not in git)
 src/media/img/
 src/media/vid/
