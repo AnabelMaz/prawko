@@ -298,14 +298,14 @@ function applyTheme(theme, themeIcon, themeBtn) {
 }
 
 function normalizeExamSkin(raw) {
-  return raw === 'pwpw' ? 'pwpw' : 'image';
+  return raw === 'image' ? 'image' : 'pwpw';
 }
 
 function getInitialExamSkin() {
   try {
     return normalizeExamSkin(localStorage.getItem(EXAM_SKIN_KEY));
   } catch {
-    return 'image';
+    return 'pwpw';
   }
 }
 

@@ -31,11 +31,14 @@ test.describe('Warm & Soft Theme', () => {
     const radius = await page.evaluate(() =>
       getComputedStyle(document.documentElement).getPropertyValue('--radius').trim()
     );
-    expect(radius).toBe('6px');
+    expect(radius).toBe('20px');
   });
 
   test('Image skin uses flattened examiner chrome on home', async ({ page }) => {
     await page.goto('/');
+    await page.waitForSelector('.skin-btn');
+    await page.click('.skin-btn');
+    await expect(page.locator('.skin-btn')).toHaveText('Image');
     await page.waitForSelector('.hero');
 
     const hero = await page.evaluate(() => {
@@ -48,6 +51,9 @@ test.describe('Warm & Soft Theme', () => {
 
   test('feature cards have no drop shadow in Image examiner chrome', async ({ page }) => {
     await page.goto('/');
+    await page.waitForSelector('.skin-btn');
+    await page.click('.skin-btn');
+    await expect(page.locator('.skin-btn')).toHaveText('Image');
     await page.waitForSelector('.feature-card');
 
     const shadow = await page.evaluate(() =>
@@ -58,6 +64,9 @@ test.describe('Warm & Soft Theme', () => {
 
   test('feature cards have 6px border-radius in Image examiner chrome', async ({ page }) => {
     await page.goto('/');
+    await page.waitForSelector('.skin-btn');
+    await page.click('.skin-btn');
+    await expect(page.locator('.skin-btn')).toHaveText('Image');
     await page.waitForSelector('.feature-card');
 
     const radius = await page.evaluate(() =>
@@ -101,7 +110,7 @@ test.describe('Warm & Soft Theme', () => {
     const cardRadius = await page.evaluate(() =>
       getComputedStyle(document.querySelector('.category-card')).borderRadius
     );
-    expect(cardRadius).toBe('6px');
+    expect(cardRadius).toBe('14px');
 
     // Mode toggle should be visible
     await expect(page.locator('.mode-toggle')).toBeVisible();
@@ -109,7 +118,6 @@ test.describe('Warm & Soft Theme', () => {
 
   test('grain texture overlay exists in PWPW chrome', async ({ page }) => {
     await page.goto('/');
-    await page.click('.skin-btn');
     await expect(page.locator('.skin-btn')).toHaveText('PWPW');
 
     const hasGrain = await page.evaluate(() => {
@@ -153,38 +161,38 @@ test.describe('Warm & Soft Theme', () => {
     expect(themeColor).toBe('#6366f1');
   });
 
-  test('Image skin is on by default and flattens home to examiner chrome', async ({ page }) => {
+  test('PWPW skin is on by default and keeps the branded home', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('#home.active');
-    const image = await page.evaluate(() => ({
+    const pwpw = await page.evaluate(() => ({
       skin: document.documentElement.getAttribute('data-exam-skin'),
       radius: getComputedStyle(document.documentElement).getPropertyValue('--radius').trim(),
       featureRadius: getComputedStyle(document.querySelector('.feature-card')).borderRadius,
       heroImage: getComputedStyle(document.querySelector('.hero')).backgroundImage,
     }));
-    expect(image.skin).toBe('image');
-    expect(image.radius).toBe('6px');
-    expect(image.featureRadius).toBe('6px');
-    expect(image.heroImage === 'none' || !image.heroImage.includes('gradient')).toBeTruthy();
-    await expect(page.locator('.skin-btn')).toHaveText('Image');
-    await expect(page.locator('.skin-btn')).toHaveAttribute('aria-pressed', 'false');
+    expect(pwpw.skin).toBe('pwpw');
+    expect(pwpw.radius).toBe('20px');
+    expect(pwpw.featureRadius).toBe('14px');
+    expect(pwpw.heroImage).toContain('gradient');
+    await expect(page.locator('.skin-btn')).toHaveText('PWPW');
+    await expect(page.locator('.skin-btn')).toHaveAttribute('aria-pressed', 'true');
   });
 
-  test('PWPW skin restores the original branded home', async ({ page }) => {
+  test('Image skin flattens home to examiner chrome', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('#home.active');
     await page.click('.skin-btn');
-    await expect(page.locator('.skin-btn')).toHaveText('PWPW');
-    await expect(page.locator('.skin-btn')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('.skin-btn')).toHaveText('Image');
+    await expect(page.locator('.skin-btn')).toHaveAttribute('aria-pressed', 'false');
     const after = await page.evaluate(() => ({
       skin: document.documentElement.getAttribute('data-exam-skin'),
       radius: getComputedStyle(document.documentElement).getPropertyValue('--radius').trim(),
       featureRadius: getComputedStyle(document.querySelector('.feature-card')).borderRadius,
       heroImage: getComputedStyle(document.querySelector('.hero')).backgroundImage,
     }));
-    expect(after.skin).toBe('pwpw');
-    expect(after.radius).toBe('20px');
-    expect(after.featureRadius).toBe('14px');
-    expect(after.heroImage).toContain('gradient');
+    expect(after.skin).toBe('image');
+    expect(after.radius).toBe('6px');
+    expect(after.featureRadius).toBe('6px');
+    expect(after.heroImage === 'none' || !after.heroImage.includes('gradient')).toBeTruthy();
   });
 });

@@ -216,7 +216,7 @@ function syncListView(previousId) {
 }
 
 const FILTERS = ['all', 'unknown', 'new', 'wrong', 'known'];
-const QUEUE_PREF_DEFAULT = { filter: 'unknown', order: 'sequential' };
+const QUEUE_PREF_DEFAULT = { filter: 'unknown', order: 'random' };
 
 function normalizeQueuePref(raw) {
   if (raw === 'wrongOnly') return { filter: 'wrong', order: 'sequential' };

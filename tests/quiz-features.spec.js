@@ -269,7 +269,7 @@ test.describe('Learn queue filter', () => {
     await expect(filter.locator('[role="option"]')).toHaveCount(5);
     await expect(order.locator('[role="option"]')).toHaveCount(2);
     await expect(filter).toHaveAttribute('data-value', 'unknown');
-    await expect(order).toHaveAttribute('data-value', 'sequential');
+    await expect(order).toHaveAttribute('data-value', 'random');
     await expect(page.locator('.learn-stats-known')).toBeVisible();
   });
 
@@ -302,6 +302,7 @@ test.describe('Learn queue filter', () => {
 
   test('random walks a list shuffled once; toggling order keeps the question and its new index', async ({ page }) => {
     await startLearnMode(page);
+    await setLearnQueue(page, 'order', 'sequential');
     await setLearnQueue(page, 'filter', 'all');
     await expect(page.locator('.question-card')).toHaveAttribute('data-question-id', /./);
 
