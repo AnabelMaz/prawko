@@ -1,22 +1,64 @@
-// exam.js — Exam simulation engine (32 questions, real scoring & timers)
+// exam.js — WORD-style exam: 20s read, then 15s held while the film plays, then 15s ticks
 
-import { QuestionTimer, ExamTimer, formatTime } from './timer.js';
-import { renderQuestion, highlightAnswer, renderResults, showConfirmModal, confirmModalAction, hideModal, preloadMedia } from './ui.js';
-import { saveResult } from './stats.js';
-import { t } from './i18n.js';
+import { QuestionTimer, ExamTimer, formatTime, formatQuestionSeconds } from './timer.js';
+import {
+  renderQuestion,
+  markSelectedAnswer,
+  setAnswerButtonsEnabled,
+  playExamVideo,
+  renderResults,
+  showConfirmModal,
+  confirmModalAction,
+  hideModal,
+  preloadMedia,
+} from './ui.js';
+import { saveLastResult, saveResult } from './stats.js';
+import { t, getLang } from './i18n.js';
+import { refitUiScale } from './scale.js';
+import { getPracticeExamEnabled } from './profiles.js';
 
 let state = null;
 let lastExamCategory = null;
+const LAST_EXAM_CATEGORY_KEY = 'prawko_last_exam_category';
 let answerDelegateHandler = null;
 let keydownHandler = null;
 let beforeUnloadHandler = null;
-let pendingAdvanceTimeout = null;
+let watchVideo = null;
+let watchRaf = 0;
+let watchGen = 0;
+let watchEndedHandler = null;
 
-const ANSWER_ADVANCE_DELAY_MS = 600;
+export function getLastExamCategory() {
+  if (lastExamCategory) return lastExamCategory;
+  try {
+    return sessionStorage.getItem(LAST_EXAM_CATEGORY_KEY) || null;
+  } catch {
+    return null;
+  }
+}
 
-export function getLastExamCategory() { return lastExamCategory; }
+const PRACTICE_BASIC_COUNT = 3;
+const PRACTICE_SPECIALIST_COUNT = 2;
 
-// Fisher-Yates shuffle
+function pickPractice(leftover, fallback, count) {
+  if (count <= 0) return [];
+  const out = [];
+  const seen = new Set();
+  for (const q of leftover) {
+    if (seen.has(q.id)) continue;
+    seen.add(q.id);
+    out.push(q);
+    if (out.length >= count) return out;
+  }
+  for (const q of fallback) {
+    if (seen.has(q.id)) continue;
+    seen.add(q.id);
+    out.push(q);
+    if (out.length >= count) return out;
+  }
+  return out;
+}
+
 function shuffle(arr) {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
@@ -24,6 +66,109 @@ function shuffle(arr) {
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
+}
+
+function quizCard() {
+  return document.querySelector('.question-card');
+}
+
+function setExamLayout(active) {
+  document.getElementById('quiz')?.classList.toggle('exam-active', active);
+  const fields = document.querySelector('.exam-top-fields');
+  const counters = document.querySelector('.exam-counters');
+  if (fields) fields.hidden = !active;
+  if (counters) counters.hidden = !active;
+  if (active) {
+    document.querySelectorAll('.timer-display').forEach((el) => {
+      el.style.display = '';
+    });
+  } else {
+    document.querySelector('.exam-film-start')?.setAttribute('hidden', '');
+    document.querySelectorAll('.exam-counter').forEach((el) => el.classList.remove('active'));
+  }
+}
+
+function isBasicFilm(item) {
+  return item?.question.type === 'basic' && item.question.mediaType === 'video';
+}
+
+function updateFilmStartButton() {
+  const btn = document.querySelector('.exam-film-start');
+  if (!btn) return;
+  const item = currentItem();
+  const show = Boolean(
+    state?.started &&
+    !state?.finished &&
+    state.phase === 'read' &&
+    isBasicFilm(item)
+  );
+  btn.hidden = !show;
+  btn.textContent = t('examStartMedia');
+}
+
+function updateExamChrome() {
+  if (!state) return;
+  const item = currentItem();
+  const pointsEl = document.querySelector('.exam-points-value');
+  const catEl = document.querySelector('.exam-category-value');
+  if (pointsEl) pointsEl.textContent = item?.practice ? '—' : String(item?.points ?? '');
+  if (catEl) catEl.textContent = state.category || '';
+  const qnumEl = document.querySelector('.exam-qnum');
+  if (qnumEl) {
+    if (item?.practice) {
+      const practice = state.questions.filter((x) => x.practice);
+      qnumEl.textContent = String(Math.max(1, practice.indexOf(item) + 1));
+    } else {
+      const scored = scoredQuestions();
+      const scoredIndex = scored.indexOf(item);
+      qnumEl.textContent = String(Math.max(1, scoredIndex + 1));
+    }
+  }
+
+  const basicEl = document.querySelector('.exam-counter-basic');
+  const specEl = document.querySelector('.exam-counter-specialist');
+  const basicCounter = document.querySelector('.exam-counter[data-part="basic"]');
+  const specCounter = document.querySelector('.exam-counter[data-part="specialist"]');
+
+  const of = (n, total) => t('examCounterOf').replace('{n}', String(n)).replace('{total}', String(total));
+  const isBasic = item?.question.type === 'basic';
+
+  if (item?.practice) {
+    const practice = state.questions.filter((x) => x.practice);
+    const basicTotal = practice.filter((x) => x.question.type === 'basic').length;
+    const specTotal = practice.filter((x) => x.question.type === 'specialist').length;
+    const practiceIndex = practice.indexOf(item);
+    if (isBasic) {
+      const n = practice.slice(0, practiceIndex + 1).filter((x) => x.question.type === 'basic').length;
+      if (basicEl) basicEl.textContent = of(n, basicTotal);
+      if (specEl) specEl.textContent = of(0, specTotal);
+    } else {
+      const n = practice.slice(0, practiceIndex + 1).filter((x) => x.question.type === 'specialist').length;
+      if (basicEl) basicEl.textContent = of(basicTotal, basicTotal);
+      if (specEl) specEl.textContent = of(n, specTotal);
+    }
+    basicCounter?.classList.toggle('active', isBasic);
+    specCounter?.classList.toggle('active', !isBasic);
+    return;
+  }
+
+  const basicTotal = state.rules.basicQuestions;
+  const specTotal = state.rules.specialistQuestions;
+
+  const scored = scoredQuestions();
+  const scoredIndex = scored.indexOf(item);
+  if (isBasic) {
+    const n = scored.slice(0, scoredIndex + 1).filter((x) => x.question.type === 'basic').length;
+    if (basicEl) basicEl.textContent = of(n, basicTotal);
+    if (specEl) specEl.textContent = of(0, specTotal);
+  } else {
+    const basicCount = scored.filter((x) => x.question.type === 'basic').length;
+    const n = scored.slice(0, scoredIndex + 1).filter((x) => x.question.type === 'specialist').length;
+    if (basicEl) basicEl.textContent = of(basicCount, basicTotal);
+    if (specEl) specEl.textContent = of(n, specTotal);
+  }
+  basicCounter?.classList.toggle('active', isBasic);
+  specCounter?.classList.toggle('active', !isBasic);
 }
 
 function removeAnswerDelegate() {
@@ -34,20 +179,6 @@ function removeAnswerDelegate() {
     }
     answerDelegateHandler = null;
   }
-}
-
-function clearPendingAdvance() {
-  if (!pendingAdvanceTimeout) return;
-  clearTimeout(pendingAdvanceTimeout);
-  pendingAdvanceTimeout = null;
-}
-
-function queueAdvance(delayMs = ANSWER_ADVANCE_DELAY_MS) {
-  clearPendingAdvance();
-  pendingAdvanceTimeout = window.setTimeout(() => {
-    pendingAdvanceTimeout = null;
-    advanceQuestion();
-  }, delayMs);
 }
 
 function isActiveExam() {
@@ -70,28 +201,191 @@ function teardownBeforeUnloadWarning() {
   beforeUnloadHandler = null;
 }
 
-function disableAnswerButtons() {
-  document.querySelector('.answers')?.querySelectorAll('.answer-btn').forEach((btn) => {
-    btn.disabled = true;
-  });
+function scoredQuestions() {
+  return state.questions.filter((item) => !item.practice);
 }
 
-function lockCurrentQuestion({ answer = null, timedOut = false } = {}) {
-  if (!state || state.finished || !state.started) return false;
-  const item = state.questions[state.currentIndex];
-  if (!item || item.locked) return false;
+function currentItem() {
+  return state?.questions[state.currentIndex] ?? null;
+}
 
-  item.locked = true;
-  item.timedOut = timedOut;
-
-  if (answer !== null) {
-    item.given = answer;
-    item.isCorrect = answer === item.question.correct;
+function updatePracticeBanner() {
+  const quiz = document.getElementById('quiz');
+  const banner = document.querySelector('.exam-practice-banner');
+  const topic = document.querySelector('.word-topic-text');
+  if (topic) {
+    topic.textContent = '';
+    topic.hidden = true;
   }
+  const practice = Boolean(currentItem()?.practice);
+  quiz?.classList.toggle('exam-practice', practice);
+  if (!banner) return;
+  banner.hidden = !practice;
+  banner.textContent = t('examPracticeBanner');
+}
 
+function isOnLastQuestion() {
+  return Boolean(state && state.currentIndex >= state.questions.length - 1);
+}
+
+function isPracticeItem(item = currentItem()) {
+  return Boolean(item?.practice);
+}
+
+function secondUnit(n) {
+  if (getLang() !== 'pl') {
+    return n === 1 ? t('examSecondOne') : t('examSecondMany');
+  }
+  if (n === 1) return t('examSecondOne');
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return t('examSecondFew');
+  return t('examSecondMany');
+}
+
+function practiceHandoffHtml(seconds) {
+  const text = t('examPracticeDoneDesc')
+    .replace('{n}', '{n}')
+    .replace('{unit}', secondUnit(seconds));
+  return text.replace('{n}', `<strong class="exam-handoff-count">${seconds}</strong>`);
+}
+
+function stopPracticeHandoffTimer() {
+  if (state?.handoffTimer) {
+    clearInterval(state.handoffTimer);
+    state.handoffTimer = null;
+  }
+}
+
+function showPracticeHandoff() {
+  if (!state || state.finished) return;
+  stopPracticeHandoffTimer();
+  stopQuestionClock();
+  const timerDisplay = questionTimerDisplay();
+  timerDisplay?.classList.remove('warning');
+  stopWatchClock();
+  const video = quizCard()?.querySelector('video');
+  if (video) video.pause();
+  state.practiceHandoff = true;
+  let remaining = 30;
+  const paint = () => {
+    const el = document.getElementById('modal-desc');
+    if (el) el.innerHTML = practiceHandoffHtml(remaining);
+  };
+  showConfirmModal(
+    t('examPracticeDoneTitle'),
+    practiceHandoffHtml(remaining),
+    () => {
+      stopPracticeHandoffTimer();
+      state.practiceHandoff = false;
+      const nextIndex = state.questions.findIndex((item) => !item.practice);
+      if (nextIndex < 0) {
+        finishExam();
+        return;
+      }
+      state.currentIndex = nextIndex;
+      showQuestion();
+    },
+    {
+      confirmLabel: t('examPracticeDoneStart'),
+      hideCancel: true,
+      handoff: true,
+      html: true,
+      confirmVariant: 'word-yellow',
+    }
+  );
+  paint();
+  state.handoffTimer = setInterval(() => {
+    if (!state?.practiceHandoff) {
+      stopPracticeHandoffTimer();
+      return;
+    }
+    remaining -= 1;
+    if (remaining <= 0) {
+      stopPracticeHandoffTimer();
+      confirmModalAction();
+      return;
+    }
+    paint();
+  }, 1000);
+}
+
+function updateExamNextButton() {
+  const btn = document.querySelector('.btn-exam-next');
+  if (!btn) return;
+  const running = Boolean(state?.started && !state?.finished);
+  const lastScored = running && isOnLastQuestion() && !isPracticeItem();
+  btn.classList.toggle('visible', running);
+  btn.disabled = !running || lastScored;
+}
+
+function setPhaseLabel(key) {
+  const label = document.querySelector('.timer-label[data-i18n="questionTimer"]');
+  if (label) label.textContent = t(key);
+  const caption = document.querySelector('.exam-phase-caption');
+  if (!caption) return;
+  const captionKey = {
+    examPhaseRead: 'examPhaseReadCaption',
+    examPhaseAnswer: 'examPhaseAnswerCaption',
+  }[key];
+  caption.textContent = captionKey ? t(captionKey) : '';
+}
+
+function questionTimerDisplay() {
+  return document.querySelector('.timer-display-question') || document.querySelector('.timer-display');
+}
+
+function paintQuestionClock(remaining, total) {
+  const questionTimerEl = document.querySelector('.question-timer');
+  const fill = document.querySelector('.exam-time-fill');
+  const timerDisplay = questionTimerDisplay();
+  if (questionTimerEl) questionTimerEl.textContent = formatQuestionSeconds(remaining);
+  if (fill && total > 0) {
+    const elapsedRatio = Math.min(1, Math.max(0, 1 - remaining / total));
+    fill.style.transform = `scaleX(${elapsedRatio})`;
+    if (timerDisplay?.classList.contains('paused')) {
+      fill.style.backgroundColor = '#9ca3af';
+    } else {
+      const p = Math.max(0, Math.min(1, remaining / total));
+      fill.style.backgroundColor = `hsl(${(125 * p).toFixed(1)} 80% 46%)`;
+    }
+  }
+  timerDisplay?.classList.toggle('warning', remaining <= 5);
+}
+
+function stopQuestionClock() {
+  if (state?.clockSource === 'question') state.clockSource = null;
+  if (!state?.questionTimer) return;
   state.questionTimer.stop();
-  disableAnswerButtons();
-  return true;
+  state.questionTimer.onTick = () => {};
+  state.questionTimer.onExpire = () => {};
+}
+
+function holdAnswerClock() {
+  const seconds = state.rules.basicAnswerTimeSeconds;
+  state.clockSource = 'hold';
+  paintQuestionClock(seconds, seconds);
+  questionTimerDisplay()?.classList.remove('warning', 'paused');
+  setPhaseLabel('examPhaseAnswer');
+}
+
+function startQuestionTimer(seconds, onExpire) {
+  const timerDisplay = questionTimerDisplay();
+  stopWatchClock();
+  stopQuestionClock();
+  state.clockSource = 'question';
+  state.questionTimer.reset(seconds);
+  state.questionTimer.onTick = (remaining, total) => {
+    if (state?.clockSource !== 'question') return;
+    paintQuestionClock(remaining, total);
+  };
+  state.questionTimer.onExpire = () => {
+    if (state?.clockSource !== 'question') return;
+    onExpire();
+  };
+  paintQuestionClock(seconds, seconds);
+  timerDisplay?.classList.remove('warning', 'paused');
+  state.questionTimer.start();
 }
 
 function cancelExamIntroIfPending() {
@@ -104,7 +398,8 @@ function cancelExamIntroIfPending() {
 function showExamIntroNotice() {
   if (!state || state.finished) return;
   state.introPending = true;
-  const introDesc = `${t('examIntroDesc')} ${t('modeExamDesc')}.`;
+  const introKey = getPracticeExamEnabled() ? 'examIntroDesc' : 'examIntroDescSkipPractice';
+  const introDesc = `${t(introKey)} ${t('examIntroRules')}`;
   showConfirmModal(
     t('examIntroTitle'),
     introDesc,
@@ -115,7 +410,6 @@ function showExamIntroNotice() {
       document.querySelector('.btn-end-exam').classList.add('visible');
       setupBeforeUnloadWarning();
       showQuestion();
-      state.examTimer.start();
     },
     {
       confirmLabel: t('examIntroStart'),
@@ -125,19 +419,34 @@ function showExamIntroNotice() {
   );
 }
 
+function buildExamItems(pool, rules, practice) {
+  return pool.map((q, i) => ({
+    question: q,
+    points: practice ? 0 : (q.type === 'basic' ? rules.basicPoints[i] : rules.specialistPoints[i]) || 1,
+    given: null,
+    isCorrect: false,
+    locked: false,
+    timedOut: false,
+    practice,
+  }));
+}
+
 export function startExam(categoryData, meta) {
   const rules = {
     ...meta.exam,
     basicPoints: [...meta.exam.basicPoints],
     specialistPoints: [...meta.exam.specialistPoints],
+    basicAnswerTimeSeconds: meta.exam.basicAnswerTimeSeconds || 15,
+    specialistTimeSeconds: meta.exam.specialistTimeSeconds || 50,
   };
   const basic = shuffle(categoryData.questions.filter(q => q.type === 'basic'));
   const specialist = shuffle(categoryData.questions.filter(q => q.type === 'specialist'));
 
   const selectedBasic = basic.slice(0, rules.basicQuestions);
   const selectedSpecialist = specialist.slice(0, rules.specialistQuestions);
+  const leftoverBasic = basic.slice(rules.basicQuestions);
+  const leftoverSpecialist = specialist.slice(rules.specialistQuestions);
 
-  // Validate question counts and scale rules if needed
   const originalMaxPoints = rules.maxPoints;
   if (selectedBasic.length < rules.basicQuestions) {
     console.warn(`Exam: expected ${rules.basicQuestions} basic questions but only ${selectedBasic.length} available. Scaling rules proportionally.`);
@@ -156,28 +465,20 @@ export function startExam(categoryData, meta) {
     rules.passThreshold = Math.round(rules.passThreshold * (newMaxPoints / originalMaxPoints));
   }
 
-  // Build question list with point values
-  const questions = [];
-  selectedBasic.forEach((q, i) => {
-    questions.push({
-      question: q,
-      points: rules.basicPoints[i] || 1,
-      given: null,
-      isCorrect: false,
-      locked: false,
-      timedOut: false,
-    });
-  });
-  selectedSpecialist.forEach((q, i) => {
-    questions.push({
-      question: q,
-      points: rules.specialistPoints[i] || 1,
-      given: null,
-      isCorrect: false,
-      locked: false,
-      timedOut: false,
-    });
-  });
+  const includePractice = getPracticeExamEnabled();
+  const practiceBasic = includePractice
+    ? pickPractice(leftoverBasic, basic, PRACTICE_BASIC_COUNT)
+    : [];
+  const practiceSpecialist = includePractice
+    ? pickPractice(leftoverSpecialist, specialist, PRACTICE_SPECIALIST_COUNT)
+    : [];
+  const practicePool = [...practiceBasic, ...practiceSpecialist];
+
+  const questions = [
+    ...buildExamItems(practicePool, rules, true),
+    ...shuffle(buildExamItems(selectedBasic, rules, false)),
+    ...shuffle(buildExamItems(selectedSpecialist, rules, false)),
+  ];
 
   state = {
     category: categoryData.category,
@@ -189,42 +490,35 @@ export function startExam(categoryData, meta) {
     started: false,
     introPending: false,
     finished: false,
+    phase: 'read',
+    examClockStarted: false,
+    practiceHandoff: false,
+    clockSource: null,
   };
 
-  // Setup timers
-  const timerDisplay = document.querySelector('.timer-display');
-  const questionTimerEl = document.querySelector('.question-timer');
+  const questionClock = questionTimerDisplay();
+  const totalClock = document.querySelector('.timer-display-total') || questionClock;
   const totalTimerEl = document.querySelector('.total-timer');
 
-  state.questionTimer = new QuestionTimer(
-    rules.basicTimeSeconds,
-    (remaining) => {
-      questionTimerEl.textContent = formatTime(remaining);
-      timerDisplay.classList.toggle('warning', remaining <= 5);
-    },
-    () => {
-      if (!lockCurrentQuestion({ timedOut: true })) return;
-      queueAdvance();
-    }
-  );
+  state.questionTimer = new QuestionTimer(rules.basicTimeSeconds, () => {}, () => {});
 
   state.examTimer = new ExamTimer(
     rules.totalTimeSeconds,
     (remaining) => {
       totalTimerEl.textContent = formatTime(remaining);
-      timerDisplay.classList.toggle('total-warning', remaining <= 120);
+      totalClock.classList.toggle('total-warning', remaining <= 120);
     },
     () => finishExam()
   );
 
-  // Setup quiz UI for exam mode
+  setExamLayout(true);
   document.querySelector('.learn-nav').classList.remove('visible');
   document.querySelector('.quiz-back').classList.remove('visible');
   document.querySelector('.btn-end-exam').classList.remove('visible');
-  timerDisplay.classList.remove('warning', 'total-warning');
+  questionClock.classList.remove('warning', 'paused', 'total-warning');
+  totalClock.classList.remove('total-warning');
   totalTimerEl.textContent = formatTime(rules.totalTimeSeconds);
 
-  // Setup delegated answer handler (one listener for all questions)
   removeAnswerDelegate();
   const answersContainer = document.querySelector('.answers');
   answerDelegateHandler = (e) => {
@@ -235,17 +529,27 @@ export function startExam(categoryData, meta) {
   };
   answersContainer.addEventListener('click', answerDelegateHandler);
 
-  // Keyboard shortcuts
   if (keydownHandler) document.removeEventListener('keydown', keydownHandler);
   keydownHandler = (e) => {
     if (document.getElementById('confirm-modal')?.classList.contains('active')) return;
-    if (!state || state.finished) return;
-    if (!state.started) return;
-    const item = state.questions[state.currentIndex];
-    if (item.given !== null || item.locked) return;
+    if (!state || state.finished || !state.started) return;
+    const item = currentItem();
+    if (!item || item.locked) return;
     const key = e.key.toLowerCase();
     const answersDiv = document.querySelector('.answers');
     const isBasic = answersDiv?.classList.contains('yn-answers');
+
+    if (state.phase === 'read' && (key === 'enter' || key === ' ')) {
+      e.preventDefault();
+      beginMediaPlayback();
+      return;
+    }
+
+    if (key === 'enter' && state.phase === 'answer') {
+      e.preventDefault();
+      confirmAndAdvance();
+      return;
+    }
 
     if (isBasic) {
       if (key === 't' || key === '1') { e.preventDefault(); handleAnswer('T'); }
@@ -261,69 +565,215 @@ export function startExam(categoryData, meta) {
   showExamIntroNotice();
 }
 
+function ensureExamClock() {
+  const item = currentItem();
+  if (!item || item.practice || state.examClockStarted) return;
+  state.examClockStarted = true;
+  state.examTimer.start();
+}
+
 function showQuestion() {
   if (!state || state.finished || !state.started) return;
+  stopWatchClock();
+  stopQuestionClock();
   window.scrollTo({ top: 0, behavior: 'smooth' });
-  const { questions, currentIndex, rules } = state;
-  const item = questions[currentIndex];
+  const item = currentItem();
   const q = item.question;
+  const scored = scoredQuestions();
+  const scoredIndex = scored.indexOf(item);
 
-  // Progress
-  document.querySelector('.question-progress').textContent =
-    `${currentIndex + 1} / ${questions.length}`;
-  const progressFill = document.querySelector('.progress-fill');
-  progressFill.style.width = `${((currentIndex + 1) / questions.length) * 100}%`;
+  if (item.practice) {
+    const practiceTotal = state.questions.filter((x) => x.practice).length;
+    const practiceIndex = state.questions.filter((x) => x.practice).indexOf(item);
+    document.querySelector('.question-progress').textContent =
+      `${t('examPracticeShort')} ${practiceIndex + 1} / ${practiceTotal}`;
+    document.querySelector('.progress-fill').style.width =
+      `${((practiceIndex + 1) / practiceTotal) * 100}%`;
+  } else {
+    document.querySelector('.question-progress').textContent =
+      `${scoredIndex + 1} / ${scored.length}`;
+    document.querySelector('.progress-fill').style.width =
+      `${((scoredIndex + 1) / scored.length) * 100}%`;
+  }
 
-  // Render question
-  renderQuestion(q, document.querySelector('.question-card'));
+  item.given = null;
+  item.locked = false;
+  item.timedOut = false;
+  item.isCorrect = false;
+  state.phase = 'idle';
 
-  // Reset and start question timer
-  const timeLimit = q.type === 'basic' ? rules.basicTimeSeconds : rules.specialistTimeSeconds;
-  state.questionTimer.reset(timeLimit);
-  document.querySelector('.question-timer').textContent = formatTime(timeLimit);
-  document.querySelector('.timer-display').classList.remove('warning');
-  state.questionTimer.start();
+  renderQuestion(q, quizCard(), { examMedia: true, hideFilm: isBasicFilm(item) });
+  setAnswerButtonsEnabled(true);
+  updateExamChrome();
+  updatePracticeBanner();
+  updateExamNextButton();
+  ensureExamClock();
 
-  // Preload next question's media
-  const nextItem = questions[currentIndex + 1];
-  if (nextItem) preloadMedia(nextItem.question);
+  const next = state.questions[state.currentIndex + 1];
+  if (next) preloadMedia(next.question);
+
+  if (q.type === 'specialist') {
+    beginAnswerPhase();
+    const video = quizCard().querySelector('video');
+    if (video) playExamVideo(quizCard());
+    refitUiScale();
+    return;
+  }
+
+  state.phase = 'read';
+  setPhaseLabel('examPhaseRead');
+  if (isBasicFilm(item)) {
+    startQuestionTimer(state.rules.basicTimeSeconds, () => beginMediaPlayback());
+  } else {
+    startQuestionTimer(state.rules.basicTimeSeconds, () => beginAnswerPhase());
+  }
+  updateFilmStartButton();
+  refitUiScale();
+}
+
+function stopWatchClock() {
+  watchGen += 1;
+  if (watchRaf) {
+    cancelAnimationFrame(watchRaf);
+    watchRaf = 0;
+  }
+  if (watchVideo) {
+    if (watchEndedHandler) watchVideo.removeEventListener('ended', watchEndedHandler);
+    watchVideo = null;
+  }
+  watchEndedHandler = null;
+}
+
+function bindFilmEnd(video) {
+  stopWatchClock();
+  if (!state) return;
+  const gen = watchGen;
+  watchVideo = video;
+  watchEndedHandler = () => {
+    if (gen !== watchGen || state?.phase !== 'watch') return;
+    if (Number.isFinite(video.duration) && video.duration > 0.2 && video.currentTime < 0.1) return;
+    beginAnswerPhase();
+  };
+  video.addEventListener('ended', watchEndedHandler);
+  let armed = false;
+  const tick = () => {
+    if (gen !== watchGen || state?.phase !== 'watch') return;
+    if (!video.paused && video.currentTime > 0.05) armed = true;
+    if (armed && (video.ended || video.dataset.examEnded === '1')) {
+      beginAnswerPhase();
+      return;
+    }
+    watchRaf = requestAnimationFrame(tick);
+  };
+  watchRaf = requestAnimationFrame(tick);
+}
+
+function beginMediaPlayback() {
+  if (!state || state.finished || state.phase !== 'read' || state.practiceHandoff) return;
+  if (!isBasicFilm(currentItem())) {
+    beginAnswerPhase();
+    return;
+  }
+  const video = quizCard()?.querySelector('video');
+  if (!video) {
+    beginAnswerPhase();
+    return;
+  }
+  stopQuestionClock();
+  state.phase = 'watch';
+  updateFilmStartButton();
+  try {
+    video.pause();
+    if (video.currentTime !== 0) video.currentTime = 0;
+  } catch {}
+  delete video.dataset.examEnded;
+  bindFilmEnd(video);
+  holdAnswerClock();
+  playExamVideo(quizCard()).then((ok) => {
+    if (!ok && state?.phase === 'watch') beginAnswerPhase();
+  });
+}
+
+function beginAnswerPhase() {
+  if (!state || state.finished || state.phase === 'answer') return;
+  stopWatchClock();
+  stopQuestionClock();
+  state.phase = 'answer';
+  setPhaseLabel('examPhaseAnswer');
+  setAnswerButtonsEnabled(true);
+  const item = currentItem();
+  const seconds = item?.question.type === 'basic'
+    ? state.rules.basicAnswerTimeSeconds
+    : state.rules.specialistTimeSeconds;
+  startQuestionTimer(seconds, () => {
+    const current = currentItem();
+    if (!current || current.locked) return;
+    current.timedOut = !current.given;
+    confirmAndAdvance();
+  });
+  updateExamNextButton();
+  updateFilmStartButton();
 }
 
 function handleAnswer(answer) {
-  if (!lockCurrentQuestion({ answer })) return;
-  const item = state.questions[state.currentIndex];
+  if (!state || state.finished || !state.started) return;
+  const item = currentItem();
+  if (!item || item.locked) return;
+  item.given = answer;
+  item.isCorrect = answer === item.question.correct;
+  markSelectedAnswer(document.querySelector('.answers'), answer);
+  updateExamNextButton();
+}
 
-  // Brief highlight then advance
-  highlightAnswer(document.querySelector('.answers'), answer, item.question.correct);
-  queueAdvance();
+function confirmAndAdvance() {
+  if (!state || state.finished || !state.started) return;
+  const item = currentItem();
+  if (!item || item.locked) return;
+  const next = state.questions[state.currentIndex + 1];
+  if (item.practice && (!next || !next.practice)) {
+    showPracticeHandoff();
+    return;
+  }
+  item.locked = true;
+  item.isCorrect = item.given === item.question.correct;
+  stopWatchClock();
+  stopQuestionClock();
+  setAnswerButtonsEnabled(false);
+  updateExamNextButton();
+  advanceQuestion();
 }
 
 function advanceQuestion() {
   if (!state || state.finished || !state.started) return;
-  state.currentIndex++;
-  if (state.currentIndex >= state.questions.length) {
-    finishExam();
-  } else {
-    showQuestion();
+  if (isOnLastQuestion()) {
+    updateExamNextButton();
+    return;
   }
+  state.currentIndex++;
+  showQuestion();
 }
 
 function finishExam() {
   if (!state || state.finished) return;
+  stopPracticeHandoffTimer();
+  stopWatchClock();
   state.finished = true;
   state.introPending = false;
-  state.questionTimer.stop();
+  stopQuestionClock();
   state.examTimer.stop();
-  clearPendingAdvance();
   teardownBeforeUnloadWarning();
   if (keydownHandler) {
     document.removeEventListener('keydown', keydownHandler);
     keydownHandler = null;
   }
   removeAnswerDelegate();
+  updateExamNextButton();
+  updatePracticeBanner();
+  setPhaseLabel('questionTimer');
 
-  const basicAnswers = state.questions.filter(a => a.question.type === 'basic');
-  const specialistAnswers = state.questions.filter(a => a.question.type === 'specialist');
+  const scored = scoredQuestions();
+  const basicAnswers = scored.filter(a => a.question.type === 'basic');
+  const specialistAnswers = scored.filter(a => a.question.type === 'specialist');
 
   const basicScore = basicAnswers.reduce((sum, a) => sum + (a.isCorrect ? a.points : 0), 0);
   const specialistScore = specialistAnswers.reduce((sum, a) => sum + (a.isCorrect ? a.points : 0), 0);
@@ -336,71 +786,102 @@ function finishExam() {
     passed: score >= state.rules.passThreshold,
     basicScore,
     specialistScore,
-    answers: state.questions,
+    answers: scored,
   };
 
-  saveResult(result);
-  renderResults(result);
-
-  // Store for retry
   lastExamCategory = state.category;
-
-  // Navigate to results via hash
+  try {
+    sessionStorage.setItem(LAST_EXAM_CATEGORY_KEY, lastExamCategory);
+  } catch {}
+  saveResult(result);
+  saveLastResult(result);
+  renderResults(result);
   window.location.hash = 'results';
 }
 
 export function refreshExamQuestion() {
-  if (!state || state.finished) return;
-  const item = state.questions[state.currentIndex];
-  renderQuestion(item.question, document.querySelector('.question-card'));
-  if (item.given !== null) {
-    highlightAnswer(document.querySelector('.answers'), item.given, item.question.correct);
+  if (!state || state.finished || !state.started) return;
+  const item = currentItem();
+  renderQuestion(item.question, quizCard(), {
+    examMedia: true,
+    hideFilm: state.phase === 'read' && isBasicFilm(item),
+  });
+  setAnswerButtonsEnabled(!item.locked);
+  if (item.given) markSelectedAnswer(document.querySelector('.answers'), item.given);
+  updateExamChrome();
+  updatePracticeBanner();
+  updateExamNextButton();
+  updateFilmStartButton();
+  if (state.phase === 'read') setPhaseLabel('examPhaseRead');
+  else if (state.phase === 'watch') {
+    holdAnswerClock();
+    const video = quizCard()?.querySelector('video');
+    if (video) {
+      bindFilmEnd(video);
+      playExamVideo(quizCard());
+    } else {
+      beginAnswerPhase();
+    }
+  } else {
+    setPhaseLabel('examPhaseAnswer');
   }
 }
 
 export function setupExamListeners() {
-  // End exam button → show modal
   document.querySelector('.btn-end-exam').addEventListener('click', () => {
     if (!state || state.finished) return;
     if (!state.started) {
       cancelExamIntroIfPending();
       return;
     }
+    if (isPracticeItem()) {
+      showPracticeHandoff();
+      return;
+    }
     showConfirmModal(
-      t('confirmExit'),
-      t('confirmExitDesc'),
+      t('confirmEndExam'),
+      '',
       () => finishExam(),
       {
-        confirmLabel: t('confirmNoFinish'),
-        cancelLabel: t('confirmYesContinue'),
-        confirmVariant: 'danger',
+        confirmLabel: t('endExam'),
+        cancelLabel: t('confirmReturnToExam'),
+        confirmVariant: 'word-orange',
+        cancelVariant: 'word-yellow',
+        wordEnd: true,
       }
     );
   });
 
-  // Modal confirm — call generic stored callback
+  document.querySelector('.btn-exam-next')?.addEventListener('click', () => {
+    confirmAndAdvance();
+  });
+
+  document.querySelector('.exam-film-start')?.addEventListener('click', () => {
+    beginMediaPlayback();
+  });
+
   document.querySelector('.btn-confirm-end').addEventListener('click', () => {
     confirmModalAction();
   });
 
-  // Modal cancel
   document.querySelector('.btn-cancel-end').addEventListener('click', () => {
     if (cancelExamIntroIfPending()) return;
+    if (state?.practiceHandoff) return;
     hideModal();
   });
 
-  // Escape key closes modal
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && document.getElementById('confirm-modal').classList.contains('active')) {
       if (cancelExamIntroIfPending()) return;
+      if (state?.practiceHandoff) return;
       hideModal();
     }
   });
 
-  // Focus trap in modal
   document.getElementById('confirm-modal').addEventListener('keydown', (e) => {
     if (e.key !== 'Tab') return;
-    const buttons = document.getElementById('confirm-modal').querySelectorAll('button');
+    const buttons = [...document.getElementById('confirm-modal').querySelectorAll('button')]
+      .filter((btn) => !btn.hidden);
     const first = buttons[0];
     const last = buttons[buttons.length - 1];
     if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
@@ -413,18 +894,27 @@ export function cleanupExam() {
     document.removeEventListener('keydown', keydownHandler);
     keydownHandler = null;
   }
-  clearPendingAdvance();
   teardownBeforeUnloadWarning();
   removeAnswerDelegate();
   if (state) {
-    state.questionTimer?.stop();
+    stopPracticeHandoffTimer();
+    stopWatchClock();
+    stopQuestionClock();
     state.examTimer?.stop();
     state = null;
   }
-  // Stop any playing video
   const video = document.querySelector('.media-area video');
   if (video) { video.pause(); video.removeAttribute('src'); video.load(); }
+  setExamLayout(false);
   document.querySelector('.btn-end-exam').classList.remove('visible');
-  document.querySelector('.timer-display').classList.remove('warning', 'total-warning');
+  document.querySelector('.btn-exam-next')?.classList.remove('visible');
+  const banner = document.querySelector('.exam-practice-banner');
+  if (banner) banner.hidden = true;
+  document.getElementById('quiz')?.classList.remove('exam-practice');
+  const topic = document.querySelector('.word-topic-text');
+  if (topic) topic.hidden = false;
+  questionTimerDisplay()?.classList.remove('warning', 'paused', 'total-warning');
+  document.querySelector('.timer-display-total')?.classList.remove('total-warning');
+  setPhaseLabel('questionTimer');
   hideModal();
 }
