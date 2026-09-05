@@ -582,6 +582,21 @@ export function playExamVideo(container) {
     .catch(() => false);
 }
 
+export function showLearnMediaMark(isCorrect) {
+  const mediaArea = document.querySelector('#quiz .media-area');
+  if (!mediaArea) return;
+  let mark = mediaArea.querySelector('.learn-media-mark');
+  if (!mark) {
+    mark = document.createElement('div');
+    mark.className = 'learn-media-mark';
+    mark.setAttribute('aria-hidden', 'true');
+    mediaArea.appendChild(mark);
+  }
+  mark.classList.toggle('correct', isCorrect);
+  mark.classList.toggle('incorrect', !isCorrect);
+  mark.textContent = isCorrect ? '\u2713' : '\u2717';
+}
+
 export function highlightAnswer(answersDiv, selected, correct) {
   // Ensure screen readers announce answer result changes
   if (!answersDiv.hasAttribute('aria-live')) {

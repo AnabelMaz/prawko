@@ -4,7 +4,7 @@
 // Switching order keeps the same question. The counter is always the catalog
 // number of that question, so next/prev on random jumps 2022 → 1500, not 2023.
 
-import { renderQuestion, highlightAnswer, markSelectedAnswer, preloadMedia } from './ui.js';
+import { renderQuestion, highlightAnswer, markSelectedAnswer, showLearnMediaMark, preloadMedia } from './ui.js';
 import {
   saveLearnAnswer,
   getLearnKnownCount,
@@ -528,6 +528,7 @@ function handleLearnAnswer(answer) {
   markSelectedAnswer(answersDiv, answer);
   highlightAnswer(answersDiv, answer, q.correct);
   const isCorrect = answer === q.correct;
+  showLearnMediaMark(isCorrect);
   saveLearnAnswer(state.category, q.id, answer, isCorrect);
   state.sessionAnswers.set(q.id, answer);
 
@@ -572,6 +573,7 @@ export function refreshLearnQuestion() {
     const answersDiv = document.querySelector('.answers');
     markSelectedAnswer(answersDiv, state.givenAnswer);
     highlightAnswer(answersDiv, state.givenAnswer, q.correct);
+    showLearnMediaMark(state.givenAnswer === q.correct);
   } else {
     document.querySelector('.answers').querySelectorAll('.answer-btn').forEach(btn => {
       btn.addEventListener('click', () => handleLearnAnswer(btn.dataset.answer));

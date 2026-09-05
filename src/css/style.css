@@ -1351,6 +1351,7 @@ footer a {
   margin: 0 auto 16px;
   display: block;
   position: relative;
+  container-type: size;
   width: 100%;
   aspect-ratio: 16 / 9;
   border-radius: var(--radius-sm);
@@ -1378,6 +1379,31 @@ footer a {
   margin: auto;
   opacity: 0.7;
   pointer-events: none;
+}
+
+.learn-media-mark {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  font-weight: 800;
+  line-height: 1;
+  font-size: 12rem;
+  font-size: 72cqh;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.learn-media-mark.correct {
+  color: var(--accent);
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.2), 0 0 28px rgba(0, 0, 0, 0.45);
+}
+
+.learn-media-mark.incorrect {
+  color: var(--danger);
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.2), 0 0 28px rgba(0, 0, 0, 0.45);
 }
 
 .media-area img,
