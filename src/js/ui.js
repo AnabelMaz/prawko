@@ -2,7 +2,8 @@
 
 import { t, getLang, translateQuestion } from './i18n.js';
 import { getCategoryStats, getLearnProgress, loadHistory, getLearnTouchedCategories, getLearnCategoryBreakdown } from './stats.js';
-import { getMediaUrls, fetchCategory } from './data.js';
+import { getMediaUrls, fetchCategory, usesLocalMedia } from './data.js';
+import { getCategoryMediaAccess } from './offline.js';
 import { refitUiScale, layoutCategoryGrid } from './scale.js';
 
 export function showScreen(id) {
@@ -177,7 +178,20 @@ export function hideModal() {
   _modalOnConfirm = null;
 }
 
+function applyCategoryAccess(card, access) {
+  if (!card) return;
+  card.classList.toggle('category-unavailable', !access.available);
+  card.setAttribute('aria-disabled', access.available ? 'false' : 'true');
+  card.dataset.mediaAccess = !access.available ? 'blocked' : (access.offlineReady ? 'offline' : 'online');
+  if (!access.available) card.title = t('unavailableOfflineHint');
+  else card.removeAttribute('title');
+}
+
 export function renderCategories(meta, downloadedSet = new Set()) {
+  const localMedia = usesLocalMedia();
+  document.documentElement.dataset.localMedia = localMedia ? 'true' : 'false';
+  document.documentElement.dataset.appOnline = navigator.onLine !== false ? 'true' : 'false';
+
   meta.categories.forEach(cat => {
     const card = document.querySelector(`.category-grid .category-card[data-category="${CSS.escape(cat.id)}"]`);
     if (!card) return;
@@ -237,10 +251,15 @@ export function renderCategories(meta, downloadedSet = new Set()) {
       dlBtn.dataset.category = cat.id;
       card.appendChild(dlBtn);
     }
+    const access = getCategoryMediaAccess(cat.id, downloadedSet, { localMedia });
+    applyCategoryAccess(card, access);
+
     if (!dlBtn.classList.contains('downloading')) {
-      const isDl = downloadedSet.has(cat.id);
-      dlBtn.classList.toggle('downloaded', isDl);
-      dlBtn.textContent = isDl ? `\u2713 ${t('savedOffline')}` : `\u2193 ${t('saveOffline')}`;
+      dlBtn.classList.toggle('downloaded', access.offlineReady);
+      dlBtn.classList.toggle('unavailable', !access.available);
+      if (!access.available) dlBtn.textContent = t('unavailableOffline');
+      else if (access.offlineReady) dlBtn.textContent = `\u2713 ${t('savedOffline')}`;
+      else dlBtn.textContent = `\u2193 ${t('saveOffline')}`;
     }
   });
   requestAnimationFrame(() => {
@@ -958,7 +977,11 @@ export async function renderLearnProgress(meta) {
 /** Apply current language to all data-i18n elements */
 export function applyLanguage() {
   document.querySelectorAll('[data-i18n]').forEach(el => {
+    if (el.dataset.i18n === 'tagline') return;
     el.textContent = t(el.dataset.i18n);
+  });
+  document.querySelectorAll('[data-i18n-aria]').forEach(el => {
+    el.setAttribute('aria-label', t(el.getAttribute('data-i18n-aria')));
   });
   ensureCategorySearchUi();
   ensureQuizModeUi();

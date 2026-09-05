@@ -148,6 +148,8 @@ def main():
     cat_questions: dict[str, list] = {cat: [] for cat in CATEGORIES}
     missing_media_count = 0
 
+    unique_ids = set()
+
     for row in data_rows:
         qnum = str(row[COL_NUM]).strip() if row[COL_NUM] is not None else ""
         question_text = str(row[COL_Q]).strip() if row[COL_Q] else ""
@@ -170,6 +172,8 @@ def main():
             "media": media_name,
             "mediaType": media_type,
         }
+        if qnum:
+            unique_ids.add(q_obj["id"])
 
         # Add ABC answers for specialist questions
         if q_type == "specialist":
@@ -218,6 +222,7 @@ def main():
 
     # Write meta.json
     meta = {
+        "uniqueQuestionCount": len(unique_ids),
         "categories": meta_categories,
         "exam": EXAM_RULES,
     }
@@ -227,7 +232,7 @@ def main():
 
     print(f"\n  meta.json written to {meta_file}")
     total = sum(c["questionCount"] for c in meta_categories)
-    print(f"\n  TOTAL: {total} question-category assignments across {len(CATEGORIES)} categories")
+    print(f"\n  TOTAL: {len(unique_ids)} unique questions, {total} question-category assignments across {len(CATEGORIES)} categories")
     print("  Done!")
 
 

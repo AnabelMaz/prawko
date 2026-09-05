@@ -1,6 +1,6 @@
 // offline.js — Offline download management
 
-import { fetchCategory, getMediaUrls } from './data.js';
+import { fetchCategory, getMediaUrls, usesLocalMedia } from './data.js';
 
 const DOWNLOAD_KEY = 'prawko_offline';
 const MANIFEST_KEY = 'prawko_offline_manifest';
@@ -9,6 +9,24 @@ const BATCH_SIZE = 6;
 
 function getMediaRequest(url) {
   return new Request(url, { mode: 'no-cors', cache: 'no-store' });
+}
+
+export function isAppOnline() {
+  return typeof navigator === 'undefined' || navigator.onLine !== false;
+}
+
+export function getCategoryMediaAccess(categoryId, downloadedSet = new Set(), options = {}) {
+  const localMedia = options.localMedia ?? usesLocalMedia();
+  const online = options.online ?? isAppOnline();
+  const downloaded = Boolean(categoryId) && downloadedSet.has(categoryId);
+
+  if (localMedia || downloaded) {
+    return { available: true, offlineReady: true, canDownload: false };
+  }
+  if (online) {
+    return { available: true, offlineReady: false, canDownload: true };
+  }
+  return { available: false, offlineReady: false, canDownload: false };
 }
 
 export function getDownloadedCategories() {

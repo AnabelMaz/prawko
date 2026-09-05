@@ -4,6 +4,8 @@ Thumbs.db
 
 # Source data (not deployed)
 *.xlsx
+.baza_pytan.hash
+gov-data/
 Pytania egzaminacyjne na prawo jazdy 2025/
 
 # Python
@@ -14,6 +16,7 @@ venv/
 # IDE
 .vscode/
 .idea/
+.cursor/
 
 # Media (hosted on Backblaze B2, not in git)
 src/media/img/
