@@ -2,7 +2,7 @@
 
 To **fork** projektu [szkocot/prawko](https://github.com/szkocot/prawko) (demo źródła: https://szkocot.github.io/prawko/). Tutaj zostaje układ stacji WORD, skórki Image/PWPW, profile lokalne i przebudowana nauka. Małe, samodzielne łatki mogą iść do repozytorium źródłowego; ta kopia trzyma pełną wersję.
 
-Aplikacja webowa (PWA) do nauki i symulacji egzaminu na prawo jazdy w Polsce. Zawiera wszystkie 3719 oficjalnych pytań egzaminacyjnych z bazy Ministerstwa Infrastruktury.
+Aplikacja webowa (PWA) do nauki i symulacji egzaminu na prawo jazdy w Polsce. Baza w repo to JSON z katalogu MI (**3556** unikalnych pytań). Zdjęcia i filmy nie są w gicie.
 
 ## Funkcje
 
@@ -38,9 +38,11 @@ bash scripts/optimize-images.sh
 # Filtrowanie pytań bez wymaganych multimediów
 python3 scripts/filter-no-media.py
 
-# Upload multimediów na Backblaze B2
+# Upload multimediów na Backblaze B2 (Windows: scripts/upload-media.ps1)
 bash scripts/upload-media.sh
 ```
+
+Czysty clone **nie wymaga** `-InstallGov`, gdy JSON jest w `src/data` (już w tym forku) i `MEDIA_CDN` w `src/js/data.js` wskazuje **Twój** publiczny kubeł B2 z `img/` i `vid/`. Dopóki nie wgrasz własnej paczki, widełki nadal biorą CDN szkocota. Darmowe B2 (~10 GB) wystarczy: lokalna paczka MI to ok. **3 GB**.
 
 ## TODO
 

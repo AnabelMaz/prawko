@@ -21,6 +21,10 @@ venv/
 # OneDrive/editor conflict copies
 *-NODE-Oczkowscy.*
 
+# Backblaze keys (never commit)
+.b2env
+scripts/.b2env
+
 # Media (hosted on Backblaze B2, not in git)
 src/media/img/
 src/media/vid/

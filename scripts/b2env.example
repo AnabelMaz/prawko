@@ -1,0 +1,4 @@
+# Copy to the repo root as .b2env (gitignored). Do not commit keys.
+B2_APPLICATION_KEY_ID=
+B2_APPLICATION_KEY=
+B2_BUCKET=
