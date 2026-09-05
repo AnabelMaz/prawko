@@ -2,7 +2,7 @@
 
 To **fork** projektu [szkocot/prawko](https://github.com/szkocot/prawko) (demo źródła: https://szkocot.github.io/prawko/). Tutaj zostaje układ stacji WORD, skórki Image/PWPW, profile lokalne i przebudowana nauka. Małe, samodzielne łatki mogą iść do repozytorium źródłowego; ta kopia trzyma pełną wersję.
 
-Aplikacja webowa (PWA) do nauki i symulacji egzaminu na prawo jazdy w Polsce. Baza w repo to JSON z katalogu MI (**3556** unikalnych pytań). Zdjęcia i filmy nie są w gicie.
+Aplikacja webowa (PWA) do nauki i symulacji egzaminu na prawo jazdy w Polsce. Baza w repo to JSON z katalogu MI (**3556** unikalnych pytań). Zdjęcia i filmy nie są w gicie. Publiczny katalog na gov.pl: **lipiec 2026** (`KATALOG_dla_kandydatów_na_kierowców_072026.xlsx`).
 
 ## Funkcje
 
@@ -46,18 +46,15 @@ Czysty clone **nie wymaga** `-InstallGov`: JSON jest w `src/data`, a `MEDIA_CDN`
 
 ## TODO
 
-- [ ] Odzyskać 8 brakujących plików multimedialnych (31 pytań wykluczonych):
-  - `!RS_Parking zastrzeżony.webp`
-  - `313D12_a_org_światło.webp`
-  - `policjant_przód_02.webp`, `policjant_przód_03.webp`, `policjant_przód_ręka_w_górze.webp`
-  - `zagłówekorg.webp`
-  - `JAZDA NOCĄorg.mp4`, `pięć5.mp4`
+- [x] Odzyskane z paczki MI (7/8): `313D12_a_org_światło.webp`, `policjant_przód_02.webp`, `policjant_przód_03.webp`, `policjant_przód_ręka_w_górze.webp`, `zagłówekorg.webp`, `JAZDA NOCĄorg.mp4`, `pięć5.mp4`
+- [ ] Brak w paczce MI: `!RS_Parking zastrzeżony.webp`
 
 ## Źródło danych
 
 Pytania egzaminacyjne pochodzą z oficjalnej bazy Ministerstwa Infrastruktury:
 https://www.gov.pl/web/infrastruktura/prawo-jazdy
 
+- **Stan katalogu**: lipiec 2026 (`KATALOG_dla_kandydatów_na_kierowców_072026.xlsx`; Excel zapisany 15 czerwca 2026)
 - **Treść pytań**: licencja CC BY-SA 4.0
 - **Materiały audiowizualne**: licencja CC BY-NC-ND 4.0
 
@@ -71,7 +68,7 @@ Kod aplikacji jest na [ISC](LICENSE) (tak jak w `package.json` źródła). Przy 
 
 This is a **fork** of [szkocot/prawko](https://github.com/szkocot/prawko) (upstream demo: https://szkocot.github.io/prawko/). It keeps a WORD station layout, Image/PWPW skins, local profiles, and a rebuilt learn mode. Small standalone fixes can still go upstream; this repository holds the full local product.
 
-A PWA web app for Polish driving license exam preparation. Contains all 3,719 official exam questions from the Ministry of Infrastructure database.
+A PWA web app for Polish driving license exam preparation. The repo JSON has **3556** unique ministry questions. The public catalogue on gov.pl is **July 2026** (`KATALOG_dla_kandydatów_na_kierowców_072026.xlsx`).
 
 ## Features
 
@@ -89,16 +86,14 @@ A PWA web app for Polish driving license exam preparation. Contains all 3,719 of
 Questions from the official Ministry of Infrastructure database:
 https://www.gov.pl/web/infrastruktura/prawo-jazdy
 
+- **Catalogue date**: July 2026 (`KATALOG_dla_kandydatów_na_kierowców_072026.xlsx`; Excel last saved 15 June 2026)
 - **Question text**: CC BY-SA 4.0
 - **Audiovisual materials**: CC BY-NC-ND 4.0
 
 ## TODO
 
-- [ ] Recover 8 missing media files (31 questions excluded):
-  - `!RS_Parking zastrzeżony.webp`, `313D12_a_org_światło.webp`
-  - `policjant_przód_02.webp`, `policjant_przód_03.webp`, `policjant_przód_ręka_w_górze.webp`
-  - `zagłówekorg.webp`
-  - `JAZDA NOCĄorg.mp4`, `pięć5.mp4`
+- [x] Recovered from the ministry pack (7/8): `313D12_a_org_światło.webp`, `policjant_przód_02.webp`, `policjant_przód_03.webp`, `policjant_przód_ręka_w_górze.webp`, `zagłówekorg.webp`, `JAZDA NOCĄorg.mp4`, `pięć5.mp4`
+- [ ] Still missing from the ministry pack: `!RS_Parking zastrzeżony.webp`
 
 ## License
 

@@ -423,7 +423,7 @@ test.describe('Local profiles', () => {
         activeId: 'p2',
         profiles: [
           { id: 'p1', name: 'Ja', createdAt: 1 },
-          { id: 'p2', name: 'Tomek', createdAt: 2 },
+          { id: 'p2', name: 'Anabela', createdAt: 2 },
         ],
       }));
     });
@@ -434,7 +434,7 @@ test.describe('Local profiles', () => {
     await expect(page.locator('.profile-action-delete')).toHaveText('Usuń');
     await page.click('.profile-action-delete');
     await page.waitForSelector('.modal-overlay.active');
-    await expect(page.locator('#modal-desc')).toContainText('Tomek');
+    await expect(page.locator('#modal-desc')).toContainText('Anabela');
     await page.click('.btn-confirm-end');
     await page.waitForSelector('#home.active');
     await expect(page.locator('.profile-toggle-name')).toHaveText('Ja');
@@ -449,7 +449,7 @@ test.describe('Local profiles', () => {
         activeId: 'p1',
         profiles: [
           { id: 'p1', name: 'Ja', createdAt: 1 },
-          { id: 'p2', name: 'Tomek', createdAt: 2 },
+          { id: 'p2', name: 'Anabela', createdAt: 2 },
         ],
       }));
       localStorage.setItem('prawko_p_p1_learn', JSON.stringify({ B: { q1: { answer: 'T', streak: 2 } } }));
@@ -461,7 +461,7 @@ test.describe('Local profiles', () => {
     await expect(page.locator('.profile-stat-learn')).toContainText('1');
     await page.click('.profile-list-btn[data-id="p2"]');
     await expect(page.locator('#profile-panel')).toBeHidden();
-    await expect(page.locator('.profile-toggle-name')).toHaveText('Tomek');
+    await expect(page.locator('.profile-toggle-name')).toHaveText('Anabela');
     expect(await page.evaluate(() => window.__prawkoStay)).toBe(1);
     await page.click('.profile-toggle');
     await expect(page.locator('.profile-stat-learn')).toHaveText('Nauka: 0');
@@ -471,7 +471,7 @@ test.describe('Local profiles', () => {
     await page.addInitScript(() => {
       localStorage.setItem('prawko_profiles', JSON.stringify({
         activeId: 'p1',
-        profiles: [{ id: 'p1', name: 'Tomek', createdAt: 1 }],
+        profiles: [{ id: 'p1', name: 'Anabela', createdAt: 1 }],
       }));
       localStorage.setItem('prawko_p_p1_learn', JSON.stringify({ B: { q1: { answer: 'T', streak: 2 } } }));
       localStorage.setItem('prawko_p_p1_stats', JSON.stringify([
@@ -480,7 +480,7 @@ test.describe('Local profiles', () => {
     });
     await page.goto('/');
     await page.waitForSelector('#home.active');
-    await expect(page.locator('.profile-toggle-name')).toHaveText('Tomek');
+    await expect(page.locator('.profile-toggle-name')).toHaveText('Anabela');
     await page.click('.profile-toggle');
     await expect(page.locator('.profile-stat-learn')).toContainText('1');
     await expect(page.locator('.profile-stat-exams')).toContainText('1');
