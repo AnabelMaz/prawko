@@ -5,7 +5,26 @@ const inflight = new Map();
 
 // Media base URL — set to CDN origin for external media hosting
 // Falls back to local relative path for development
-export const MEDIA_BASE = 'https://f003.backblazeb2.com/file/prawko';
+export const MEDIA_CDN = 'https://f003.backblazeb2.com/file/prawko';
+export const MEDIA_BASE = MEDIA_CDN;
+
+export function getMediaUrls(media, mediaType) {
+  if (!media) return [];
+  const prefix = mediaType === 'video' ? 'vid' : 'img';
+  const encoded = encodeURIComponent(media);
+  const bases = [];
+  for (const base of [MEDIA_BASE, MEDIA_CDN]) {
+    if (base && !bases.includes(base)) bases.push(base);
+  }
+  const urls = [];
+  for (const base of bases) {
+    const withEncoding = `${base}/${prefix}/${encoded}`;
+    const raw = `${base}/${prefix}/${media}`;
+    if (!urls.includes(withEncoding)) urls.push(withEncoding);
+    if (raw !== withEncoding && !urls.includes(raw)) urls.push(raw);
+  }
+  return urls;
+}
 
 export async function fetchMeta() {
   if (cache.has('meta')) return cache.get('meta');

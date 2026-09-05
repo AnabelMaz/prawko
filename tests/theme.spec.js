@@ -152,4 +152,25 @@ test.describe('Warm & Soft Theme', () => {
     const themeColor = await page.getAttribute('meta[name="theme-color"]', 'content');
     expect(themeColor).toBe('#6366f1');
   });
+
+  test('exam skin flattens home chrome without changing app behavior', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    const radiusBefore = await page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue('--radius').trim()
+    );
+    expect(radiusBefore).toBe('20px');
+    await page.click('.exam-skin-btn');
+    await expect(page.locator('.exam-skin-btn')).toHaveAttribute('aria-pressed', 'true');
+    const after = await page.evaluate(() => ({
+      skin: document.documentElement.getAttribute('data-exam-skin'),
+      radius: getComputedStyle(document.documentElement).getPropertyValue('--radius').trim(),
+      featureRadius: getComputedStyle(document.querySelector('.feature-card')).borderRadius,
+      heroImage: getComputedStyle(document.querySelector('.hero')).backgroundImage,
+    }));
+    expect(after.skin).toBe('strict');
+    expect(after.radius).toBe('6px');
+    expect(after.featureRadius).toBe('6px');
+    expect(after.heroImage === 'none' || !after.heroImage.includes('gradient')).toBeTruthy();
+  });
 });

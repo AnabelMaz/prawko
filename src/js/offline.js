@@ -1,6 +1,6 @@
 // offline.js — Offline download management
 
-import { fetchCategory, MEDIA_BASE } from './data.js';
+import { fetchCategory, getMediaUrls } from './data.js';
 
 const DOWNLOAD_KEY = 'prawko_offline';
 const MANIFEST_KEY = 'prawko_offline_manifest';
@@ -42,8 +42,9 @@ function getCategoryMediaUrls(categoryData) {
   for (const q of categoryData.questions) {
     if (!q.media || seen.has(q.media)) continue;
     seen.add(q.media);
-    const prefix = q.mediaType === 'video' ? 'vid' : 'img';
-    mediaUrls.push(`${MEDIA_BASE}/${prefix}/${encodeURIComponent(q.media)}`);
+    const urls = getMediaUrls(q.media, q.mediaType);
+    const remote = urls.find((u) => /^https?:\/\//i.test(u)) || urls[0];
+    if (remote) mediaUrls.push(remote);
   }
   return mediaUrls;
 }

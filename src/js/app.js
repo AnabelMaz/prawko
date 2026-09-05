@@ -3,24 +3,87 @@
 import { fetchMeta, fetchCategory } from './data.js';
 import { startExam, setupExamListeners, cleanupExam, getLastExamCategory, refreshExamQuestion } from './exam.js';
 import { startLearn, setupLearnListeners, cleanupLearn, refreshLearnQuestion } from './learn.js';
-import { showScreen, renderCategories, applyLanguage, renderHistory, showConfirmModal } from './ui.js';
+import { showScreen, renderCategories, applyLanguage, renderHistory, renderLearnProgress, renderResults, showConfirmModal } from './ui.js';
 import { setLang, getLang, loadQuestionTranslations, t } from './i18n.js';
 import { downloadCategoryMedia, getDownloadedCategories, reconcileDownloadedCategories } from './offline.js';
-import { clearHistory } from './stats.js';
+import { getProfileSummary, loadHistory, loadLastResult, clearHistory, clearLearnProgress } from './stats.js';
+import { setupUiFitScale, refitUiScale, layoutCategoryGrid } from './scale.js';
+import {
+  DEFAULT_PROFILE_NAME,
+  PROFILE_LIMIT,
+  createProfile,
+  deleteProfile,
+  formatProfileName,
+  getActiveProfileId,
+  getPracticeExamEnabled,
+  listProfiles,
+  profileGet,
+  profileSet,
+  renameProfile,
+  setActiveProfile,
+  setPracticeExamEnabled,
+} from './profiles.js';
 
 let meta = null;
 let currentMode = 'learn'; // 'learn' or 'exam'
 let pendingCategory = null;
+
+function setQuizCategoryPill(categoryId) {
+  const el = document.getElementById('quiz-category-pill');
+  if (!el) return;
+  if (!categoryId) {
+    el.hidden = true;
+    el.textContent = '';
+    el.removeAttribute('aria-label');
+    const topic = document.querySelector('.word-topic-text');
+    if (topic) topic.textContent = '';
+    return;
+  }
+  el.hidden = false;
+  el.textContent = categoryId;
+  el.setAttribute('aria-label', `${t('examCategoryShort')} ${categoryId}`);
+  const topic = document.querySelector('.word-topic-text');
+  if (topic) topic.textContent = `${t('examCategoryShort')} ${categoryId}`;
+}
+
+function setAppMode(mode) {
+  currentMode = mode === 'exam' ? 'exam' : 'learn';
+  document.querySelectorAll('.mode-btn').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.mode === currentMode);
+  });
+  const desc = document.getElementById('mode-description');
+  if (desc) {
+    const key = currentMode === 'learn' ? 'modeLearnDesc' : 'modeExamDesc';
+    desc.textContent = t(key);
+    desc.dataset.i18n = key;
+  }
+  syncCategoriesProgressLink();
+}
+
+function syncCategoriesProgressLink() {
+  const link = document.querySelector('.btn-history-link');
+  if (!link) return;
+  if (currentMode === 'learn') {
+    link.dataset.navigate = 'learn-progress';
+    link.dataset.i18n = 'learnProgress';
+    link.textContent = t('learnProgress');
+  } else {
+    link.dataset.navigate = 'history';
+    link.dataset.i18n = 'examHistory';
+    link.textContent = t('examHistory');
+  }
+}
 const RECENT_CATEGORIES_KEY = 'prawko_recent_categories';
 const RECENT_CATEGORIES_LIMIT = 4;
 const EXAM_SKIN_KEY = 'prawko_exam_skin';
 
 // ---- Router ----
 function navigate(screen) {
+  setProfilePanelOpen(false);
   window.location.hash = screen;
 }
 
-const VALID_SCREENS = new Set(['home', 'categories', 'quiz', 'results', 'history', 'zrodlo-danych']);
+const VALID_SCREENS = new Set(['home', 'categories', 'quiz', 'results', 'history', 'learn-progress', 'zrodlo-danych']);
 
 function focusCurrentScreenHeading(screenId) {
   const screen = document.getElementById(screenId);
@@ -28,7 +91,7 @@ function focusCurrentScreenHeading(screenId) {
   if (!heading) return;
   const hadTabIndex = heading.hasAttribute('tabindex');
   if (!hadTabIndex) heading.setAttribute('tabindex', '-1');
-  heading.focus({ preventScroll: true });
+  heading.focus({ preventScroll: true, focusVisible: false });
   if (!hadTabIndex) {
     heading.addEventListener('blur', () => heading.removeAttribute('tabindex'), { once: true });
   }
@@ -40,7 +103,7 @@ function getAvailableCategoryIds() {
 
 function loadRecentCategories() {
   try {
-    const parsed = JSON.parse(localStorage.getItem(RECENT_CATEGORIES_KEY) || '[]');
+    const parsed = JSON.parse(profileGet(RECENT_CATEGORIES_KEY) || '[]');
     return Array.isArray(parsed) ? parsed.filter(id => typeof id === 'string') : [];
   } catch {
     return [];
@@ -48,7 +111,7 @@ function loadRecentCategories() {
 }
 
 function saveRecentCategories(ids) {
-  try { localStorage.setItem(RECENT_CATEGORIES_KEY, JSON.stringify(ids)); } catch {}
+  try { profileSet(RECENT_CATEGORIES_KEY, JSON.stringify(ids)); } catch {}
 }
 
 function addRecentCategory(categoryId) {
@@ -76,6 +139,7 @@ function applyCategorySearch() {
   if (!recentSection || !recentRow) return;
   const hasVisibleRecent = [...recentRow.querySelectorAll('.category-card')].some(card => card.style.display !== 'none');
   recentSection.hidden = recentRow.children.length === 0 || !hasVisibleRecent;
+  layoutCategoryGrid();
 }
 
 function renderRecentCategories() {
@@ -110,6 +174,13 @@ function applyCategoryUiTranslations() {
   searchInput.setAttribute('aria-label', t('categoriesSearchLabel'));
 }
 
+function syncSessionChrome(screenId) {
+  const hide = screenId === 'quiz';
+  document.body.classList.toggle('session-chrome-hidden', hide);
+  const controls = document.querySelector('.top-controls');
+  if (controls) controls.hidden = hide;
+}
+
 function handleRoute() {
   const hash = window.location.hash.slice(1) || 'home';
 
@@ -122,6 +193,7 @@ function handleRoute() {
   if (hash !== 'quiz') {
     cleanupExam();
     cleanupLearn();
+    setQuizCategoryPill(null);
   }
 
   // If navigating to quiz with a pending category, start the session
@@ -130,7 +202,9 @@ function handleRoute() {
     pendingCategory = null;
     showScreen('quiz');
     focusCurrentScreenHeading('quiz');
+    syncSessionChrome('quiz');
     launchSession(cat);
+    refitUiScale();
     return;
   }
 
@@ -147,14 +221,24 @@ function handleRoute() {
     applyCategorySearch();
   }
   if (hash === 'history') renderHistory();
+  if (hash === 'learn-progress') renderLearnProgress(meta);
+  if (hash === 'results') {
+    const last = loadLastResult();
+    if (last) renderResults(last);
+  }
+  if (hash === 'results' || hash === 'history') setAppMode('exam');
+  if (hash === 'learn-progress') setAppMode('learn');
   showScreen(hash);
   focusCurrentScreenHeading(hash);
+  syncSessionChrome(hash);
+  refitUiScale();
 }
 
 // ---- Category & Mode Selection ----
 async function launchSession(categoryId) {
   try {
     const data = await fetchCategory(categoryId);
+    setQuizCategoryPill(categoryId);
     if (currentMode === 'exam') {
       startExam(data, meta);
     } else {
@@ -212,15 +296,270 @@ function applyExamSkin(enabled, examSkinBtn) {
   examSkinBtn.setAttribute('aria-pressed', enabled ? 'true' : 'false');
   examSkinBtn.classList.toggle('active', enabled);
   examSkinBtn.setAttribute('aria-label', enabled ? `${t('examSkin')}: on` : `${t('examSkin')}: off`);
+  refitUiScale();
 }
 
-function showUpdateBanner() {
+function fillProfilePanel() {
+  const toggle = document.querySelector('.profile-toggle');
+  const nameEl = document.querySelector('.profile-toggle-name');
+  const list = document.querySelector('.profile-list');
+  const learnEl = document.querySelector('.profile-stat-learn');
+  const examsEl = document.querySelector('.profile-stat-exams');
+  const deleteBtn = document.querySelector('.profile-action-delete');
+  const closeBtn = document.querySelector('.profile-panel-close');
+  if (!toggle || !list) return;
+
+  const activeId = getActiveProfileId();
+  const profiles = listProfiles();
+  const active = profiles.find((p) => p.id === activeId);
+  if (nameEl) nameEl.textContent = formatProfileName(active?.name || DEFAULT_PROFILE_NAME, t);
+  toggle.setAttribute('aria-label', `${t('profileLabel')}: ${formatProfileName(active?.name || DEFAULT_PROFILE_NAME, t)}`);
+  if (closeBtn) closeBtn.setAttribute('aria-label', t('profileClose'));
+
+  list.innerHTML = '';
+  profiles.forEach((profile) => {
+    const item = document.createElement('li');
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'profile-list-btn' + (profile.id === activeId ? ' active' : '');
+    btn.dataset.id = profile.id;
+    btn.textContent = formatProfileName(profile.name, t);
+    if (profile.id === activeId) btn.setAttribute('aria-current', 'true');
+    item.appendChild(btn);
+    list.appendChild(item);
+  });
+
+  const summary = getProfileSummary();
+  if (learnEl) {
+    const learnText = t('profileLearn').replace('{known}', String(summary.learnKnown));
+    learnEl.textContent = learnText;
+    learnEl.setAttribute('aria-label', `${learnText}. ${t('learnProgress')}`);
+  }
+  if (examsEl) {
+    const examsText = t('profileExams')
+      .replace('{n}', String(summary.exams))
+      .replace('{passed}', String(summary.examsPassed));
+    examsEl.textContent = examsText;
+    examsEl.setAttribute('aria-label', `${examsText}. ${t('examHistory')}`);
+  }
+  if (deleteBtn) deleteBtn.textContent = profiles.length <= 1 ? t('profileReset') : t('profileDelete');
+  const practiceBox = document.querySelector('.profile-practice-exam');
+  if (practiceBox) practiceBox.checked = getPracticeExamEnabled();
+}
+
+function setProfilePanelOpen(open) {
+  const toggle = document.querySelector('.profile-toggle');
+  const panel = document.getElementById('profile-panel');
+  if (!toggle || !panel) return;
+  panel.hidden = !open;
+  toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  fillProfilePanel();
+}
+
+function refreshAfterProfileChange() {
+  const hash = window.location.hash.slice(1) || 'home';
+  if (hash === 'quiz' || hash === 'results') {
+    pendingCategory = null;
+    cleanupLearn();
+    cleanupExam();
+    fillProfilePanel();
+    setProfilePanelOpen(false);
+    navigate('categories');
+    return;
+  }
+  fillProfilePanel();
+  setProfilePanelOpen(false);
+  if (hash === 'categories' && meta) {
+    renderCategories(meta, getDownloadedCategories());
+    syncCategoryCardVisibility();
+    renderRecentCategories();
+    applyCategorySearch();
+  }
+  if (hash === 'history') renderHistory();
+  if (hash === 'learn-progress') renderLearnProgress(meta);
+  refitUiScale();
+}
+
+function setupProfileSwitcher() {
+  const switcher = document.querySelector('.profile-switch');
+  const toggle = document.querySelector('.profile-toggle');
+  const panel = document.getElementById('profile-panel');
+  if (!switcher || !toggle || !panel) return;
+
+  fillProfilePanel();
+  document.addEventListener('prawko:language', fillProfilePanel);
+
+  toggle.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setProfilePanelOpen(panel.hidden);
+  });
+
+  panel.querySelector('.profile-panel-close')?.addEventListener('click', () => {
+    setProfilePanelOpen(false);
+    toggle.focus();
+  });
+
+  panel.querySelector('.profile-list')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.profile-list-btn');
+    if (!btn?.dataset.id) return;
+    if (btn.dataset.id === getActiveProfileId()) return;
+    setActiveProfile(btn.dataset.id);
+    refreshAfterProfileChange();
+  });
+
+  panel.querySelector('.profile-action-rename')?.addEventListener('click', () => {
+    setProfilePanelOpen(false);
+    const current = listProfiles().find((p) => p.id === getActiveProfileId());
+    const name = window.prompt(t('profileRenamePrompt'), formatProfileName(current?.name || '', t));
+    if (!name || !String(name).trim()) return;
+    if (renameProfile(getActiveProfileId(), name)) fillProfilePanel();
+  });
+
+  panel.querySelector('.profile-action-new')?.addEventListener('click', () => {
+    setProfilePanelOpen(false);
+    if (listProfiles().length >= PROFILE_LIMIT) {
+      window.alert(t('profileLimit'));
+      return;
+    }
+    const name = window.prompt(t('profileNamePrompt'), t('profileDefaultNew'));
+    if (!name || !String(name).trim()) return;
+    createProfile(name);
+    refreshAfterProfileChange();
+  });
+
+  panel.querySelector('.profile-action-delete')?.addEventListener('click', () => {
+    const profiles = listProfiles();
+    const current = profiles.find((p) => p.id === getActiveProfileId());
+    const isLast = profiles.length <= 1;
+    setProfilePanelOpen(false);
+    showConfirmModal(
+      t(isLast ? 'profileResetTitle' : 'profileDeleteTitle'),
+      isLast
+        ? t('profileResetDesc').replace('{name}', t('profileDefaultMe'))
+        : t('profileDeleteDesc').replace('{name}', formatProfileName(current?.name || '', t)),
+      () => {
+        deleteProfile(getActiveProfileId());
+        refreshAfterProfileChange();
+      },
+      {
+        confirmLabel: t(isLast ? 'profileResetConfirm' : 'profileDeleteConfirm'),
+        cancelLabel: t('profileDeleteCancel'),
+      }
+    );
+  });
+
+  panel.querySelector('.profile-stat-exams')?.addEventListener('click', () => {
+    setProfilePanelOpen(false);
+  });
+
+  panel.querySelector('.profile-stat-learn')?.addEventListener('click', () => {
+    setProfilePanelOpen(false);
+  });
+
+  panel.querySelector('.profile-practice-exam')?.addEventListener('change', (e) => {
+    setPracticeExamEnabled(Boolean(e.target.checked));
+  });
+
+  document.addEventListener('pointerdown', (e) => {
+    if (panel.hidden) return;
+    if (switcher.contains(e.target)) return;
+    if (document.getElementById('confirm-modal')?.classList.contains('active')) return;
+    setProfilePanelOpen(false);
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || panel.hidden) return;
+    if (document.getElementById('confirm-modal')?.classList.contains('active')) return;
+    setProfilePanelOpen(false);
+    toggle.focus();
+  });
+}
+
+const UPDATE_CHECK_INTERVAL_MS = 30 * 1000;
+const UPDATE_IGNORE_AFTER_REFRESH_MS = 15 * 1000;
+let lastUpdateCheckAt = 0;
+let ignoreUpdatesUntil = 0;
+let isReloadingForSw = false;
+
+function readIgnoreUpdatesUntil() {
+  try {
+    return Number(sessionStorage.getItem('prawko_ignore_updates_until') || 0);
+  } catch {
+    return 0;
+  }
+}
+
+function rememberRefreshIgnore() {
+  ignoreUpdatesUntil = Date.now() + UPDATE_IGNORE_AFTER_REFRESH_MS;
+  try {
+    sessionStorage.setItem('prawko_ignore_updates_until', String(ignoreUpdatesUntil));
+  } catch {}
+}
+
+function showUpdateBanner({ force = false } = {}) {
+  if (!force && Date.now() < Math.max(ignoreUpdatesUntil, readIgnoreUpdatesUntil())) return;
   const banner = document.getElementById('update-banner');
-  if (banner) banner.style.display = '';
+  if (!banner || !banner.hidden) return;
+  banner.hidden = false;
+  refitUiScale();
+}
+
+function setupAppUpdateChecks(registration) {
+  ignoreUpdatesUntil = Math.max(ignoreUpdatesUntil, readIgnoreUpdatesUntil());
+  const tick = () => {
+    if (document.hidden) return;
+    if (registration.waiting) {
+      showUpdateBanner({ force: true });
+      return;
+    }
+    const banner = document.getElementById('update-banner');
+    if (banner && !banner.hidden) return;
+    const now = Date.now();
+    if (now - lastUpdateCheckAt < UPDATE_CHECK_INTERVAL_MS) return;
+    lastUpdateCheckAt = now;
+    registration.update().catch(() => {});
+  };
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) tick();
+  });
+  window.addEventListener('focus', tick);
+  lastUpdateCheckAt = 0;
+  tick();
+  setInterval(tick, UPDATE_CHECK_INTERVAL_MS);
+}
+
+function reloadForUpdate() {
+  if (isReloadingForSw) return;
+  isReloadingForSw = true;
+  location.reload();
+}
+
+async function applyAppUpdate(registration) {
+  rememberRefreshIgnore();
+  const reg = registration || (await navigator.serviceWorker.getRegistration().catch(() => null));
+  const waiting = reg?.waiting;
+  if (waiting) {
+    let reloaded = false;
+    const reload = () => {
+      if (reloaded) return;
+      reloaded = true;
+      reloadForUpdate();
+    };
+    navigator.serviceWorker.addEventListener('controllerchange', reload, { once: true });
+    waiting.postMessage({ type: 'SKIP_WAITING' });
+    setTimeout(reload, 600);
+    return;
+  }
+  try {
+    const keys = await caches.keys();
+    await Promise.all(keys.filter((key) => key.includes('-shell')).map((key) => caches.delete(key)));
+  } catch { /* still reload */ }
+  reloadForUpdate();
 }
 
 // ---- Init ----
 async function init() {
+  setupUiFitScale();
   // Load metadata
   const spinner = document.getElementById('home-spinner');
   try {
@@ -249,21 +588,26 @@ async function init() {
   document.querySelectorAll('[data-navigate]').forEach(el => {
     el.addEventListener('click', (e) => {
       e.preventDefault();
-      navigate(el.dataset.navigate);
+      const target = el.dataset.navigate;
+      if (target === 'categories' && el.closest('#results, #history')) {
+        setAppMode('exam');
+      }
+      if (target === 'categories' && el.closest('#learn-progress')) {
+        setAppMode('learn');
+      }
+      if (target === 'history') setAppMode('exam');
+      if (target === 'learn-progress') setAppMode('learn');
+      navigate(target);
     });
   });
 
   // Mode toggle
   document.querySelectorAll('.mode-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      currentMode = btn.dataset.mode;
-      const desc = document.getElementById('mode-description');
-      if (desc) {
-        const key = currentMode === 'learn' ? 'modeLearnDesc' : 'modeExamDesc';
-        desc.textContent = t(key);
-        desc.dataset.i18n = key;
+      setAppMode(btn.dataset.mode);
+      if (meta) {
+        renderCategories(meta, getDownloadedCategories());
+        renderRecentCategories();
       }
     });
   });
@@ -281,13 +625,15 @@ async function init() {
   document.getElementById('category-search')?.addEventListener('input', applyCategorySearch);
 
   // Retry button
-  document.querySelector('.btn-retry')?.addEventListener('click', async () => {
-    const lastCat = getLastExamCategory();
-    if (lastCat) {
-      pendingCategory = lastCat;
-      currentMode = 'exam';
-      navigate('quiz');
+  document.querySelector('.btn-retry')?.addEventListener('click', () => {
+    setAppMode('exam');
+    const lastCat = getLastExamCategory() || loadHistory().at(-1)?.category;
+    if (!lastCat) {
+      navigate('categories');
+      return;
     }
+    pendingCategory = lastCat;
+    navigate('quiz');
   });
 
   // Theme toggle
@@ -296,6 +642,7 @@ async function init() {
   const examSkinBtn = document.querySelector('.exam-skin-btn');
   applyTheme(getInitialTheme(), themeIcon, themeBtn);
   applyExamSkin(getInitialExamSkin(), examSkinBtn);
+  setupProfileSwitcher();
   themeBtn?.addEventListener('click', () => {
     const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
     const nextTheme = isDark ? 'light' : 'dark';
@@ -315,6 +662,7 @@ async function init() {
   if (savedLang !== 'pl') {
     setLang(savedLang);
     applyLanguage();
+    fillProfilePanel();
     await loadQuestionTranslations();
   }
   document.querySelectorAll('.lang-btn').forEach(btn => {
@@ -323,7 +671,9 @@ async function init() {
       updateLanguageButtons(lang);
       setLang(lang);
       applyLanguage();
+      fillProfilePanel();
       applyExamSkin(document.documentElement.getAttribute('data-exam-skin') === 'strict', examSkinBtn);
+      syncCategoriesProgressLink();
       renderCategories(meta, getDownloadedCategories());
       syncCategoryCardVisibility();
       renderRecentCategories();
@@ -335,6 +685,12 @@ async function init() {
         refreshLearnQuestion();
         refreshExamQuestion();
       }
+      if (document.getElementById('results').classList.contains('active')) {
+        const last = loadLastResult();
+        if (last) renderResults(last);
+      }
+      if (document.getElementById('history').classList.contains('active')) renderHistory();
+      if (document.getElementById('learn-progress').classList.contains('active')) renderLearnProgress(meta);
     });
   });
 
@@ -388,6 +744,19 @@ async function init() {
     showConfirmModal(t('confirmClearHistory'), t('confirmClearHistoryDesc'), () => {
       clearHistory();
       renderHistory();
+      fillProfilePanel();
+    });
+  });
+
+  document.querySelector('.btn-clear-learn')?.addEventListener('click', () => {
+    showConfirmModal(t('confirmClearLearn'), t('confirmClearLearnDesc'), () => {
+      clearLearnProgress();
+      renderLearnProgress(meta);
+      fillProfilePanel();
+      if (meta) {
+        renderCategories(meta, getDownloadedCategories());
+        renderRecentCategories();
+      }
     });
   });
 
@@ -404,19 +773,18 @@ async function init() {
 
   // Register service worker
   let swRegistration = null;
-  let isReloadingForSw = false;
   if ('serviceWorker' in navigator) {
     swRegistration = await navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(err => {
       console.warn('SW registration failed:', err);
       return null;
     });
-    if (swRegistration?.waiting) showUpdateBanner();
+    if (swRegistration?.waiting) showUpdateBanner({ force: true });
     swRegistration?.addEventListener('updatefound', () => {
       const candidate = swRegistration.installing;
       if (!candidate) return;
       candidate.addEventListener('statechange', () => {
         if (candidate.state === 'installed' && navigator.serviceWorker.controller) {
-          showUpdateBanner();
+          showUpdateBanner({ force: true });
         }
       });
     });
@@ -428,25 +796,20 @@ async function init() {
       }
     });
     navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (isReloadingForSw) return;
-      isReloadingForSw = true;
-      location.reload();
+      reloadForUpdate();
     });
+    if (swRegistration) setupAppUpdateChecks(swRegistration);
   }
 
   // Update banner reload
   document.getElementById('update-banner-btn')?.addEventListener('click', () => {
-    if (swRegistration?.waiting) {
-      swRegistration.waiting.postMessage({ type: 'SKIP_WAITING' });
-      return;
-    }
-    location.reload();
+    applyAppUpdate(swRegistration);
   });
 
-  // Offline/online indicator
   const offlineBanner = document.getElementById('offline-banner');
   function updateOnlineStatus() {
     if (offlineBanner) offlineBanner.style.display = navigator.onLine ? 'none' : '';
+    refitUiScale();
   }
   window.addEventListener('online', updateOnlineStatus);
   window.addEventListener('offline', updateOnlineStatus);
