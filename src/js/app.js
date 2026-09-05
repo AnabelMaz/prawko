@@ -1,6 +1,6 @@
 // app.js — Router, initialization, and event wiring
 
-import { fetchMeta, fetchCategory } from './data.js';
+import { fetchMeta, fetchCategory, fetchUniqueQuestionCount } from './data.js';
 import { startExam, setupExamListeners, cleanupExam, getLastExamCategory, refreshExamQuestion } from './exam.js';
 import { startLearn, setupLearnListeners, cleanupLearn, refreshLearnQuestion } from './learn.js';
 import { showScreen, renderCategories, applyLanguage, renderHistory, renderLearnProgress, renderResults, showConfirmModal } from './ui.js';
@@ -25,8 +25,18 @@ import {
 } from './profiles.js';
 
 let meta = null;
+let uniqueQuestionCount = null;
 let currentMode = 'learn'; // 'learn' or 'exam'
 let pendingCategory = null;
+
+function paintHomeTagline() {
+  const el = document.querySelector('.hero-tagline');
+  if (!el) return;
+  const n = Number(uniqueQuestionCount);
+  if (!Number.isFinite(n) || n <= 0) return;
+  const formatted = getLang() === 'en' ? n.toLocaleString('en-US') : String(n);
+  el.textContent = t('tagline').replace('{n}', formatted);
+}
 
 function setQuizCategoryPill(categoryId) {
   const el = document.getElementById('quiz-category-pill');
@@ -161,6 +171,12 @@ function renderRecentCategories() {
     const name = document.createElement('span');
     name.className = 'category-name';
     name.textContent = sourceCard?.querySelector('.category-name')?.textContent || id;
+    if (sourceCard?.classList.contains('category-unavailable')) {
+      btn.classList.add('category-unavailable');
+      btn.setAttribute('aria-disabled', 'true');
+    }
+    if (sourceCard?.dataset.mediaAccess) btn.dataset.mediaAccess = sourceCard.dataset.mediaAccess;
+    if (sourceCard?.title) btn.title = sourceCard.title;
     btn.append(letter, name);
     recentRow.appendChild(btn);
   });
@@ -281,21 +297,28 @@ function applyTheme(theme, themeIcon, themeBtn) {
   if (themeBtn) themeBtn.setAttribute('aria-pressed', isDark ? 'true' : 'false');
 }
 
+function normalizeExamSkin(raw) {
+  return raw === 'pwpw' ? 'pwpw' : 'image';
+}
+
 function getInitialExamSkin() {
   try {
-    return localStorage.getItem(EXAM_SKIN_KEY) === 'strict';
+    return normalizeExamSkin(localStorage.getItem(EXAM_SKIN_KEY));
   } catch {
-    return false;
+    return 'image';
   }
 }
 
-function applyExamSkin(enabled, examSkinBtn) {
-  if (enabled) document.documentElement.setAttribute('data-exam-skin', 'strict');
-  else document.documentElement.removeAttribute('data-exam-skin');
-  if (!examSkinBtn) return;
-  examSkinBtn.setAttribute('aria-pressed', enabled ? 'true' : 'false');
-  examSkinBtn.classList.toggle('active', enabled);
-  examSkinBtn.setAttribute('aria-label', enabled ? `${t('examSkin')}: on` : `${t('examSkin')}: off`);
+function applyExamSkin(skin) {
+  const next = normalizeExamSkin(skin);
+  document.documentElement.setAttribute('data-exam-skin', next);
+  const btn = document.querySelector('.skin-btn');
+  if (btn) {
+    const label = next === 'pwpw' ? t('examSkinPwpw') : t('examSkinImage');
+    btn.textContent = label;
+    btn.setAttribute('aria-pressed', next === 'pwpw' ? 'true' : 'false');
+    btn.setAttribute('aria-label', `${t('examSkinToggle')}: ${label}`);
+  }
   refitUiScale();
 }
 
@@ -564,6 +587,8 @@ async function init() {
   const spinner = document.getElementById('home-spinner');
   try {
     meta = await fetchMeta();
+    uniqueQuestionCount = await fetchUniqueQuestionCount();
+    paintHomeTagline();
     renderCategories(meta, getDownloadedCategories());
     syncCategoryCardVisibility();
     renderRecentCategories();
@@ -619,6 +644,7 @@ async function init() {
     const categoryId = card.dataset.category;
     if (!categoryId) return;
     if (card.closest('.category-grid') && card.hidden) return;
+    if (card.classList.contains('category-unavailable') || card.getAttribute('aria-disabled') === 'true') return;
     handleCategorySelect(categoryId);
   });
 
@@ -639,9 +665,8 @@ async function init() {
   // Theme toggle
   const themeBtn = document.querySelector('.theme-btn');
   const themeIcon = themeBtn?.querySelector('.theme-icon');
-  const examSkinBtn = document.querySelector('.exam-skin-btn');
   applyTheme(getInitialTheme(), themeIcon, themeBtn);
-  applyExamSkin(getInitialExamSkin(), examSkinBtn);
+  applyExamSkin(getInitialExamSkin());
   setupProfileSwitcher();
   themeBtn?.addEventListener('click', () => {
     const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
@@ -649,11 +674,11 @@ async function init() {
     applyTheme(nextTheme, themeIcon, themeBtn);
     try { localStorage.setItem('prawko_theme', nextTheme); } catch {}
   });
-  examSkinBtn?.addEventListener('click', () => {
-    const isEnabled = document.documentElement.getAttribute('data-exam-skin') === 'strict';
-    const nextEnabled = !isEnabled;
-    applyExamSkin(nextEnabled, examSkinBtn);
-    try { localStorage.setItem(EXAM_SKIN_KEY, nextEnabled ? 'strict' : 'default'); } catch {}
+  document.querySelector('.skin-btn')?.addEventListener('click', () => {
+    const current = normalizeExamSkin(document.documentElement.getAttribute('data-exam-skin'));
+    const next = current === 'pwpw' ? 'image' : 'pwpw';
+    applyExamSkin(next);
+    try { localStorage.setItem(EXAM_SKIN_KEY, next); } catch {}
   });
 
   // Language toggle
@@ -662,6 +687,7 @@ async function init() {
   if (savedLang !== 'pl') {
     setLang(savedLang);
     applyLanguage();
+    paintHomeTagline();
     fillProfilePanel();
     await loadQuestionTranslations();
   }
@@ -671,8 +697,9 @@ async function init() {
       updateLanguageButtons(lang);
       setLang(lang);
       applyLanguage();
+      paintHomeTagline();
       fillProfilePanel();
-      applyExamSkin(document.documentElement.getAttribute('data-exam-skin') === 'strict', examSkinBtn);
+      applyExamSkin(document.documentElement.getAttribute('data-exam-skin'));
       syncCategoriesProgressLink();
       renderCategories(meta, getDownloadedCategories());
       syncCategoryCardVisibility();
@@ -702,7 +729,7 @@ async function init() {
     e.preventDefault();
 
     const catId = dlBtn.dataset.category;
-    if (dlBtn.classList.contains('downloaded') || dlBtn.classList.contains('downloading')) return;
+    if (dlBtn.classList.contains('downloaded') || dlBtn.classList.contains('downloading') || dlBtn.classList.contains('unavailable')) return;
 
     dlBtn.classList.add('downloading');
     dlBtn.textContent = '\u2193 0%';
@@ -809,6 +836,12 @@ async function init() {
   const offlineBanner = document.getElementById('offline-banner');
   function updateOnlineStatus() {
     if (offlineBanner) offlineBanner.style.display = navigator.onLine ? 'none' : '';
+    if (meta) {
+      renderCategories(meta, getDownloadedCategories());
+      syncCategoryCardVisibility();
+      renderRecentCategories();
+      applyCategorySearch();
+    }
     refitUiScale();
   }
   window.addEventListener('online', updateOnlineStatus);

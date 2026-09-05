@@ -27,6 +27,9 @@ let watchVideo = null;
 let watchRaf = 0;
 let watchGen = 0;
 let watchEndedHandler = null;
+const NEXT_GUARD_MS = 1000;
+let nextGuardUntil = 0;
+let nextGuardTimer = 0;
 
 export function getLastExamCategory() {
   if (lastExamCategory) return lastExamCategory;
@@ -90,6 +93,14 @@ function setExamLayout(active) {
 
 function isBasicFilm(item) {
   return item?.question.type === 'basic' && item.question.mediaType === 'video';
+}
+
+function setExamPhase(phase) {
+  if (state) state.phase = phase;
+  const quiz = document.getElementById('quiz');
+  if (!quiz) return;
+  if (phase) quiz.setAttribute('data-exam-phase', phase);
+  else quiz.removeAttribute('data-exam-phase');
 }
 
 function updateFilmStartButton() {
@@ -310,13 +321,35 @@ function showPracticeHandoff() {
   }, 1000);
 }
 
+function clearNextGuard() {
+  nextGuardUntil = 0;
+  if (nextGuardTimer) {
+    clearTimeout(nextGuardTimer);
+    nextGuardTimer = 0;
+  }
+}
+
+function isNextGuarded() {
+  return Date.now() < nextGuardUntil;
+}
+
+function armNextGuard() {
+  clearNextGuard();
+  nextGuardUntil = Date.now() + NEXT_GUARD_MS;
+  nextGuardTimer = setTimeout(() => {
+    nextGuardTimer = 0;
+    nextGuardUntil = 0;
+    if (state?.started && !state?.finished) updateExamNextButton();
+  }, NEXT_GUARD_MS);
+}
+
 function updateExamNextButton() {
   const btn = document.querySelector('.btn-exam-next');
   if (!btn) return;
   const running = Boolean(state?.started && !state?.finished);
   const lastScored = running && isOnLastQuestion() && !isPracticeItem();
   btn.classList.toggle('visible', running);
-  btn.disabled = !running || lastScored;
+  btn.disabled = !running || lastScored || isNextGuarded();
 }
 
 function setPhaseLabel(key) {
@@ -547,7 +580,7 @@ export function startExam(categoryData, meta) {
 
     if (key === 'enter' && state.phase === 'answer') {
       e.preventDefault();
-      confirmAndAdvance();
+      if (!isNextGuarded()) confirmAndAdvance();
       return;
     }
 
@@ -600,7 +633,7 @@ function showQuestion() {
   item.locked = false;
   item.timedOut = false;
   item.isCorrect = false;
-  state.phase = 'idle';
+  setExamPhase('idle');
 
   renderQuestion(q, quizCard(), { examMedia: true, hideFilm: isBasicFilm(item) });
   setAnswerButtonsEnabled(true);
@@ -620,7 +653,7 @@ function showQuestion() {
     return;
   }
 
-  state.phase = 'read';
+  setExamPhase('read');
   setPhaseLabel('examPhaseRead');
   if (isBasicFilm(item)) {
     startQuestionTimer(state.rules.basicTimeSeconds, () => beginMediaPlayback());
@@ -680,7 +713,7 @@ function beginMediaPlayback() {
     return;
   }
   stopQuestionClock();
-  state.phase = 'watch';
+  setExamPhase('watch');
   updateFilmStartButton();
   try {
     video.pause();
@@ -698,7 +731,7 @@ function beginAnswerPhase() {
   if (!state || state.finished || state.phase === 'answer') return;
   stopWatchClock();
   stopQuestionClock();
-  state.phase = 'answer';
+  setExamPhase('answer');
   setPhaseLabel('examPhaseAnswer');
   setAnswerButtonsEnabled(true);
   const item = currentItem();
@@ -726,7 +759,7 @@ function handleAnswer(answer) {
 }
 
 function confirmAndAdvance() {
-  if (!state || state.finished || !state.started) return;
+  if (!state || state.finished || !state.started || isNextGuarded()) return;
   const item = currentItem();
   if (!item || item.locked) return;
   const next = state.questions[state.currentIndex + 1];
@@ -750,6 +783,7 @@ function advanceQuestion() {
     return;
   }
   state.currentIndex++;
+  armNextGuard();
   showQuestion();
 }
 
@@ -812,6 +846,7 @@ export function refreshExamQuestion() {
   updatePracticeBanner();
   updateExamNextButton();
   updateFilmStartButton();
+  setExamPhase(state.phase);
   if (state.phase === 'read') setPhaseLabel('examPhaseRead');
   else if (state.phase === 'watch') {
     holdAnswerClock();
@@ -853,6 +888,7 @@ export function setupExamListeners() {
   });
 
   document.querySelector('.btn-exam-next')?.addEventListener('click', () => {
+    if (isNextGuarded()) return;
     confirmAndAdvance();
   });
 
@@ -890,6 +926,7 @@ export function setupExamListeners() {
 }
 
 export function cleanupExam() {
+  clearNextGuard();
   if (keydownHandler) {
     document.removeEventListener('keydown', keydownHandler);
     keydownHandler = null;
@@ -911,6 +948,7 @@ export function cleanupExam() {
   const banner = document.querySelector('.exam-practice-banner');
   if (banner) banner.hidden = true;
   document.getElementById('quiz')?.classList.remove('exam-practice');
+  document.getElementById('quiz')?.removeAttribute('data-exam-phase');
   const topic = document.querySelector('.word-topic-text');
   if (topic) topic.hidden = false;
   questionTimerDisplay()?.classList.remove('warning', 'paused', 'total-warning');

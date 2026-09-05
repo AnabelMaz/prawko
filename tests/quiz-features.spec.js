@@ -273,18 +273,18 @@ test.describe('Learn queue filter', () => {
     await expect(page.locator('.learn-stats-known')).toBeVisible();
   });
 
-  test('learn queue menus are rounded until exam skin', async ({ page }) => {
+  test('learn queue menus stay square in both exam skins', async ({ page }) => {
     await startLearnMode(page);
     await page.click('.learn-filter-select .learn-queue-select');
     const menu = page.locator('.learn-filter-select .learn-queue-menu');
     await expect(menu).toBeVisible();
-    const radius = await menu.evaluate((el) => getComputedStyle(el).borderTopLeftRadius);
-    expect(parseFloat(radius)).toBeGreaterThan(8);
-    await page.click('.exam-skin-btn');
+    const image = await menu.evaluate((el) => getComputedStyle(el).borderTopLeftRadius);
+    expect(parseFloat(image)).toBe(0);
+    await page.locator('.skin-btn').click({ force: true });
     await page.click('.learn-filter-select .learn-queue-select');
     await expect(menu).toBeVisible();
-    const strict = await menu.evaluate((el) => getComputedStyle(el).borderTopLeftRadius);
-    expect(parseFloat(strict)).toBe(0);
+    const pwpw = await menu.evaluate((el) => getComputedStyle(el).borderTopLeftRadius);
+    expect(parseFloat(pwpw)).toBe(0);
   });
 
   test('learn always shows unanswered buttons even after going back', async ({ page }) => {

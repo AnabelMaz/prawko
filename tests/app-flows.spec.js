@@ -115,6 +115,7 @@ test.describe('App flows', () => {
       }
       await expect(page.locator('.yn-answers .answer-btn').first()).toBeEnabled();
       await page.locator('.yn-answers .answer-btn').first().click();
+      await page.clock.fastForward(1000);
       await page.locator('.btn-exam-next.visible').click();
     }
 

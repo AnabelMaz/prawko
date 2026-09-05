@@ -1,14 +1,14 @@
 <!DOCTYPE html>
-<html lang="pl">
+<html lang="pl" data-exam-skin="image">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <script src="js/scale-boot.js"></script>
   <meta name="theme-color" content="#6366f1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' https://*.backblazeb2.com; media-src 'self' https://*.backblazeb2.com; connect-src 'self' https://*.backblazeb2.com; object-src 'none'; base-uri 'self'; form-action 'none';">
-  <meta name="description" content="Prawko — aplikacja do nauki pytań egzaminacyjnych na prawo jazdy. Wszystkie 3719 oficjalnych pytań.">
+  <meta name="description" content="Prawko — aplikacja do nauki pytań egzaminacyjnych na prawo jazdy.">
   <meta property="og:title" content="Prawko — Egzamin na prawo jazdy">
-  <meta property="og:description" content="Wszystkie 3719 oficjalnych pytań egzaminacyjnych na prawo jazdy. Nauka i symulacja egzaminu.">
+  <meta property="og:description" content="Oficjalne pytania egzaminacyjne na prawo jazdy. Nauka i symulacja egzaminu.">
   <meta property="og:type" content="website">
   <meta property="og:image" content="icons/icon-512.png">
   <title>Prawko — Egzamin na prawo jazdy</title>
@@ -70,7 +70,7 @@
     <button class="theme-btn" aria-label="Toggle dark mode" aria-pressed="false">
       <svg class="theme-icon" width="20" height="20"><use href="#icon-moon"/></svg>
     </button>
-    <button class="exam-skin-btn" type="button" data-i18n="examSkin" aria-pressed="false">Tryb egzaminatora</button>
+    <button class="skin-btn" type="button" aria-pressed="false" data-i18n-aria="examSkinToggle" aria-label="Skórka">Image</button>
     <div class="lang-toggle" role="radiogroup" aria-label="Wybór języka">
       <button class="lang-btn active" data-lang="pl" role="radio" aria-checked="true">PL</button>
       <button class="lang-btn" data-lang="en" role="radio" aria-checked="false">EN</button>
@@ -110,7 +110,7 @@
     <section id="home" class="screen active">
       <header class="hero">
         <h1 class="hero-title">Prawko</h1>
-        <p class="hero-tagline" data-i18n="tagline">Wszystkie 3719 oficjalnych pytań egzaminacyjnych</p>
+        <p class="hero-tagline" data-i18n="tagline">Oficjalne pytania egzaminacyjne</p>
       </header>
 
       <div class="loading-spinner" id="home-spinner"></div>
@@ -326,6 +326,8 @@
           <button class="btn btn-danger btn-end-exam" data-i18n="endExam">Zakończ egzamin</button>
           <button class="btn btn-back quiz-back" data-navigate="categories" data-i18n="back">&#8592; Powrót</button>
         </div>
+        <div class="word-side-body">
+        <p class="pwpw-learn-flag" data-i18n="pwpwLearnMode">TRYB NAUKI</p>
         <div class="exam-counters" hidden>
           <div class="exam-counter" data-part="basic">
             <span class="exam-counter-label"><span data-i18n="examBasicLine1">Pytania</span><span data-i18n="examBasicLine2">podstawowe</span></span>
@@ -343,8 +345,10 @@
             <span class="exam-phase-caption">Czas na zapoznanie się z pytaniem</span>
             <div class="exam-time-row">
               <button type="button" class="exam-film-start" hidden>START</button>
-              <div class="exam-time-track" aria-hidden="true">
-                <div class="exam-time-fill"></div>
+              <div class="exam-time-meter">
+                <div class="exam-time-track" aria-hidden="true">
+                  <div class="exam-time-fill"></div>
+                </div>
                 <span class="question-timer">20 s</span>
               </div>
             </div>
@@ -369,6 +373,7 @@
             <button class="btn btn-secondary btn-prev" data-i18n="learnPrevQuestion">Poprzednie Pytanie</button>
             <button class="btn btn-secondary btn-next" data-i18n="examNextQuestion">Następne Pytanie</button>
           </div>
+        </div>
         </div>
       </aside>
 

@@ -28,43 +28,42 @@ test.describe('Warm & Soft Theme', () => {
     );
     expect(primary).toBe('#4f46e5');
 
-    // Check border-radius is 20px
     const radius = await page.evaluate(() =>
       getComputedStyle(document.documentElement).getPropertyValue('--radius').trim()
     );
-    expect(radius).toBe('20px');
+    expect(radius).toBe('6px');
   });
 
-  test('hero has indigo-to-violet gradient', async ({ page }) => {
+  test('Image skin uses flattened examiner chrome on home', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('.hero');
 
-    const heroBg = await page.evaluate(() =>
-      getComputedStyle(document.querySelector('.hero')).backgroundImage
-    );
-    // Should contain the indigo and violet colors
-    expect(heroBg).toContain('gradient');
+    const hero = await page.evaluate(() => {
+      const el = document.querySelector('.hero');
+      const cs = getComputedStyle(el);
+      return { bg: cs.backgroundImage, color: cs.backgroundColor };
+    });
+    expect(hero.bg === 'none' || !hero.bg.includes('gradient')).toBeTruthy();
   });
 
-  test('feature cards have warm soft shadows', async ({ page }) => {
+  test('feature cards have no drop shadow in Image examiner chrome', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('.feature-card');
 
     const shadow = await page.evaluate(() =>
       getComputedStyle(document.querySelector('.feature-card')).boxShadow
     );
-    // Should have a shadow (not 'none')
-    expect(shadow).not.toBe('none');
+    expect(shadow).toBe('none');
   });
 
-  test('feature cards have 20px border-radius', async ({ page }) => {
+  test('feature cards have 6px border-radius in Image examiner chrome', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('.feature-card');
 
     const radius = await page.evaluate(() =>
       getComputedStyle(document.querySelector('.feature-card')).borderRadius
     );
-    expect(radius).toBe('14px');
+    expect(radius).toBe('6px');
   });
 
   test('dark mode switches to warm dark palette', async ({ page }) => {
@@ -102,19 +101,20 @@ test.describe('Warm & Soft Theme', () => {
     const cardRadius = await page.evaluate(() =>
       getComputedStyle(document.querySelector('.category-card')).borderRadius
     );
-    expect(cardRadius).toBe('14px');
+    expect(cardRadius).toBe('6px');
 
     // Mode toggle should be visible
     await expect(page.locator('.mode-toggle')).toBeVisible();
   });
 
-  test('grain texture overlay exists', async ({ page }) => {
+  test('grain texture overlay exists in PWPW chrome', async ({ page }) => {
     await page.goto('/');
+    await page.click('.skin-btn');
+    await expect(page.locator('.skin-btn')).toHaveText('PWPW');
 
-    // Check body::before pseudo-element has the grain filter
     const hasGrain = await page.evaluate(() => {
       const before = getComputedStyle(document.body, '::before');
-      return before.filter.includes('url');
+      return before.filter.includes('url') && before.display !== 'none';
     });
     expect(hasGrain).toBe(true);
   });
@@ -153,24 +153,38 @@ test.describe('Warm & Soft Theme', () => {
     expect(themeColor).toBe('#6366f1');
   });
 
-  test('exam skin flattens home chrome without changing app behavior', async ({ page }) => {
+  test('Image skin is on by default and flattens home to examiner chrome', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('#home.active');
-    const radiusBefore = await page.evaluate(() =>
-      getComputedStyle(document.documentElement).getPropertyValue('--radius').trim()
-    );
-    expect(radiusBefore).toBe('20px');
-    await page.click('.exam-skin-btn');
-    await expect(page.locator('.exam-skin-btn')).toHaveAttribute('aria-pressed', 'true');
+    const image = await page.evaluate(() => ({
+      skin: document.documentElement.getAttribute('data-exam-skin'),
+      radius: getComputedStyle(document.documentElement).getPropertyValue('--radius').trim(),
+      featureRadius: getComputedStyle(document.querySelector('.feature-card')).borderRadius,
+      heroImage: getComputedStyle(document.querySelector('.hero')).backgroundImage,
+    }));
+    expect(image.skin).toBe('image');
+    expect(image.radius).toBe('6px');
+    expect(image.featureRadius).toBe('6px');
+    expect(image.heroImage === 'none' || !image.heroImage.includes('gradient')).toBeTruthy();
+    await expect(page.locator('.skin-btn')).toHaveText('Image');
+    await expect(page.locator('.skin-btn')).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  test('PWPW skin restores the original branded home', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    await page.click('.skin-btn');
+    await expect(page.locator('.skin-btn')).toHaveText('PWPW');
+    await expect(page.locator('.skin-btn')).toHaveAttribute('aria-pressed', 'true');
     const after = await page.evaluate(() => ({
       skin: document.documentElement.getAttribute('data-exam-skin'),
       radius: getComputedStyle(document.documentElement).getPropertyValue('--radius').trim(),
       featureRadius: getComputedStyle(document.querySelector('.feature-card')).borderRadius,
       heroImage: getComputedStyle(document.querySelector('.hero')).backgroundImage,
     }));
-    expect(after.skin).toBe('strict');
-    expect(after.radius).toBe('6px');
-    expect(after.featureRadius).toBe('6px');
-    expect(after.heroImage === 'none' || !after.heroImage.includes('gradient')).toBeTruthy();
+    expect(after.skin).toBe('pwpw');
+    expect(after.radius).toBe('20px');
+    expect(after.featureRadius).toBe('14px');
+    expect(after.heroImage).toContain('gradient');
   });
 });

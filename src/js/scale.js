@@ -175,7 +175,8 @@ function applyUiFitScale() {
 
 function syncExamMediaAlign() {
   const quiz = document.getElementById('quiz');
-  if (!quiz?.classList.contains('active') || !quiz.classList.contains('exam-active')) {
+  const session = quiz?.classList.contains('exam-active') || quiz?.classList.contains('learn-active');
+  if (!quiz?.classList.contains('active') || !session) {
     quiz?.style.removeProperty('--exam-media-left');
     quiz?.style.removeProperty('--exam-media-width');
     return;
