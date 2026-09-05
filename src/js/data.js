@@ -5,7 +5,7 @@ const inflight = new Map();
 
 // Media base URL — set to CDN origin for external media hosting
 // Falls back to local relative path for development
-export const MEDIA_CDN = 'https://f003.backblazeb2.com/file/prawko';
+export const MEDIA_CDN = 'https://f003.backblazeb2.com/file/prawko-maz';
 export const MEDIA_BASE = MEDIA_CDN;
 
 export function isRemoteMediaBase(base = MEDIA_BASE) {

@@ -42,7 +42,7 @@ python3 scripts/filter-no-media.py
 bash scripts/upload-media.sh
 ```
 
-Czysty clone **nie wymaga** `-InstallGov`, gdy JSON jest w `src/data` (już w tym forku) i `MEDIA_CDN` w `src/js/data.js` wskazuje **Twój** publiczny kubeł B2 z `img/` i `vid/`. Dopóki nie wgrasz własnej paczki, widełki nadal biorą CDN szkocota. Darmowe B2 (~10 GB) wystarczy: lokalna paczka MI to ok. **3 GB**.
+Czysty clone **nie wymaga** `-InstallGov`: JSON jest w `src/data`, a `MEDIA_CDN` w `src/js/data.js` wskazuje publiczny kubeł B2 `prawko-maz` (`img/` i `vid/`). Lokalna paczka MI (~3 GB) jest opcjonalna, na dysk idzie przez `-InstallGov`.
 
 ## TODO
 
