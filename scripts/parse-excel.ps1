@@ -1,4 +1,4 @@
-# Parse the ministry Excel catalogue into src/data JSON (Windows, no Python).
+﻿# Parse the ministry Excel catalogue into src/data JSON (Windows, no Python).
 # Same job as scripts/parse-excel.py. Uses column headers, not fixed indexes,
 # so extra columns (points, translations) do not shift Kategorie.
 #

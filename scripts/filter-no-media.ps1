@@ -1,4 +1,4 @@
-# Report JSON questions that mention a photo/film but have media: null.
+﻿# Report JSON questions that mention a photo/film but have media: null.
 # Does not drop ministry rows unless -Remove. Default parse-excel keeps Excel
 # media names for CDN, so this should normally match nothing.
 #

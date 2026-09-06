@@ -36,6 +36,8 @@ Instalator sam doinstaluje brakujące **Node.js** i **NSSM**. Gita nie rusza, ch
 powershell -ExecutionPolicy Bypass -File .\Install_Prawko.ps1
 ```
 
+Ściągaj plik na dysk (`-OutFile` albo Raw → Zapisz jako). Nie wklejaj treści ze strony do Notatnika — Windows PowerShell 5.1 wymaga UTF-8 z BOM.
+
 Albo bez przeglądarki, jednym ciągiem:
 
 ```powershell
@@ -413,6 +415,8 @@ The installer installs **Node.js** and **NSSM** if they are missing. It does not
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\Install_Prawko.ps1
 ```
+
+Download the file to disk (`-OutFile` or Raw → Save as). Do not paste it into Notepad — Windows PowerShell 5.1 needs UTF-8 with a BOM.
 
 Or without a browser:
 

@@ -1,4 +1,4 @@
-# Download ministry catalogue + media ZIPs from gov.pl (Windows, no Python).
+﻿# Download ministry catalogue + media ZIPs from gov.pl (Windows, no Python).
 # Excel → gov-data\baza_pytan.xlsx
 # Multimedia (JPG/WMV) → gov-data\raw
 # PJM (sign-language) links are still matched on gov.pl; Sync-GovPjmAsset can

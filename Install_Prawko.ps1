@@ -1,3 +1,4 @@
+﻿# UTF-8 with BOM — Windows PowerShell 5.1 otherwise misreads Polish text and here-strings.
 param(
     [switch]$Help,
     [switch]$NonInteractive,

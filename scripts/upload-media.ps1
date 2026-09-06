@@ -1,4 +1,4 @@
-# Upload src/media to a public Backblaze B2 bucket (Windows).
+﻿# Upload src/media to a public Backblaze B2 bucket (Windows).
 # JSON questions stay in git; photos/films do not.
 #
 # 1. Free account: https://www.backblaze.com/b2/sign-up.html
