@@ -1,6 +1,6 @@
 # 🚗 Prawko — Egzamin na prawo jazdy
 
-To **fork** projektu [szkocot/prawko](https://github.com/szkocot/prawko) (demo źródła: https://szkocot.github.io/prawko/). Tutaj zostaje układ stacji WORD, skórki Image/PWPW, profile lokalne i przebudowana nauka. Małe, samodzielne łatki mogą iść do repozytorium źródłowego; ta kopia trzyma pełną wersję.
+To **fork** projektu [szkocot/prawko](https://github.com/szkocot/prawko) (demo źródła: https://szkocot.github.io/prawko/). Tutaj zostaje układ stacji WORD, skórki Panel/Stacja, profile lokalne i przebudowana nauka. Małe, samodzielne łatki mogą iść do repozytorium źródłowego; ta kopia trzyma pełną wersję.
 
 Aplikacja webowa (PWA) do nauki i symulacji egzaminu na prawo jazdy w Polsce. Baza w repo to JSON z katalogu MI (**3518** unikalnych pytań). Zdjęcia i filmy nie są w gicie. Publiczny katalog na gov.pl: **lipiec 2026** (`KATALOG_dla_kandydatów_na_kierowców_072026.xlsx`).
 
@@ -105,7 +105,7 @@ Kod aplikacji jest na [ISC](LICENSE) (tak jak w `package.json` źródła). Przy 
 
 # 🚗 Prawko — Polish Driving License Exam
 
-This is a **fork** of [szkocot/prawko](https://github.com/szkocot/prawko) (upstream demo: https://szkocot.github.io/prawko/). It keeps a WORD station layout, Image/PWPW skins, local profiles, and a rebuilt learn mode. Small standalone fixes can still go upstream; this repository holds the full local product.
+This is a **fork** of [szkocot/prawko](https://github.com/szkocot/prawko) (upstream demo: https://szkocot.github.io/prawko/). It keeps a WORD station layout, Panel/Station skins, local profiles, and a rebuilt learn mode. Small standalone fixes can still go upstream; this repository holds the full local product.
 
 A PWA web app for Polish driving license exam preparation. The repo JSON has **3518** unique ministry questions. The public catalogue on gov.pl is **July 2026** (`KATALOG_dla_kandydatów_na_kierowców_072026.xlsx`).
 

@@ -413,8 +413,9 @@ function updateLearnStats() {
   let incorrect = el.querySelector('.learn-stats-incorrect');
   let filterSelect = el.querySelector('.learn-filter-select');
   let orderSelect = el.querySelector('.learn-order-select');
+  let summary = el.querySelector('.learn-stats-summary');
 
-  if (!filterSelect || !orderSelect || !known || !correct || !incorrect) {
+  if (!filterSelect || !orderSelect || !known || !correct || !incorrect || !summary) {
     el.textContent = '';
     known = document.createElement('span');
     known.className = 'learn-stats-known';
@@ -422,13 +423,16 @@ function updateLearnStats() {
     correct.className = 'learn-stats-correct';
     incorrect = document.createElement('span');
     incorrect.className = 'learn-stats-incorrect';
+    summary = document.createElement('span');
+    summary.className = 'learn-stats-summary';
     filterSelect = createQueueDropdown('learn-filter-select', (next) => {
       if (!setFilter(next)) syncQueueDropdown(filterSelect, filterOptions, state.filter);
     });
     orderSelect = createQueueDropdown('learn-order-select', (next) => {
       if (!setOrder(next)) syncQueueDropdown(orderSelect, orderOptions, state.order);
     });
-    el.append(known, correct, incorrect, filterSelect, orderSelect);
+    summary.append(known, correct, incorrect);
+    el.append(filterSelect, orderSelect, summary);
   }
 
   known.textContent = `\u{1F9E0} ${knownCount}`;

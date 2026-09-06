@@ -298,14 +298,15 @@ function applyTheme(theme, themeIcon, themeBtn) {
 }
 
 function normalizeExamSkin(raw) {
-  return raw === 'image' ? 'image' : 'pwpw';
+  if (raw === 'image' || raw === 'station') return 'station';
+  return 'panel';
 }
 
 function getInitialExamSkin() {
   try {
     return normalizeExamSkin(localStorage.getItem(EXAM_SKIN_KEY));
   } catch {
-    return 'pwpw';
+    return 'panel';
   }
 }
 
@@ -314,9 +315,9 @@ function applyExamSkin(skin) {
   document.documentElement.setAttribute('data-exam-skin', next);
   const btn = document.querySelector('.skin-btn');
   if (btn) {
-    const label = next === 'pwpw' ? t('examSkinPwpw') : t('examSkinImage');
+    const label = next === 'panel' ? t('examSkinPanel') : t('examSkinStation');
     btn.textContent = label;
-    btn.setAttribute('aria-pressed', next === 'pwpw' ? 'true' : 'false');
+    btn.setAttribute('aria-pressed', next === 'panel' ? 'true' : 'false');
     btn.setAttribute('aria-label', `${t('examSkinToggle')}: ${label}`);
   }
   refitUiScale();
@@ -676,7 +677,7 @@ async function init() {
   });
   document.querySelector('.skin-btn')?.addEventListener('click', () => {
     const current = normalizeExamSkin(document.documentElement.getAttribute('data-exam-skin'));
-    const next = current === 'pwpw' ? 'image' : 'pwpw';
+    const next = current === 'panel' ? 'station' : 'panel';
     applyExamSkin(next);
     try { localStorage.setItem(EXAM_SKIN_KEY, next); } catch {}
   });

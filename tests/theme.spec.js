@@ -34,11 +34,11 @@ test.describe('Warm & Soft Theme', () => {
     expect(radius).toBe('20px');
   });
 
-  test('Image skin uses flattened examiner chrome on home', async ({ page }) => {
+  test('Station skin uses flattened examiner chrome on home', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('.skin-btn');
     await page.click('.skin-btn');
-    await expect(page.locator('.skin-btn')).toHaveText('Image');
+    await expect(page.locator('.skin-btn')).toHaveText('Stacja');
     await page.waitForSelector('.hero');
 
     const hero = await page.evaluate(() => {
@@ -49,11 +49,11 @@ test.describe('Warm & Soft Theme', () => {
     expect(hero.bg === 'none' || !hero.bg.includes('gradient')).toBeTruthy();
   });
 
-  test('feature cards have no drop shadow in Image examiner chrome', async ({ page }) => {
+  test('feature cards have no drop shadow in Station examiner chrome', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('.skin-btn');
     await page.click('.skin-btn');
-    await expect(page.locator('.skin-btn')).toHaveText('Image');
+    await expect(page.locator('.skin-btn')).toHaveText('Stacja');
     await page.waitForSelector('.feature-card');
 
     const shadow = await page.evaluate(() =>
@@ -62,11 +62,11 @@ test.describe('Warm & Soft Theme', () => {
     expect(shadow).toBe('none');
   });
 
-  test('feature cards have 6px border-radius in Image examiner chrome', async ({ page }) => {
+  test('feature cards have 6px border-radius in Station examiner chrome', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('.skin-btn');
     await page.click('.skin-btn');
-    await expect(page.locator('.skin-btn')).toHaveText('Image');
+    await expect(page.locator('.skin-btn')).toHaveText('Stacja');
     await page.waitForSelector('.feature-card');
 
     const radius = await page.evaluate(() =>
@@ -116,9 +116,9 @@ test.describe('Warm & Soft Theme', () => {
     await expect(page.locator('.mode-toggle')).toBeVisible();
   });
 
-  test('grain texture overlay exists in PWPW chrome', async ({ page }) => {
+  test('grain texture overlay exists in Panel chrome', async ({ page }) => {
     await page.goto('/');
-    await expect(page.locator('.skin-btn')).toHaveText('PWPW');
+    await expect(page.locator('.skin-btn')).toHaveText('Panel');
 
     const hasGrain = await page.evaluate(() => {
       const before = getComputedStyle(document.body, '::before');
@@ -161,28 +161,28 @@ test.describe('Warm & Soft Theme', () => {
     expect(themeColor).toBe('#6366f1');
   });
 
-  test('PWPW skin is on by default and keeps the branded home', async ({ page }) => {
+  test('Panel skin is on by default and keeps the branded home', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('#home.active');
-    const pwpw = await page.evaluate(() => ({
+    const panel = await page.evaluate(() => ({
       skin: document.documentElement.getAttribute('data-exam-skin'),
       radius: getComputedStyle(document.documentElement).getPropertyValue('--radius').trim(),
       featureRadius: getComputedStyle(document.querySelector('.feature-card')).borderRadius,
       heroImage: getComputedStyle(document.querySelector('.hero')).backgroundImage,
     }));
-    expect(pwpw.skin).toBe('pwpw');
-    expect(pwpw.radius).toBe('20px');
-    expect(pwpw.featureRadius).toBe('14px');
-    expect(pwpw.heroImage).toContain('gradient');
-    await expect(page.locator('.skin-btn')).toHaveText('PWPW');
+    expect(panel.skin).toBe('panel');
+    expect(panel.radius).toBe('20px');
+    expect(panel.featureRadius).toBe('14px');
+    expect(panel.heroImage).toContain('gradient');
+    await expect(page.locator('.skin-btn')).toHaveText('Panel');
     await expect(page.locator('.skin-btn')).toHaveAttribute('aria-pressed', 'true');
   });
 
-  test('Image skin flattens home to examiner chrome', async ({ page }) => {
+  test('Station skin flattens home to examiner chrome', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('#home.active');
     await page.click('.skin-btn');
-    await expect(page.locator('.skin-btn')).toHaveText('Image');
+    await expect(page.locator('.skin-btn')).toHaveText('Stacja');
     await expect(page.locator('.skin-btn')).toHaveAttribute('aria-pressed', 'false');
     const after = await page.evaluate(() => ({
       skin: document.documentElement.getAttribute('data-exam-skin'),
@@ -190,7 +190,7 @@ test.describe('Warm & Soft Theme', () => {
       featureRadius: getComputedStyle(document.querySelector('.feature-card')).borderRadius,
       heroImage: getComputedStyle(document.querySelector('.hero')).backgroundImage,
     }));
-    expect(after.skin).toBe('image');
+    expect(after.skin).toBe('station');
     expect(after.radius).toBe('6px');
     expect(after.featureRadius).toBe('6px');
     expect(after.heroImage === 'none' || !after.heroImage.includes('gradient')).toBeTruthy();

@@ -271,6 +271,14 @@ test.describe('Learn queue filter', () => {
     await expect(filter).toHaveAttribute('data-value', 'unknown');
     await expect(order).toHaveAttribute('data-value', 'random');
     await expect(page.locator('.learn-stats-known')).toBeVisible();
+    const headerOrder = await page.evaluate(() => {
+      const qnum = document.querySelector('.learn-qnum')?.getBoundingClientRect();
+      const filter = document.querySelector('.learn-filter-select')?.getBoundingClientRect();
+      const summary = document.querySelector('.learn-stats-summary')?.getBoundingClientRect();
+      if (!qnum || !filter || !summary) return false;
+      return qnum.right <= filter.left + 1 && filter.right <= summary.left + 1;
+    });
+    expect(headerOrder).toBe(true);
   });
 
   test('learn queue menus stay square in both exam skins', async ({ page }) => {
