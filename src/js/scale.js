@@ -3,6 +3,8 @@
 // Landscape vs portrait comes from aspect ratio (vw < vh), not pixel width.
 // Long-list screens (results, history, learn-progress) keep scroll.
 
+import { scheduleFitQuizDockText } from './fit-text.js';
+
 export const UI_DESIGN_WIDTH = 1280;
 export const UI_LANDSCAPE_HEIGHT = 800;
 export const UI_PORTRAIT_WIDTH = 720;
@@ -234,6 +236,7 @@ function syncExamMediaAlign() {
   const left = Math.max(0, Math.round((mediaBox.left - dockBox.left) / safeScale));
   quiz.style.setProperty('--exam-media-left', `${left}px`);
   quiz.style.setProperty('--exam-media-width', `${Math.round(mediaBox.width / safeScale)}px`);
+  scheduleFitQuizDockText();
 }
 
 export function refitUiScale() {

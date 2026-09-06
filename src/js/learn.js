@@ -179,16 +179,77 @@ function catalogIndex() {
   return idx == null ? state.currentIndex : idx;
 }
 
+function catalogTotal() {
+  return state?.seqList?.length || state?.questions?.length || 0;
+}
+
+function qnumInput() {
+  return document.querySelector('.learn-qnum-input');
+}
+
+function paintQnum(pos, total, { force = false } = {}) {
+  const input = qnumInput();
+  const suffix = document.querySelector('.learn-qnum-suffix');
+  if (input && (force || document.activeElement !== input)) {
+    input.value = String(pos);
+    const digits = Math.max(1, String(total || pos || 1).length);
+    input.maxLength = digits;
+    input.style.width = `${digits}ch`;
+    input.setAttribute('aria-label', t('learnJumpAria'));
+  }
+  if (suffix) suffix.textContent = ` / ${total}`;
+}
+
 function updateProgress() {
   if (!state?.questions?.length) return;
   const pos = catalogIndex() + 1;
-  const total = state.seqList.length || state.questions.length;
-  const qnum = document.querySelector('.learn-qnum');
-  if (qnum) qnum.textContent = `${pos} / ${total}`;
+  const total = catalogTotal();
+  paintQnum(pos, total);
   const catEl = document.querySelector('.learn-category-value');
   if (catEl) catEl.textContent = state.category || '';
   const next = state.questions[state.currentIndex + 1];
   if (next) preloadMedia(next);
+}
+
+function restoreQnum() {
+  if (!state?.questions?.length) return;
+  paintQnum(catalogIndex() + 1, catalogTotal(), { force: true });
+}
+
+function jumpToCatalogPos(raw) {
+  if (!state?.seqList?.length) return false;
+  const total = catalogTotal();
+  const trimmed = String(raw ?? '').trim();
+  if (!/^\d+$/.test(trimmed)) return false;
+  const n = Number(trimmed);
+  if (!Number.isInteger(n) || n < 1 || n > total) return false;
+  const target = state.seqList[n - 1];
+  if (!target) return false;
+  const idx = state.questions.findIndex((q) => q.id === target.id);
+  if (idx < 0) return false;
+  if (idx === state.currentIndex) {
+    restoreQnum();
+    return true;
+  }
+  state.currentIndex = idx;
+  showLearnQuestion();
+  updateNavButtons();
+  return true;
+}
+
+function commitQnumJump(input) {
+  if (!input || !state) {
+    restoreQnum();
+    return;
+  }
+  const current = String(catalogIndex() + 1);
+  if (input.value.trim() === current) {
+    restoreQnum();
+    return;
+  }
+  if (jumpToCatalogPos(input.value)) return;
+  showToast(t('learnJumpInvalid').replace('{n}', String(catalogTotal() || 1)));
+  restoreQnum();
 }
 
 function syncListView(previousId) {
@@ -331,7 +392,7 @@ export function startLearn(categoryData) {
   keydownHandler = (e) => {
     if (document.getElementById('confirm-modal')?.classList.contains('active')) return;
     if (!state) return;
-    if (e.target.closest('select, input, textarea, .learn-queue-dropdown')) return;
+    if (e.target.closest('select, input, textarea, .learn-queue-dropdown, .learn-qnum')) return;
     const key = e.key.toLowerCase();
     const answersDiv = document.querySelector('.answers');
     const isBasic = answersDiv?.classList.contains('yn-answers');
@@ -543,6 +604,35 @@ export function setupLearnListeners() {
       updateNavButtons();
     }
   });
+
+  const qnum = document.querySelector('.learn-qnum');
+  const input = qnumInput();
+  if (qnum && input) {
+    let ignoreQnumBlur = false;
+    qnum.addEventListener('click', () => input.focus());
+    input.addEventListener('focus', () => {
+      input.select();
+    });
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        commitQnumJump(input);
+        ignoreQnumBlur = true;
+        input.blur();
+        ignoreQnumBlur = false;
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        restoreQnum();
+        ignoreQnumBlur = true;
+        input.blur();
+        ignoreQnumBlur = false;
+      }
+    });
+    input.addEventListener('blur', () => {
+      if (ignoreQnumBlur) return;
+      commitQnumJump(input);
+    });
+  }
 }
 
 function updateNavButtons() {

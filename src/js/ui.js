@@ -5,6 +5,7 @@ import { getCategoryStats, getLearnProgress, loadHistory, getLearnTouchedCategor
 import { getMediaUrls, fetchCategory, usesLocalMedia } from './data.js';
 import { getCategoryMediaAccess } from './offline.js';
 import { refitUiScale, layoutCategoryGrid } from './scale.js';
+import { scheduleFitQuizDockText } from './fit-text.js';
 
 export function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
@@ -476,6 +477,7 @@ export function renderQuestion(question, container, options = {}) {
   if (questionText) questionText.textContent = q.q;
 
   fillAnswerChoices(answersDiv, q);
+  scheduleFitQuizDockText();
 }
 
 function fillAnswerChoices(answersDiv, q) {
