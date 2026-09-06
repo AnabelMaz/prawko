@@ -47,11 +47,11 @@ SKŁADNIA
   Ściągnij ten plik z GitHuba i zapisz gdzie chcesz — nie musi leżeć w repo.
 
 PRZEŁĄCZNIKI
-  (brak)            Tryb domyślny: klon GitHub AnabelMaz/prawko (gałąź $repoBranch),
-                    usługa http://localhost:$listenPort. Pytania z repo, media
-                    z CDN prawko-maz. Gdy serwer już stoi, nic nie nadpisuje
-                    (żadnego git checkout). Lokalny contrib: -Patch.
-                    Pytania MI na dysk: -InstallGov. Od zera: -Uninstall.
+  (brak)            Tryb domyślny: ZIP z GitHub AnabelMaz/prawko (gałąź $repoBranch),
+                    usługa http://localhost:$listenPort. Bez Gita. Pytania z repo,
+                    media z CDN prawko-maz. Gdy serwer już stoi, nic nie nadpisuje.
+                    Lokalny contrib: -Patch. Pytania MI na dysk: -InstallGov.
+                    Od zera: -Uninstall.
 
   -InstallGov       Excel + ZIP multimediów sytuacyjnych z gov.pl: staging w
                     %LOCALAPPDATA%\prawko\gov-data (ZIP, surowe JPG/WMV).
@@ -80,7 +80,7 @@ PRZEŁĄCZNIKI
                     Bez contrib nic nie nakłada — serwer i tak ma AnabelMaz
                     z instalacji. Na już stojącym serwerze: tylko overlay,
                     bez admina, bez git checkout, bez reinstalu usługi.
-                    Przy pierwszej instalacji: klon AnabelMaz + usługa + overlay.
+                    Przy pierwszej instalacji: ZIP AnabelMaz + usługa + overlay.
 
   -Export <ścieżka> Kopiuje paczkę do wskazanego katalogu (robocopy), bez
                     instalacji i bez ruszania serwera:
@@ -91,27 +91,16 @@ PRZEŁĄCZNIKI
                     -InstallGov i kolejne -Export na inny folder.
                     Pomija node_modules i .git. Bez administratora.
 
-  -Dev <ścieżka>    Klon gita do prac (kod, commit, push) w podany folder.
-                    Zwykły user tego nie potrzebuje. Ktoś jak Ty: ten sam
-                    Install_Prawko.ps1, np.
-                      Install_Prawko.ps1 -Dev D:\prawko
-                    Gdy serwer jeszcze nie stoi: instaluje ProgramData
-                    (jak bez przełączników) i dodatkowo klonuje do ścieżki.
-                    Gdy serwer już stoi: tylko klon, bez admina, bez ruszania
-                    usługi. Nie klonuje do C:\ProgramData\prawko. Pomija
-                    Git LFS (media zostają na serwerze / CDN / LocalAppData).
-                    Folder musi być pusty albo jeszcze nie istnieć.
+  -Dev <ścieżka>    Tylko klon gita do prac (kod, commit, push). Folder pusty
+                    albo jeszcze nie istnieje. Nie ProgramData. Nie instaluje
+                    Node, NSSM ani usługi — nawet gdy serwer jeszcze nie stoi.
+                    Git doinstaluje się tylko tu. Żeby mieć localhost: najpierw
+                    instalator bez przełączników, potem -Dev.
+                    Nie klonuje do C:\ProgramData\prawko. Pomija Git LFS.
 
-  -Merge            Zostawia pytania z GitHuba i dopisuje z Excel MI tylko
-                    braki. Kolejność wierszy i numer pytania NIE decydują.
-                    Dla każdego wiersza MI: weź treść, znajdź WSZYSTKIE
-                    pytania w tej kategorii o tej treści, porównaj media
-                    (ta sama nazwa pliku albo klatki ≥95% — 96×96, film:
-                    1./środkowa/ostatnia). Trafienie w którekolwiek = już
-                    jest. Żadne nie pasuje (inny kadr albo nowa treść) =
-                    nowe pytanie (gdy numer zajęty: id z przyrostkiem -mi).
-                    Gdy xlsx nie ma na dysku, pobiera sam Excel z gov.pl
-                    (bez ZIP). Z -InstallGov: media lokalne + braki MI.
+  -Merge            Na już stojącym serwerze: dopisuje z Excel MI tylko braki.
+                    Nie stawia usługi, nie instaluje Node/Git. Brak serwera =
+                    najpierw instalacja bez przełączników.
 
   -Uninstall        Usuwa usługę PrawkoWORDService i katalog
                     C:\ProgramData\prawko (w tym FFmpeg ściągnięty tam
@@ -123,24 +112,31 @@ PRZEŁĄCZNIKI
 
 JEDEN PLIK / PACZKA
   Z GitHuba wystarczy sam Install_Prawko.ps1. Odpalasz go z Pobrań, Pulpitu
-  albo dowolnego folderu: doinstaluje Git/Node/NSSM, sklonuje AnabelMaz/prawko
-  do C:\ProgramData\prawko i stawia http://localhost:5173.
+  albo dowolnego folderu: doinstaluje Node/NSSM, ściągnie ZIP AnabelMaz/prawko
+  do C:\ProgramData\prawko i stawia http://localhost:5173. Bez Gita.
+  Git tylko gdy podasz -Dev.
 
 DWA TYPY UŻYTKOWNIKA
-  Zwykły: tylko instalator bez przełączników. Aplikacja w ProgramData.
-  Deweloper: ten sam plik, plus folder na kod:
+  Zwykły: tylko instalator bez przełączników. ZIP + Node + usługa. Bez Gita.
+  Deweloper: tylko kod, bez serwera:
     powershell -ExecutionPolicy Bypass -File Install_Prawko.ps1 -Dev D:\prawko
-  Najpierw jak zwykły user (albo od razu z -Dev — wtedy instaluje i klonuje).
+  Oba (localhost + git): najpierw bez przełączników, potem -Dev.
 
-  Na inny komputer: -Export <ścieżka>. Python nie jest potrzebny.
+  Każdy przełącznik doinstalowuje tylko to, czego używa:
+    (brak)           Node, NSSM, ZIP aplikacji, usługa
+    -Dev             Git + klon (bez Node, bez serwera)
+    -Patch           nic nowego (nakłada contrib na stojący serwer)
+    -InstallGov      FFmpeg gdy brak; Excel+ZIP z gov.pl
+    -GovQuestions    tylko Excel z gov.pl
+    -Merge           Excel z gov.pl, zapis do stojącego serwera
+    -Export          nic (kopia plików)
+    -Uninstall       nic nowego
 
 CZEGO WYMAGA APLIKACJA
-  Do działania: Node.js + usługa 'serve'. Python NIE jest używany.
-  FFmpeg przy -InstallGov (JPG/WMV) i przy -Merge (miniatury). Jeśli nie ma go
-  w systemie, skrypt kładzie wersję przenośną do C:\ProgramData\prawko\tools
-  — znika razem z -Uninstall. ZIP-y rozpakowuje wbudowany tar Windows.
-  Konwersja jest potrzebna, żeby lokalne media działały w aplikacji
-  (oczekuje WebP/MP4, nie surowych JPG/WMV z MI).
+  Serwer (bez przełączników): Node.js + usługa 'serve'. Git NIE. Python NIE.
+  -Dev: tylko Git. FFmpeg przy -InstallGov (JPG/WMV) i -Merge (klatki); gdy brak,
+  skrypt kładzie wersję przenośną do C:\ProgramData\prawko\tools (znika z -Uninstall).
+  ZIP-y rozpakowuje wbudowany tar Windows. Aplikacja oczekuje WebP/MP4, nie JPG/WMV.
 "@
     exit 0
 }
@@ -224,7 +220,7 @@ function Import-PrawkoGovLibrary {
     if (Get-Command Get-PrawkoRepoRoot -ErrorAction SilentlyContinue) { return }
     $lib = Resolve-PrawkoPipelineScript "download-gov.ps1"
     if (-not $lib) {
-        throw "Brak scripts\download-gov.ps1. Odpal Install_Prawko.ps1 bez przełączników (sklonuje repo ze skryptami do $targetDir) albo odpal instalator z katalogu głównego sklonowanego repo."
+        throw "Brak scripts\download-gov.ps1. Odpal Install_Prawko.ps1 bez przełączników (ściągnie aplikację ze skryptami do $targetDir) albo odpal instalator z katalogu głównego sklonowanego repo."
     }
     . $lib -LibraryOnly
 }
@@ -461,8 +457,10 @@ function Test-IsAdmin {
     return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
-$devCloneOnly = $PSBoundParameters.ContainsKey("Dev") -and (Test-PrawkoServerInstalled) -and -not $Uninstall -and -not $Merge
-if (-not $GovQuestions -and -not $InstallGov -and -not $PSBoundParameters.ContainsKey("Export") -and -not $devCloneOnly -and -not (Test-IsAdmin)) {
+# Admin tylko: pierwsza instalacja serwera albo -Uninstall.
+# -Dev / -Patch / -Merge / -InstallGov / -GovQuestions / -Export: bez elewacji.
+$installingServer = -not $Uninstall -and -not $Merge -and -not $GovQuestions -and -not $InstallGov -and -not $PSBoundParameters.ContainsKey("Dev") -and -not $PSBoundParameters.ContainsKey("Export") -and -not (Test-PrawkoServerInstalled)
+if (($Uninstall -or $installingServer) -and -not (Test-IsAdmin)) {
     Write-Host "Wymagane uprawnienia administratora. Ponawiam z elewacją..." -ForegroundColor Yellow
     $argList = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$PSCommandPath`"")
     if ($NonInteractive) { $argList += "-NonInteractive" }
@@ -752,6 +750,39 @@ function Expand-ZipToDirectory ($zipPath, $destination) {
         Write-Host "-> tar nie rozpakował archiwum, próbuję Expand-Archive..." -ForegroundColor DarkYellow
     }
     Expand-Archive -Path $zipPath -DestinationPath $destination -Force
+}
+
+function Install-PrawkoFromGithubArchive ([string]$Destination) {
+    $zipUrl = "https://github.com/AnabelMaz/prawko/archive/refs/heads/$repoBranch.zip"
+    $stageRoot = Join-Path ([IO.Path]::GetTempPath()) ("prawko-zip-" + [guid]::NewGuid().ToString("N"))
+    $zipPath = Join-Path $stageRoot "prawko.zip"
+    New-Item -ItemType Directory -Path $stageRoot -Force | Out-Null
+    try {
+        Write-Host "Pobieram AnabelMaz/prawko ($repoBranch) jako ZIP — bez Gita..." -ForegroundColor Yellow
+        Invoke-CurlDownload -url $zipUrl -outFile $zipPath
+        $unpack = Join-Path $stageRoot "unpack"
+        Expand-ZipToDirectory -zipPath $zipPath -destination $unpack
+        $inner = Get-ChildItem -LiteralPath $unpack -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
+        if (-not $inner) {
+            throw "ZIP z GitHuba nie zawiera katalogu (oczekiwano prawko-$repoBranch)."
+        }
+        $index = Join-Path $inner.FullName "src\index.html"
+        if (-not (Test-Path -LiteralPath $index)) {
+            throw "ZIP z GitHuba nie wygląda na Prawko (brak src\index.html w $($inner.FullName))."
+        }
+        New-Item -ItemType Directory -Path $Destination -Force | Out-Null
+        Invoke-SafeRobocopy -Source $inner.FullName -Destination $Destination -ArgumentList @(
+            "/E", "/R:2", "/W:1", "/NFL", "/NDL", "/NJH", "/NJS", "/nc", "/ns", "/np"
+        )
+        if (-not (Test-Path -LiteralPath (Join-Path $Destination "src\index.html"))) {
+            throw "Po rozpakowaniu brak src\index.html w $Destination"
+        }
+        Write-Host "Aplikacja z ZIP: $Destination" -ForegroundColor Green
+    } finally {
+        if (Test-Path -LiteralPath $stageRoot) {
+            Remove-Item -LiteralPath $stageRoot -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
 }
 
 function Flatten-MediaDirectory ($directory) {
@@ -2068,6 +2099,32 @@ function Invoke-Uninstall {
     Write-Host "FFmpeg z tools\ w katalogu Prawko został usunięty razem z folderem." -ForegroundColor Gray
 }
 
+if ($PSBoundParameters.ContainsKey("Dev") -and -not $Uninstall) {
+    Write-Host "=== Git do zmian (-Dev) — bez Node, bez serwera ===" -ForegroundColor Cyan
+    Update-SessionPath
+    if (-not (Test-CommandExists "git")) {
+        Write-Host "[Brak Git] Instaluję Git (tylko -Dev)..." -ForegroundColor Yellow
+        Install-WingetPackage -id "Git.Git"
+        Update-SessionPath
+    }
+    if (-not (Test-CommandExists "git")) {
+        throw "Brak Git. -Dev potrzebuje Gita (nie Node i nie serwera). Zainstaluj Git albo odpal -Dev jako administrator (winget)."
+    }
+    Install-DevWorkClone -Destination $Dev
+    if ($Patch) {
+        if (Test-PrawkoServerInstalled) {
+            Apply-PrawkoAppFixes -root $targetDir
+            Write-Host "Gotowe. W otwartej aplikacji baner: Dostępna aktualizacja / Odśwież." -ForegroundColor Green
+        } else {
+            Write-Host "Serwer nie stoi — -Patch pominięty. Najpierw Install_Prawko.ps1 bez przełączników, potem -Patch." -ForegroundColor DarkYellow
+        }
+    } else {
+        Write-Host "To nie stawia localhost. Aplikacja: Install_Prawko.ps1 bez przełączników." -ForegroundColor Gray
+    }
+    Complete-IfInteractive
+    exit 0
+}
+
 if ($GovQuestions) {
     Publish-GovQuestions
     Complete-IfInteractive
@@ -2080,6 +2137,26 @@ if ($InstallGov) {
     exit 0
 }
 
+if ($Merge) {
+    if (-not (Test-PrawkoServerInstalled)) {
+        throw "-Merge wymaga stojącego serwera. Najpierw Install_Prawko.ps1 bez przełączników."
+    }
+    Write-Host "=== MERGE: braki z Excel MI (bez reinstalu usługi) ===" -ForegroundColor Cyan
+    Remove-LegacyServerRawMediaDir
+    Import-PrawkoGovLibrary
+    Invoke-PrawkoScript "download-gov.ps1" @("-ExcelOnly")
+    $govDir = Get-GovDataDir
+    $excelPath = Join-Path $govDir "baza_pytan.xlsx"
+    if (-not (Test-Path -LiteralPath $excelPath)) {
+        throw "Brak $excelPath — nie ma ściągniętej bazy ministerstwa do merge."
+    }
+    Invoke-PrawkoScript "parse-excel.ps1" @("-Excel", $excelPath, "-OutDir", $govDir)
+    Merge-GovExcelIntoDataFiles -govDir $govDir -outDir (Join-Path $targetDir "src\data")
+    Restore-LocalMediaBaseIfNeeded -Root $targetDir
+    Complete-IfInteractive
+    exit 0
+}
+
 if ($Uninstall) {
     Update-SessionPath
     Invoke-Uninstall
@@ -2087,35 +2164,8 @@ if ($Uninstall) {
     exit 0
 }
 
-if ($PSBoundParameters.ContainsKey("Dev") -and (Test-PrawkoServerInstalled) -and -not $Uninstall -and -not $Merge) {
-    Write-Host "=== Git do zmian (-Dev) ===" -ForegroundColor Cyan
-    Update-SessionPath
-    if (-not (Test-CommandExists "git")) {
-        Write-Host "[Brak Git] Instaluję Git..." -ForegroundColor Yellow
-        Install-WingetPackage -id "Git.Git"
-        Update-SessionPath
-    }
-    if (-not (Test-CommandExists "git")) {
-        throw "Brak Git. Odpal Install_Prawko.ps1 bez przełączników (doinstaluje Git) albo zainstaluj Git i ponów -Dev."
-    }
-    Install-DevWorkClone -Destination $Dev
-    if ($Patch) {
-        Apply-PrawkoAppFixes -root $targetDir
-        Write-Host "Gotowe. W otwartej aplikacji baner: Dostępna aktualizacja / Odśwież." -ForegroundColor Green
-    }
-    Complete-IfInteractive
-    exit 0
-}
-
-
 Write-Host "=== 1. SPRAWDZANIE I INSTALACJA NARZĘDZI ===" -ForegroundColor Cyan
 Update-SessionPath
-
-if (-not (Test-CommandExists "git")) {
-    Write-Host "[Brak Git] Instaluję Git..." -ForegroundColor Yellow
-    Install-WingetPackage -id "Git.Git"
-    if (-not (Test-CommandExists "git")) { throw "Git nie jest dostępny po instalacji." }
-} else { Write-Host "[OK] Git" -ForegroundColor Green }
 
 if (-not (Resolve-NodeExe)) {
     Write-Host "[Brak Node.js] Instaluję Node.js..." -ForegroundColor Yellow
@@ -2129,12 +2179,10 @@ if (-not (Resolve-NssmExe)) {
     if (-not (Resolve-NssmExe)) { throw "NSSM nie jest dostępny po instalacji." }
 } else { Write-Host "[OK] NSSM" -ForegroundColor Green }
 
+Write-Host "-> Git pominięty (serwer ze ZIP). Do kodu: -Dev." -ForegroundColor Gray
+
 $ffmpegExe = $null
-if (-not $Merge) {
-    Write-Host "-> Tryb domyślny: AnabelMaz/prawko ($repoBranch) + CDN prawko-maz (gov.pl: -InstallGov / -GovQuestions, braki MI: -Merge, lokalny contrib: -Patch)." -ForegroundColor Gray
-} else {
-    Write-Host "-> Merge: pytania z GitHuba + brakujące z Excel MI (baza_pytan.xlsx)." -ForegroundColor Gray
-}
+Write-Host "-> Tryb domyślny: ZIP AnabelMaz/prawko ($repoBranch) + CDN prawko-maz." -ForegroundColor Gray
 
 $nssmExe = Resolve-NssmExe
 $nodeExe = Resolve-NodeExe
@@ -2150,10 +2198,10 @@ if ($existingService) {
 }
 
 
-Write-Host "`n=== 3. PRZYGOTOWANIE KATALOGU I REPOZYTORIUM GIT ===" -ForegroundColor Cyan
+Write-Host "`n=== 3. PRZYGOTOWANIE KATALOGU APLIKACJI ===" -ForegroundColor Cyan
 $repoGit = Join-Path $targetDir ".git"
 if (Test-PrawkoServerInstalled) {
-    Write-Host "Serwer już ma src w $targetDir — pomijam git checkout / pull / clone." -ForegroundColor Yellow
+    Write-Host "Serwer już ma src w $targetDir — pomijam pobieranie / clone." -ForegroundColor Yellow
     Write-Host "src\data, src\media i nałożony kod zostają. Od zera: -Uninstall." -ForegroundColor Gray
 } elseif (Test-Path $repoGit) {
     throw "Katalog $targetDir ma .git, ale brak src\index.html. Użyj -Uninstall i zainstaluj ponownie."
@@ -2161,42 +2209,24 @@ if (Test-PrawkoServerInstalled) {
     if (Test-Path $targetDir) {
         $leftovers = @(Get-ChildItem -Path $targetDir -Force)
         if ($leftovers.Count -gt 0) {
-            throw "Katalog $targetDir już istnieje i nie jest pusty. Usuń go albo opróżnij przed klonowaniem."
+            throw "Katalog $targetDir już istnieje i nie jest pusty. Usuń go albo opróżnij przed instalacją."
         }
     } else {
         New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
     }
-    Write-Host "Klonowanie $repoUrl ($repoBranch) do $targetDir..." -ForegroundColor Yellow
-    Invoke-GitCommand -Arguments @("clone", "--branch", $repoBranch, $repoUrl, $targetDir)
+    Install-PrawkoFromGithubArchive -Destination $targetDir
 }
 
 Write-Host "Katalog aplikacji gotowy: $targetDir" -ForegroundColor Green
 Remove-LegacyServerRawMediaDir
 
-$excelPath = Join-Path $targetDir "baza_pytan.xlsx"
-$dataOut = Join-Path $targetDir "src\data"
-
-if ($Merge) {
-    Write-Host "`n=== 4–5. MERGE: BRAKUJĄCE PYTANIA Z EXCELA MI ===" -ForegroundColor Cyan
-    Remove-LegacyServerRawMediaDir
-    Import-PrawkoGovLibrary
-    Invoke-PrawkoScript "download-gov.ps1" @("-ExcelOnly")
-    $govDir = Get-GovDataDir
-    $excelPath = Join-Path $govDir "baza_pytan.xlsx"
-    if (-not (Test-Path -LiteralPath $excelPath)) {
-        throw "Brak $excelPath — nie ma ściągniętej bazy ministerstwa do merge."
-    }
-    Invoke-PrawkoScript "parse-excel.ps1" @("-Excel", $excelPath, "-OutDir", $govDir)
-    Merge-GovExcelIntoDataFiles -govDir $govDir -outDir $dataOut
-    Restore-LocalMediaBaseIfNeeded -Root $targetDir
-} else {
-    Write-Host "`n=== 4–5. POMINIĘTE (baza z AnabelMaz/prawko) ===" -ForegroundColor Cyan
-    Write-Host "-> Pytania: src\data z repozytorium. Media: CDN prawko-maz." -ForegroundColor Gray
-    Write-Host "-> Excel+ZIP MI (kopia w contrib, na serwer przełącznik): Install_Prawko.ps1 -InstallGov" -ForegroundColor Gray
-    Write-Host "-> Katalog pytań MI (CDN zostaje): Install_Prawko.ps1 -GovQuestions" -ForegroundColor Gray
-    Write-Host "-> Braki z MI:    Install_Prawko.ps1 -Merge" -ForegroundColor Gray
-    Write-Host "-> Lokalny contrib: Install_Prawko.ps1 -Patch" -ForegroundColor Gray
-}
+Write-Host "`n=== 4–5. POMINIĘTE (baza z ZIP AnabelMaz/prawko) ===" -ForegroundColor Cyan
+Write-Host "-> Pytania: src\data z paczki. Media: CDN prawko-maz." -ForegroundColor Gray
+Write-Host "-> Excel+ZIP MI: Install_Prawko.ps1 -InstallGov" -ForegroundColor Gray
+Write-Host "-> Katalog pytań MI: Install_Prawko.ps1 -GovQuestions" -ForegroundColor Gray
+Write-Host "-> Braki z MI:    Install_Prawko.ps1 -Merge" -ForegroundColor Gray
+Write-Host "-> Lokalny contrib: Install_Prawko.ps1 -Patch" -ForegroundColor Gray
+Write-Host "-> Git do zmian:    Install_Prawko.ps1 -Dev D:\prawko (bez serwera)" -ForegroundColor Gray
 
 if ($Patch) {
     Write-Host "`n=== 5b. KOD Z LOKALNEGO CONTRIB (-Patch) ===" -ForegroundColor Cyan
@@ -2214,7 +2244,7 @@ $npmCmd = Join-Path (Split-Path $nodeExe -Parent) "npm.cmd"
 if (-not (Test-Path $npmCmd)) { $npmCmd = "npm.cmd" }
 
 if (-not (Test-Path (Join-Path $targetDir "package.json"))) {
-    throw "Brak package.json w $targetDir — klonowanie repozytorium nie powiodło się."
+    throw "Brak package.json w $targetDir — pobranie ZIP z GitHuba nie powiodło się."
 }
 
 Write-Host "Instalacja 'serve'..." -ForegroundColor Yellow
@@ -2252,18 +2282,13 @@ if ($svc -and $svc.Status -eq "Running") {
     Write-Host "`n==================================================" -ForegroundColor Green
     Write-Host " USŁUGA WYSTARTOWAŁA POPRAWNIE! " -ForegroundColor Green
     Write-Host " Aplikacja: http://localhost:$listenPort " -ForegroundColor Yellow
-    if ($Merge) {
-        Write-Host " Pytania:   AnabelMaz/prawko + brakujące z Excel MI (merge) " -ForegroundColor Yellow
-        Write-Host " Media:     CDN projektu (Backblaze); lokalne po -InstallGov " -ForegroundColor Yellow
-    } else {
-        Write-Host " Pytania:   baza z AnabelMaz/prawko (src\data) " -ForegroundColor Yellow
+    Write-Host " Pytania:   baza z AnabelMaz/prawko (src\data) " -ForegroundColor Yellow
         Write-Host " Media:     CDN prawko-maz (Backblaze) " -ForegroundColor Yellow
         Write-Host " Excel+ZIP MI:   Install_Prawko.ps1 -InstallGov " -ForegroundColor DarkGray
         Write-Host " Katalog pytań MI: Install_Prawko.ps1 -GovQuestions " -ForegroundColor DarkGray
         Write-Host " Braki z MI:    Install_Prawko.ps1 -Merge " -ForegroundColor DarkGray
         Write-Host " Lokalny contrib: Install_Prawko.ps1 -Patch " -ForegroundColor DarkGray
         Write-Host " Git do zmian:    Install_Prawko.ps1 -Dev D:\prawko " -ForegroundColor DarkGray
-    }
     Write-Host "==================================================" -ForegroundColor Green
 } else {
     Write-Host "`n[BŁĄD] Usługa nie wystartowała." -ForegroundColor Red
@@ -2271,11 +2296,6 @@ if ($svc -and $svc.Status -eq "Running") {
     if (Test-Path $errLog) { Get-Content $errLog -Tail 20 }
     Restore-InitialLocation
     exit 1
-}
-
-if ($PSBoundParameters.ContainsKey("Dev")) {
-    Write-Host "`n=== Git do zmian (-Dev) ===" -ForegroundColor Cyan
-    Install-DevWorkClone -Destination $Dev
 }
 
 Complete-IfInteractive
