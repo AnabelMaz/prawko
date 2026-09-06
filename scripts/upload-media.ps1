@@ -1,4 +1,5 @@
-﻿# Upload src/media to a public Backblaze B2 bucket (Windows).
+﻿# UTF-8 with BOM — Windows PowerShell 5.1 otherwise misreads Polish text and here-strings.
+# Upload src/media to a public Backblaze B2 bucket (Windows).
 # JSON questions stay in git; photos/films do not.
 #
 # 1. Free account: https://www.backblaze.com/b2/sign-up.html

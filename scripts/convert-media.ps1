@@ -1,4 +1,5 @@
-﻿# Convert ministry situational media: JPG→WebP, WMV→MP4 (Windows, no Python).
+﻿# UTF-8 with BOM — Windows PowerShell 5.1 otherwise misreads Polish text and here-strings.
+# Convert ministry situational media: JPG→WebP, WMV→MP4 (Windows, no Python).
 # Same job as scripts/convert-videos.sh + scripts/optimize-images.sh.
 # Reads gov-data\raw only. Does not touch gov-data\pjm (sign-language source stays WMV).
 #
