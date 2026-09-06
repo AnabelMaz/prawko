@@ -12,9 +12,18 @@ set -euo pipefail
 
 BUCKET="prawko"
 MEDIA_DIR="src/media"
-B2="${HOME}/Library/Python/3.14/bin/b2"
+B2="${B2:-$(command -v b2 || true)}"
+if [ -z "$B2" ]; then
+  for c in \
+    "$HOME/Library/Python/3.14/bin/b2" \
+    "$HOME/Library/Python/3.13/bin/b2" \
+    "$HOME/Library/Python/3.12/bin/b2"
+  do
+    if [ -x "$c" ]; then B2="$c"; break; fi
+  done
+fi
 
-if ! "$B2" version >/dev/null 2>&1; then
+if [ -z "$B2" ] || ! "$B2" version >/dev/null 2>&1; then
   echo "Error: b2 CLI not found. Install with: pip install b2"
   exit 1
 fi

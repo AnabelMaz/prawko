@@ -1,12 +1,14 @@
-# Drop questions that talk about a photo/film but have media: null.
-# Same job as scripts/filter-no-media.py. Does not change that Python file.
+# Report JSON questions that mention a photo/film but have media: null.
+# Does not drop ministry rows unless -Remove. Default parse-excel keeps Excel
+# media names for CDN, so this should normally match nothing.
 #
-# powershell -ExecutionPolicy Bypass -File scripts/filter-no-media.ps1 -DryRun
-# powershell -ExecutionPolicy Bypass -File scripts/filter-no-media.ps1 -ListRemoved
 # powershell -ExecutionPolicy Bypass -File scripts/filter-no-media.ps1
+# powershell -ExecutionPolicy Bypass -File scripts/filter-no-media.ps1 -ListRemoved
+# powershell -ExecutionPolicy Bypass -File scripts/filter-no-media.ps1 -Remove
 
 param(
     [string]$DataDir,
+    [switch]$Remove,
     [switch]$DryRun,
     [Alias('v')]
     [switch]$ListRemoved
@@ -131,12 +133,16 @@ if (-not (Test-Path -LiteralPath $DataDir)) {
     throw "Data directory not found: $DataDir"
 }
 
-if ($DryRun) {
-    Write-Host "=== DRY RUN MODE (no files will be modified) ===" -ForegroundColor Yellow
+$write = $Remove -and -not $DryRun
+if (-not $write) {
+    Write-Host "=== REPORT ONLY (pass -Remove to delete ministry rows) ===" -ForegroundColor Yellow
+    Write-Host ""
+} else {
+    Write-Host "=== REMOVE MODE: dropping ministry questions from JSON ===" -ForegroundColor Yellow
     Write-Host ""
 }
 
-Write-Host "Filtering questions with missing media from $DataDir"
+Write-Host "Checking questions with media: null in $DataDir"
 Write-Host ""
 
 $utf8 = New-Object System.Text.UTF8Encoding $false
@@ -186,7 +192,7 @@ foreach ($cat in $Categories) {
             Write-Host ("       - [{0}] {1}..." -f $item.id, $item.q)
         }
     }
-    if (-not $DryRun -and $removed.Count -gt 0) {
+    if ($write -and $removed.Count -gt 0) {
         $data.questions = $kept.ToArray()
         [IO.File]::WriteAllText($path, ((ConvertTo-PrawkoJson $data) + "`n"), $utf8)
     }
@@ -222,11 +228,11 @@ foreach ($catMeta in @($meta.categories)) {
     $catMeta.basicCount = $newBasic
     $catMeta.specialistCount = $newSpecialist
 }
-if (-not $DryRun) {
+if ($write) {
     [IO.File]::WriteAllText($metaPath, ((ConvertTo-PrawkoJson $meta) + "`n"), $utf8)
     Write-Host ""
-    Write-Host "Done. All files updated successfully." -ForegroundColor Green
+    Write-Host "Done. JSON files updated." -ForegroundColor Green
 } else {
     Write-Host ""
-    Write-Host "(Dry run complete -- no files were modified)" -ForegroundColor Yellow
+    Write-Host "No files modified." -ForegroundColor Yellow
 }
