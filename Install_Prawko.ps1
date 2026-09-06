@@ -97,7 +97,7 @@ PRZEŁĄCZNIKI
                     Node, NSSM ani usługi — nawet gdy serwer jeszcze nie stoi.
                     Git doinstaluje się tylko tu. Żeby mieć localhost: najpierw
                     instalator bez przełączników, potem -Dev.
-                    Nie klonuje do C:\ProgramData\prawko. Pomija Git LFS.
+                    Nie klonuje do C:\ProgramData\prawko. Media nie są w gicie.
 
   -Merge            Na już stojącym serwerze: dopisuje z Excel MI tylko braki.
                     Nie stawia usługi, nie instaluje Node/Git. Brak serwera =
@@ -126,7 +126,7 @@ DWA TYPY UŻYTKOWNIKA
   Każdy przełącznik doinstalowuje tylko to, czego używa:
     (brak)           Node, NSSM, ZIP aplikacji, usługa
     -Dev             Git + klon (bez Node, bez serwera)
-    -Patch           nic nowego (nakłada contrib na stojący serwer)
+    -Patch           nic, gdy serwer stoi; bez serwera: Node + usługa + overlay
     -InstallGov      FFmpeg gdy brak; Excel+ZIP z gov.pl
     -GovQuestions    tylko Excel z gov.pl
     -Merge           Excel z gov.pl, zapis do stojącego serwera
@@ -553,7 +553,7 @@ function Install-DevWorkClone {
             throw "Katalog $dest już istnieje i nie jest checkoutem Prawko. Podaj pusty folder albo inną ścieżkę."
         }
     }
-    Write-Host "Klonowanie $repoUrl ($repoBranch) → $dest (kod, bez Git LFS / mediów)..." -ForegroundColor Yellow
+    Write-Host "Klonowanie $repoUrl ($repoBranch) → $dest (kod, bez folderu mediów w gicie)..." -ForegroundColor Yellow
     $prevLfs = $env:GIT_LFS_SKIP_SMUDGE
     $env:GIT_LFS_SKIP_SMUDGE = "1"
     try {

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Download ministry catalogue + media ZIPs from gov.pl (macOS, no new Python).
+# Download ministry catalogue + media ZIPs from gov.pl (macOS/Linux, no new Python).
 # Excel → gov-data/baza_pytan.xlsx
 # Multimedia (JPG/WMV) → gov-data/raw
 # PJM links are matched and skipped (~10 GB, unused in the app).
@@ -8,7 +8,7 @@
 #   bash scripts/download-gov.sh --excel-only
 #
 # Paths (override with env):
-#   PRAWKO_GOV_DATA   staging dir (default: ~/Library/Application Support/prawko/gov-data)
+#   PRAWKO_GOV_DATA   staging dir (default: macOS Library/Application Support, Linux ~/.local/share)
 #   PRAWKO_REPO_ROOT  checkout used only for overflow gov-data on another volume
 
 set -euo pipefail
@@ -60,9 +60,22 @@ repo_root() {
   die "Nie znaleziono katalogu repo (src/index.html) nad $script_dir."
 }
 
+sha256_hex() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 | awk '{print $1}'
+  else
+    openssl dgst -sha256 | awk '{print $NF}'
+  fi
+}
+
 local_app_gov_data() {
   local home="${PRAWKO_USER_HOME:-$HOME}"
-  printf '%s\n' "$home/Library/Application Support/prawko/gov-data"
+  case "$(uname -s)" in
+    Darwin) printf '%s\n' "$home/Library/Application Support/prawko/gov-data" ;;
+    *) printf '%s\n' "${XDG_DATA_HOME:-$home/.local/share}/prawko/gov-data" ;;
+  esac
 }
 
 gov_data_dir() {
@@ -77,22 +90,23 @@ overflow_root() {
   local local_dir repo server a
   local_dir="$(local_app_gov_data)"
   repo="$(repo_root)"
-  server="/usr/local/prawko"
   a="$(cd "$repo" 2>/dev/null && pwd)"
-  if [ "$a" = "$server" ]; then
-    printf '%s\n' "$local_dir"
-    return
-  fi
+  for server in /opt/prawko /usr/local/prawko; do
+    if [ "$a" = "$server" ]; then
+      printf '%s\n' "$local_dir"
+      return
+    fi
+  done
   printf '%s\n' "$repo/gov-data"
 }
 
 url_fingerprint() {
-  printf '%s' "$1" | shasum -a 256 | awk '{print substr($1,1,16)}'
+  printf '%s' "$1" | sha256_hex | awk '{print substr($1,1,16)}'
 }
 
 remote_prefix_hash() {
   # First 1 MB of the remote file (same idea as the Windows script).
-  curl -fsSL -A "$UA" --range 0-1048575 --max-time 30 "$1" 2>/dev/null | shasum -a 256 | awk '{print toupper($1)}' | sed 's/\(..\)/\1-/g; s/-$//'
+  curl -fsSL -A "$UA" --range 0-1048575 --max-time 30 "$1" 2>/dev/null | sha256_hex | awk '{print toupper($1)}' | sed 's/\(..\)/\1-/g; s/-$//'
 }
 
 needs_download() {

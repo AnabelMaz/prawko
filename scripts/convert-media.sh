@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Convert ministry situational media: JPG→WebP, WMV→MP4 (macOS).
+# Convert ministry situational media: JPG→WebP, WMV→MP4 (macOS/Linux).
 # Same job as scripts/convert-media.ps1 / convert-videos.sh + optimize-images.sh.
 # Does not touch gov-data/pjm.
 #
@@ -17,8 +17,19 @@ die() { echo "$*" >&2; exit 1; }
 
 script_dir="$(cd "$(dirname "$0")" && pwd)"
 home="${PRAWKO_USER_HOME:-$HOME}"
-gov_raw="${PRAWKO_GOV_DATA:-$home/Library/Application Support/prawko/gov-data}/raw"
-server="/usr/local/prawko"
+case "$(uname -s)" in
+  Darwin) user_prawko="$home/Library/Application Support/prawko" ;;
+  *) user_prawko="${XDG_DATA_HOME:-$home/.local/share}/prawko" ;;
+esac
+gov_raw="${PRAWKO_GOV_DATA:-$user_prawko/gov-data}/raw"
+server=""
+for d in /opt/prawko /usr/local/prawko; do
+  if [ -f "$d/src/index.html" ]; then
+    server="$d"
+    break
+  fi
+done
+server="${server:-/usr/local/prawko}"
 
 SOURCE_DIR=""
 IMG_OUT=""
@@ -50,14 +61,14 @@ if [ -z "$IMG_OUT" ]; then
   if [ -f "$server/src/index.html" ]; then
     IMG_OUT="$server/src/media/img"
   else
-    IMG_OUT="$home/Library/Application Support/prawko/media/img"
+    IMG_OUT="$user_prawko/media/img"
   fi
 fi
 if [ -z "$VID_OUT" ]; then
   if [ -f "$server/src/index.html" ]; then
     VID_OUT="$server/src/media/vid"
   else
-    VID_OUT="$home/Library/Application Support/prawko/media/vid"
+    VID_OUT="$user_prawko/media/vid"
   fi
 fi
 
@@ -72,7 +83,7 @@ resolve_ffmpeg() {
     return
   fi
   local bundled
-  bundled="$(find /usr/local/prawko/tools -name ffmpeg -type f 2>/dev/null | head -n 1)"
+  bundled="$(find /opt/prawko/tools /usr/local/prawko/tools -name ffmpeg -type f 2>/dev/null | head -n 1)"
   if [ -n "$bundled" ]; then
     printf '%s\n' "$bundled"
     return
@@ -82,7 +93,7 @@ resolve_ffmpeg() {
 
 [ -d "$SOURCE_DIR" ] || die "Brak katalogu źródłowego: $SOURCE_DIR (najpierw scripts/download-gov.sh)."
 
-ffmpeg="$(resolve_ffmpeg)" || die "FFmpeg nie jest dostępny. brew install ffmpeg albo odpal Install_Prawko.sh --install-gov."
+ffmpeg="$(resolve_ffmpeg)" || die "FFmpeg nie jest dostępny. Zainstaluj ffmpeg (brew / apt / dnf) albo odpal instalator z --install-gov."
 say_g "[OK] FFmpeg: $ffmpeg"
 say_d "Źródło (sytuacyjne): $SOURCE_DIR"
 say_d "Wyjście: $IMG_OUT  /  $VID_OUT"

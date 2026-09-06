@@ -2,11 +2,11 @@
 
 Aplikacja PWA do nauki i symulacji egzaminu teoretycznego na prawo jazdy w Polsce.
 
-To **fork** projektu [szkocot/prawko](https://github.com/szkocot/prawko) (demo źródła: https://szkocot.github.io/prawko/). Ta kopia trzyma układ stacji WORD, skórki Panel/Stacja, profile lokalne i przebudowany tryb nauki. Małe, samodzielne łatki mogą iść do repozytorium źródłowego; tutaj zostaje pełna wersja na **Windows** i **macOS**.
+To **fork** projektu [szkocot/prawko](https://github.com/szkocot/prawko) (demo źródła: https://szkocot.github.io/prawko/). Ta kopia trzyma układ stacji WORD, skórki Panel/Stacja, profile lokalne i przebudowany tryb nauki. Małe, samodzielne łatki mogą iść do repozytorium źródłowego; tutaj zostaje pełna wersja na **Windows**, **macOS** i **Linux**.
 
 Baza w repozytorium to JSON z katalogu Ministerstwa Infrastruktury (**3518** unikalnych pytań). Zdjęcia i filmy nie są w gicie — domyślnie z publicznego CDN. Publiczny katalog na [gov.pl](https://www.gov.pl/web/infrastruktura/prawo-jazdy): **lipiec 2026** (`KATALOG_dla_kandydatów_na_kierowców_072026.xlsx`).
 
-[Polski](#instalacja-na-windows) · [macOS](#instalacja-na-macos) · [English](#install-on-windows)
+[Polski](#instalacja-na-windows) · [macOS](#instalacja-na-macos) · [Linux](#instalacja-na-linuxie) · [English](#install-on-windows)
 
 ---
 
@@ -84,7 +84,7 @@ Jedyna powtórka przy `-InstallGov`: archiwum ZIP + rozpakowane JPG/WMV (cache, 
 | `-GovQuestions` | Tylko katalog pytań (Excel → JSON na serwerze). Nie rusza mediów ani CDN |
 | `-DropMissingMedia` | Tylko z `-InstallGov`: wykreśla z JSON media, których nie ma w lokalnym raw. **Domyślnie wyłączone** — nazwa z Excela zostaje (CDN) |
 | `-Dev <folder>` | Tylko Git + klon do pracy. **Bez** Node i **bez** serwera |
-| `-Patch` | Nakłada kod z contrib na **stojący** serwer. Nic nie doinstalowuje |
+| `-Patch` | Overlay `src` z contrib (bez `data\` i `media\`). Na **stojącym** serwerze nic nie doinstalowuje. **Bez** serwera = ZIP + Node + usługa + overlay |
 | `-Merge` | Na **stojącym** serwerze dopisuje z Excela MI tylko braki. Bez serwera = błąd |
 | `-Export <ścieżka>` | Paczka do innego folderu (instalator + contrib), bez ruszania serwera |
 | `-Uninstall` | Usuwa usługę i `C:\ProgramData\prawko`. Git / Node / NSSM zostają w systemie |
@@ -142,7 +142,7 @@ Na podgląd localhost z Twojego kodu (gdy serwer już stoi):
 powershell -ExecutionPolicy Bypass -File .\Install_Prawko.ps1 -Patch
 ```
 
-`-Patch` nakłada `src` z contrib, **bez** `data\` i `media\`. Gov ZIP-y i WebP nie idą drugi raz do folderu gita.
+`-Patch` nakłada `src` z contrib, **bez** `data\` i `media\`. Gov ZIP-y i WebP nie idą drugi raz do folderu gita. Gdy serwer już stoi — tylko overlay. Gdy nie stoi — najpierw ZIP + usługa, potem overlay.
 
 ### Odinstalowanie
 
@@ -171,23 +171,23 @@ Instalator sam doinstaluje **Homebrew** (jeśli go nie ma), potem **Node.js**. G
 
 ### Szybki start
 
-1. Ściągnij [`Install_Prawko.sh`](https://github.com/AnabelMaz/prawko/blob/main/Install_Prawko.sh) (**Raw** → Zapisz jako) — Pulpit albo Pobrane. **Nie musisz** klonować repozytorium ręcznie.
+1. Ściągnij [`Install_Prawko.macos.sh`](https://github.com/AnabelMaz/prawko/blob/main/Install_Prawko.macos.sh) (**Raw** → Zapisz jako) — Pulpit albo Pobrane. **Nie musisz** klonować repozytorium ręcznie.
 2. W Terminalu, w folderze z plikiem:
 
 ```bash
-bash Install_Prawko.sh
+bash Install_Prawko.macos.sh
 ```
 
 Albo bez przeglądarki, jednym ciągiem:
 
 ```bash
-curl -fsSL -o Install_Prawko.sh https://raw.githubusercontent.com/AnabelMaz/prawko/main/Install_Prawko.sh
-bash Install_Prawko.sh
+curl -fsSL -o Install_Prawko.macos.sh https://raw.githubusercontent.com/AnabelMaz/prawko/main/Install_Prawko.macos.sh
+bash Install_Prawko.macos.sh
 ```
 
 3. Otwórz [http://localhost:5173](http://localhost:5173).
 
-`chmod +x` nie jest potrzebny — odpalasz przez `bash`, tak jak na Windowsie `powershell -File`. Pełna lista: `bash Install_Prawko.sh --help`.
+`chmod +x` nie jest potrzebny — odpalasz przez `bash`, tak jak na Windowsie `powershell -File`. Pełna lista: `bash Install_Prawko.macos.sh --help`.
 
 ### Co instalator robi (tryb domyślny)
 
@@ -219,7 +219,7 @@ Gdy usługa już stoi, ponowne odpalenie **bez przełączników nic nie nadpisuj
 | `--gov-questions` | `-GovQuestions` | Tylko Excel → JSON na serwerze |
 | `--drop-missing-media` | `-DropMissingMedia` | Tylko z `--install-gov`; domyślnie **wyłączone** |
 | `--dev <folder>` | `-Dev <folder>` | Tylko Git + klon. **Bez** Node i **bez** serwera. Nie `/usr/local/prawko` |
-| `--patch` | `-Patch` | Overlay `src` bez `data/` i `media/` na **stojący** serwer |
+| `--patch` | `-Patch` | Overlay `src` bez `data/` i `media/`. Na stojącym serwerze nic nie doinstalowuje. Bez serwera = ZIP + Node + launchd + overlay |
 | `--merge` | `-Merge` | Dopisz z Excela MI tylko braki; **wymaga** serwera |
 | `--export <ścieżka>` | `-Export` | Paczka instalator + contrib |
 | `--uninstall` | `-Uninstall` | Usuwa launchd i `/usr/local/prawko` |
@@ -227,11 +227,11 @@ Gdy usługa już stoi, ponowne odpalenie **bez przełączników nic nie nadpisuj
 | `--help` | `-Help` | Pomoc |
 
 ```bash
-./Install_Prawko.sh --install-gov
-./Install_Prawko.sh --gov-questions
-./Install_Prawko.sh --dev ~/prawko
-./Install_Prawko.sh --patch
-./Install_Prawko.sh --uninstall
+./Install_Prawko.macos.sh --install-gov
+./Install_Prawko.macos.sh --gov-questions
+./Install_Prawko.macos.sh --dev ~/prawko
+./Install_Prawko.macos.sh --patch
+./Install_Prawko.macos.sh --uninstall
 ```
 
 Na macOS `--gov-questions` i `--merge` potrzebują **Node** (parsowanie gov.pl) i Pythona (Excel). `--dev` tego nie rusza. Sudo tylko przy pierwszej instalacji serwera albo `--uninstall`.
@@ -241,7 +241,7 @@ Na macOS `--gov-questions` i `--merge` potrzebują **Node** (parsowanie gov.pl) 
 Sam kod, bez localhost i bez Node:
 
 ```bash
-bash Install_Prawko.sh --dev ~/prawko
+bash Install_Prawko.macos.sh --dev ~/prawko
 ```
 
 Git doinstaluje się tylko tu (i tylko gdy już masz Homebrew — w przeciwnym razie `xcode-select --install` albo `brew install git`). Serwera to **nie** stawia. Folder musi być **pusty** albo jeszcze nie istnieć (nie `/usr/local/prawko`).
@@ -251,7 +251,63 @@ Oba (aplikacja + git): najpierw skrypt **bez** przełączników, potem `--dev`.
 Na podgląd localhost z Twojego kodu (gdy serwer już stoi):
 
 ```bash
-bash Install_Prawko.sh --patch
+bash Install_Prawko.macos.sh --patch
+```
+
+---
+
+## Instalacja na Linuxie
+
+Ten sam produkt: jeden skrypt, ZIP, Node, port **5173**. Usługa to **systemd** (nie launchd i nie NSSM). Katalog aplikacji: **`/opt/prawko`**.
+
+Wymaga **systemd** (Ubuntu, Debian, Fedora, Arch, openSUSE i pokrewne). Alpine / OpenRC — zainstaluj Node 18+ sam i serwuj `src/` ręcznie.
+
+### Wymagania
+
+| | |
+|---|---|
+| System | Linux z systemd, x86_64 albo aarch64 (glibc) |
+| Powłoka | bash |
+| Uprawnienia | Pierwsza instalacja: **sudo** (katalog `/opt/prawko` i unit systemd) |
+| Python | Tylko przy `--install-gov` / `--gov-questions` / `--merge` |
+
+Node: najpierw to, co już jest w PATH (18+), potem paczka dystrybucji (`apt` / `dnf` / `yum` / `pacman` / `zypper` / `apk`), na końcu oficjalny tarball z nodejs.org do `/opt/prawko/tools/node`. Homebrew na Linuksie **nie** jest używany. `--dev` nie instaluje Gita — daj `sudo apt install git` (albo odpowiednik).
+
+### Szybki start
+
+1. Ściągnij [`Install_Prawko.linux.sh`](https://github.com/AnabelMaz/prawko/blob/main/Install_Prawko.linux.sh) (**Raw** → Zapisz jako). **Nie musisz** klonować repozytorium ręcznie.
+2. W terminalu, w folderze z plikiem:
+
+```bash
+bash Install_Prawko.linux.sh
+```
+
+Albo bez przeglądarki:
+
+```bash
+curl -fsSL -o Install_Prawko.linux.sh https://raw.githubusercontent.com/AnabelMaz/prawko/main/Install_Prawko.linux.sh
+bash Install_Prawko.linux.sh
+```
+
+3. Otwórz [http://localhost:5173](http://localhost:5173).
+
+Pełna lista: `bash Install_Prawko.linux.sh --help`. Przełączniki jak na macOS (`--dev`, `--patch`, `--install-gov`, …).
+
+### Gdzie lądują pliki
+
+| Co | Ścieżka |
+|---|---|
+| Aplikacja i systemd | `/opt/prawko` |
+| Unit | `/etc/systemd/system/prawko.service` |
+| ZIP / surowe JPG·WMV z gov.pl | `~/.local/share/prawko/gov-data` |
+| Skonwertowane WebP / MP4 i JSON z Excela | `/opt/prawko/src/media` oraz `src/data` |
+| Tarball Node (gdy brak paczki 18+) | `/opt/prawko/tools/node` |
+
+```bash
+bash Install_Prawko.linux.sh --install-gov
+bash Install_Prawko.linux.sh --dev ~/prawko
+bash Install_Prawko.linux.sh --patch
+bash Install_Prawko.linux.sh --uninstall
 ```
 
 ---
@@ -286,17 +342,17 @@ Treść pytań w językach obcych pochodzi z Excela MI (`Pytanie [EN]`, `Pytanie
 
 ## Dane i multimedia
 
-| | W gicie | Windows | macOS |
-|---|---|---|---|
-| Pytania JSON | `src/data/` | `C:\ProgramData\prawko\src\data` | `/usr/local/prawko/src/data` |
-| Zdjęcia / filmy | nie (pusty `src/media`) | CDN albo `C:\ProgramData\prawko\src\media` | CDN albo `/usr/local/prawko/src/media` |
-| Excel / ZIP / JPG / WMV | nie | `%LOCALAPPDATA%\prawko\gov-data` | `~/Library/Application Support/prawko/gov-data` |
+| | W gicie | Windows | macOS | Linux |
+|---|---|---|---|---|
+| Pytania JSON | `src/data/` | `C:\ProgramData\prawko\src\data` | `/usr/local/prawko/src/data` | `/opt/prawko/src/data` |
+| Zdjęcia / filmy | nie (pusty `src/media`) | CDN albo `C:\ProgramData\prawko\src\media` | CDN albo `/usr/local/prawko/src/media` | CDN albo `/opt/prawko/src/media` |
+| Excel / ZIP / JPG / WMV | nie | `%LOCALAPPDATA%\prawko\gov-data` | `~/Library/Application Support/prawko/gov-data` | `~/.local/share/prawko/gov-data` |
 
 Czysty clone **nie wymaga** `-InstallGov`: JSON jest w `src/data`, a `MEDIA_CDN` w `src/js/data.js` wskazuje kubeł B2 `prawko-maz` (`img/` i `vid/`).
 
 W paczce MI brakuje pliku `!RS_Parking zastrzeżony.webp`. Parser **nie wycina** przez to pytania — nazwa z Excela zostaje, żeby zadziałał CDN albo późniejsze uzupełnienie.
 
-Push na `main` wdraża też `src/` na GitHub Pages (po testach Playwright).
+Push na `main` odpala testy Playwright i wgrywa `src/` na GitHub Pages (podgląd). Codzienna aplikacja to usługa na [http://localhost:5173](http://localhost:5173).
 
 ---
 
@@ -342,14 +398,14 @@ Zwykła aktualizacja pytań na już stojącym serwerze: `Install_Prawko.ps1 -Gov
 
 ---
 
-## Pipeline danych na macOS
+## Pipeline danych na macOS i Linuxie
 
-Instalator `Install_Prawko.sh` woła te skrypty sam. Ręcznie (z checkoutu):
+Instalatory `Install_Prawko.macos.sh` i `Install_Prawko.linux.sh` wołają te skrypty same. Ręcznie (z checkoutu):
 
 | Skrypt | Zadanie |
 |---|---|
-| `scripts/download-gov.sh` | Excel + ZIP z gov.pl → `~/Library/Application Support/prawko/gov-data` |
-| `scripts/parse-excel.py` | Excel → JSON (ten sam zestaw reguł co `parse-excel.ps1`; na Macu nie ma parsera xlsx w bashu) |
+| `scripts/download-gov.sh` | Excel + ZIP z gov.pl → macOS: `~/Library/Application Support/prawko/gov-data`; Linux: `~/.local/share/prawko/gov-data` |
+| `scripts/parse-excel.py` | Excel → JSON (ten sam zestaw reguł co `parse-excel.ps1`; w bashu nie ma parsera xlsx) |
 | `scripts/convert-media.sh` | JPG → WebP, WMV → MP4 (VideoToolbox, gdy jest; nie rusza PJM) |
 | `scripts/filter-no-media.py` | Raport; kasowanie tylko z `--remove` |
 | `scripts/merge-gov.js` | Dopisywanie braków MI (`--merge`) |
@@ -386,7 +442,7 @@ Kod aplikacji jest na [ISC](LICENSE) (tak jak w `package.json` źródła). Przy 
 
 A PWA for learning and simulating the Polish theoretical driving test.
 
-This is a **fork** of [szkocot/prawko](https://github.com/szkocot/prawko) (upstream demo: https://szkocot.github.io/prawko/). It keeps a WORD station layout, Panel/Station skins, local profiles, and a rebuilt learn mode. Small standalone fixes can still go upstream; this repository holds the full **Windows** and **macOS** product.
+This is a **fork** of [szkocot/prawko](https://github.com/szkocot/prawko) (upstream demo: https://szkocot.github.io/prawko/). It keeps a WORD station layout, Panel/Station skins, local profiles, and a rebuilt learn mode. Small standalone fixes can still go upstream; this repository holds the full **Windows**, **macOS**, and **Linux** product.
 
 The repo JSON has **3518** unique ministry questions. Photos and films are not in git — they come from a public CDN by default. The public catalogue on [gov.pl](https://www.gov.pl/web/infrastruktura/prawo-jazdy) is **July 2026** (`KATALOG_dla_kandydatów_na_kierowców_072026.xlsx`).
 
@@ -464,7 +520,7 @@ The only duplication with `-InstallGov` is ZIP + unpacked JPG/WMV (download cach
 | `-GovQuestions` | Question catalogue only (Excel → JSON on the server). Leaves media and the CDN alone |
 | `-DropMissingMedia` | With `-InstallGov` only: clear JSON media names whose files are missing from local raw. **Off by default** — Excel names stay (CDN) |
 | `-Dev <folder>` | Git clone only — **no** Node and **no** server. Empty or new folder; **not** `C:\ProgramData\prawko` |
-| `-Patch` | Overlay local checkout onto the **running** server. Installs nothing extra |
+| `-Patch` | Overlay `src` from contrib (skip `data\` and `media\`). Installs nothing if the server is already up. **Without** a server: ZIP + Node + service + overlay |
 | `-Merge` | Keep GitHub questions; add ministry Excel rows that are not already there. **Requires** a running server |
 | `-Export <path>` | Copy a portable pack (installer + contrib) without touching the server |
 | `-Uninstall` | Remove the service and `C:\ProgramData\prawko`. Git / Node / NSSM stay on the machine |
@@ -522,7 +578,7 @@ Preview your code on localhost (server already running):
 powershell -ExecutionPolicy Bypass -File .\Install_Prawko.ps1 -Patch
 ```
 
-`-Patch` overlays `src` from the contrib tree and **skips** `data\` and `media\`. Gov ZIPs and WebP are not copied into the git folder.
+`-Patch` overlays `src` from the contrib tree and **skips** `data\` and `media\`. Gov ZIPs and WebP are not copied into the git folder. If the server is already up — overlay only. If it is not — ZIP + service first, then overlay.
 
 ### Uninstall
 
@@ -551,23 +607,23 @@ The installer installs **Homebrew** if missing, then **Node.js**. Git is install
 
 ### Quick start
 
-1. Download [`Install_Prawko.sh`](https://github.com/AnabelMaz/prawko/blob/main/Install_Prawko.sh) (**Raw**, then Save as) anywhere. You do **not** need to clone the repo first.
+1. Download [`Install_Prawko.macos.sh`](https://github.com/AnabelMaz/prawko/blob/main/Install_Prawko.macos.sh) (**Raw**, then Save as) anywhere. You do **not** need to clone the repo first.
 2. In Terminal, in that folder:
 
 ```bash
-bash Install_Prawko.sh
+bash Install_Prawko.macos.sh
 ```
 
 Or without a browser:
 
 ```bash
-curl -fsSL -o Install_Prawko.sh https://raw.githubusercontent.com/AnabelMaz/prawko/main/Install_Prawko.sh
-bash Install_Prawko.sh
+curl -fsSL -o Install_Prawko.macos.sh https://raw.githubusercontent.com/AnabelMaz/prawko/main/Install_Prawko.macos.sh
+bash Install_Prawko.macos.sh
 ```
 
 3. Open [http://localhost:5173](http://localhost:5173).
 
-No `chmod +x` — run it with `bash`, like `powershell -File` on Windows. All switches: `bash Install_Prawko.sh --help`.
+No `chmod +x` — run it with `bash`, like `powershell -File` on Windows. All switches: `bash Install_Prawko.macos.sh --help`.
 
 ### What the default install does
 
@@ -599,7 +655,7 @@ If the service is already running, a second run **with no switches does not over
 | `--gov-questions` | `-GovQuestions` | Excel → JSON on the server only |
 | `--drop-missing-media` | `-DropMissingMedia` | With `--install-gov` only; **off** by default |
 | `--dev <folder>` | `-Dev <folder>` | Git + clone only. **No** Node and **no** server. Not `/usr/local/prawko` |
-| `--patch` | `-Patch` | Overlay `src`, skip `data/` and `media/`, onto the **running** server |
+| `--patch` | `-Patch` | Overlay `src`, skip `data/` and `media/`. Installs nothing if the server is up. Without a server: ZIP + Node + launchd + overlay |
 | `--merge` | `-Merge` | Add ministry Excel rows that are not already there; **requires** a running server |
 | `--export <path>` | `-Export` | Portable pack |
 | `--uninstall` | `-Uninstall` | Remove launchd and `/usr/local/prawko` |
@@ -607,10 +663,10 @@ If the service is already running, a second run **with no switches does not over
 | `--help` | `-Help` | Help |
 
 ```bash
-./Install_Prawko.sh --install-gov
-./Install_Prawko.sh --dev ~/prawko
-./Install_Prawko.sh --patch
-./Install_Prawko.sh --uninstall
+./Install_Prawko.macos.sh --install-gov
+./Install_Prawko.macos.sh --dev ~/prawko
+./Install_Prawko.macos.sh --patch
+./Install_Prawko.macos.sh --uninstall
 ```
 
 `--dev` does not set up localhost and does not install Node. `--patch` overlays your code onto a **running** server.
@@ -620,7 +676,7 @@ If the service is already running, a second run **with no switches does not over
 Code only, no localhost and no Node:
 
 ```bash
-bash Install_Prawko.sh --dev ~/prawko
+bash Install_Prawko.macos.sh --dev ~/prawko
 ```
 
 Git is installed only here (and only if Homebrew is already present — otherwise `xcode-select --install` or `brew install git`). This does **not** set up the server. The folder must be **empty** or not exist yet (not `/usr/local/prawko`).
@@ -628,7 +684,63 @@ Git is installed only here (and only if Homebrew is already present — otherwis
 Both (app + git): run the script **with no switches** first, then `--dev`.
 
 ```bash
-bash Install_Prawko.sh --patch
+bash Install_Prawko.macos.sh --patch
+```
+
+---
+
+## Install on Linux
+
+Same product: one script, ZIP, Node, port **5173**. The service is **systemd** (not launchd, not NSSM). App directory: **`/opt/prawko`**.
+
+Needs **systemd** (Ubuntu, Debian, Fedora, Arch, openSUSE and similar). Alpine / OpenRC — install Node 18+ yourself and serve `src/` by hand.
+
+### Requirements
+
+| | |
+|---|---|
+| OS | Linux with systemd, x86_64 or aarch64 (glibc) |
+| Shell | bash |
+| Privileges | First install: **sudo** (`/opt/prawko` and the systemd unit) |
+| Python | Only for `--install-gov` / `--gov-questions` / `--merge` |
+
+Node: PATH first (18+), then the distro package (`apt` / `dnf` / `yum` / `pacman` / `zypper` / `apk`), then the official nodejs.org tarball into `/opt/prawko/tools/node`. Homebrew on Linux is **not** used. `--dev` does not install Git — use `sudo apt install git` (or your distro’s equivalent).
+
+### Quick start
+
+1. Download [`Install_Prawko.linux.sh`](https://github.com/AnabelMaz/prawko/blob/main/Install_Prawko.linux.sh) (**Raw**, then Save as). You do **not** need to clone the repo first.
+2. In a terminal, in that folder:
+
+```bash
+bash Install_Prawko.linux.sh
+```
+
+Or without a browser:
+
+```bash
+curl -fsSL -o Install_Prawko.linux.sh https://raw.githubusercontent.com/AnabelMaz/prawko/main/Install_Prawko.linux.sh
+bash Install_Prawko.linux.sh
+```
+
+3. Open [http://localhost:5173](http://localhost:5173).
+
+All switches: `bash Install_Prawko.linux.sh --help`. Same flags as macOS (`--dev`, `--patch`, `--install-gov`, …).
+
+### Where files land
+
+| What | Path |
+|---|---|
+| App and systemd | `/opt/prawko` |
+| Unit | `/etc/systemd/system/prawko.service` |
+| ZIP / raw JPG·WMV from gov.pl | `~/.local/share/prawko/gov-data` |
+| Converted WebP / MP4 and Excel JSON | `/opt/prawko/src/media` and `src/data` |
+| Node tarball (if no distro Node 18+) | `/opt/prawko/tools/node` |
+
+```bash
+bash Install_Prawko.linux.sh --install-gov
+bash Install_Prawko.linux.sh --dev ~/prawko
+bash Install_Prawko.linux.sh --patch
+bash Install_Prawko.linux.sh --uninstall
 ```
 
 ---
@@ -663,17 +775,17 @@ Non-Polish question text comes from the ministry Excel (`Pytanie [EN]`, `Pytanie
 
 ## Data and media
 
-| | In git | Windows | macOS |
-|---|---|---|---|
-| Question JSON | `src/data/` | `C:\ProgramData\prawko\src\data` | `/usr/local/prawko/src/data` |
-| Photos / films | no (empty `src/media`) | CDN or `C:\ProgramData\prawko\src\media` | CDN or `/usr/local/prawko/src/media` |
-| Excel / ZIP / JPG / WMV | no | `%LOCALAPPDATA%\prawko\gov-data` | `~/Library/Application Support/prawko/gov-data` |
+| | In git | Windows | macOS | Linux |
+|---|---|---|---|---|
+| Question JSON | `src/data/` | `C:\ProgramData\prawko\src\data` | `/usr/local/prawko/src/data` | `/opt/prawko/src/data` |
+| Photos / films | no (empty `src/media`) | CDN or `C:\ProgramData\prawko\src\media` | CDN or `/usr/local/prawko/src/media` | CDN or `/opt/prawko/src/media` |
+| Excel / ZIP / JPG / WMV | no | `%LOCALAPPDATA%\prawko\gov-data` | `~/Library/Application Support/prawko/gov-data` | `~/.local/share/prawko/gov-data` |
 
 A clean clone does **not** need `-InstallGov`: JSON is in `src/data`, and `MEDIA_CDN` in `src/js/data.js` points at the `prawko-maz` B2 bucket (`img/` and `vid/`).
 
 The ministry pack is missing `!RS_Parking zastrzeżony.webp`. The parser does **not** drop that question — the Excel file name stays so the CDN or a later file can fill it.
 
-A push to `main` also deploys `src/` to GitHub Pages (after Playwright tests).
+A push to `main` runs Playwright and publishes `src/` to GitHub Pages (preview). Day-to-day use is the service at [http://localhost:5173](http://localhost:5173).
 
 ---
 
@@ -719,13 +831,13 @@ To refresh questions on a running server, use `Install_Prawko.ps1 -GovQuestions`
 
 ---
 
-## Data pipeline on macOS
+## Data pipeline on macOS and Linux
 
-`Install_Prawko.sh` calls these scripts. To run them yourself from a checkout:
+`Install_Prawko.macos.sh` and `Install_Prawko.linux.sh` call these scripts. To run them yourself from a checkout:
 
 | Script | Job |
 |---|---|
-| `scripts/download-gov.sh` | Excel + ZIPs from gov.pl → `~/Library/Application Support/prawko/gov-data` |
+| `scripts/download-gov.sh` | Excel + ZIPs from gov.pl → macOS: `~/Library/Application Support/prawko/gov-data`; Linux: `~/.local/share/prawko/gov-data` |
 | `scripts/parse-excel.py` | Excel → JSON (same rules as `parse-excel.ps1`; bash has no xlsx parser) |
 | `scripts/convert-media.sh` | JPG → WebP, WMV → MP4 (VideoToolbox when available; skips PJM) |
 | `scripts/filter-no-media.py` | Report; delete rows only with `--remove` |
