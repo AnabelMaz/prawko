@@ -2,6 +2,9 @@
 """
 Parse Polish driving exam question Excel file and generate JSON data files.
 
+On Windows use scripts/parse-excel.ps1 instead (column headers, no Python).
+This file still uses fixed column indexes and breaks when MI adds columns.
+
 Generates:
   - src/data/meta.json    — category metadata with counts and exam rules
   - src/data/{cat}.json   — per-category question banks
@@ -158,7 +161,14 @@ def main():
         raw_cats = str(row[COL_CATEGORIES]).strip() if row[COL_CATEGORIES] else ""
         raw_media = str(row[COL_MEDIA]).strip() if row[COL_MEDIA] else ""
 
-        q_type = "basic" if structure == "PODSTAWOWY" else "specialist"
+        ans_a = str(row[COL_A]).strip() if row[COL_A] else ""
+        ans_b = str(row[COL_B]).strip() if row[COL_B] else ""
+        ans_c = str(row[COL_C]).strip() if row[COL_C] else ""
+        # MI sometimes marks ABC items as PODSTAWOWY. If A/B/C text exists, show specialist keys.
+        if (ans_a and ans_b and ans_c) or correct in ("A", "B", "C"):
+            q_type = "specialist"
+        else:
+            q_type = "basic" if structure == "PODSTAWOWY" else "specialist"
         media_name, media_type = resolve_media(raw_media if raw_media else None, media_dir_for_check)
         if raw_media and media_name is None:
             missing_media_count += 1

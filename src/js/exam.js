@@ -42,6 +42,8 @@ export function getLastExamCategory() {
 
 const PRACTICE_BASIC_COUNT = 3;
 const PRACTICE_SPECIALIST_COUNT = 2;
+const BASIC_POINT_DRAW = [[3, 10], [2, 6], [1, 4]];
+const SPECIALIST_POINT_DRAW = [[3, 6], [2, 4], [1, 2]];
 
 function pickPractice(leftover, fallback, count) {
   if (count <= 0) return [];
@@ -60,6 +62,42 @@ function pickPractice(leftover, fallback, count) {
     if (out.length >= count) return out;
   }
   return out;
+}
+
+function questionPoints(q) {
+  const n = Number(q?.points);
+  return n === 1 || n === 2 || n === 3 ? n : 1;
+}
+
+function pickByPointRecipe(pool, recipe) {
+  const shuffled = shuffle(pool);
+  const buckets = { 1: [], 2: [], 3: [] };
+  for (const q of shuffled) {
+    buckets[questionPoints(q)].push(q);
+  }
+  const picked = [];
+  const used = new Set();
+  for (const [pts, need] of recipe) {
+    let got = 0;
+    const bucket = buckets[pts] || [];
+    while (got < need && bucket.length) {
+      const q = bucket.shift();
+      if (used.has(q.id)) continue;
+      used.add(q.id);
+      picked.push(q);
+      got += 1;
+    }
+    if (got < need) {
+      for (const q of shuffled) {
+        if (got >= need) break;
+        if (used.has(q.id)) continue;
+        used.add(q.id);
+        picked.push(q);
+        got += 1;
+      }
+    }
+  }
+  return { picked, used };
 }
 
 function shuffle(arr) {
@@ -452,10 +490,10 @@ function showExamIntroNotice() {
   );
 }
 
-function buildExamItems(pool, rules, practice) {
-  return pool.map((q, i) => ({
+function buildExamItems(pool, practice) {
+  return pool.map((q) => ({
     question: q,
-    points: practice ? 0 : (q.type === 'basic' ? rules.basicPoints[i] : rules.specialistPoints[i]) || 1,
+    points: practice ? 0 : questionPoints(q),
     given: null,
     isCorrect: false,
     locked: false,
@@ -472,28 +510,21 @@ export function startExam(categoryData, meta) {
     basicAnswerTimeSeconds: meta.exam.basicAnswerTimeSeconds || 15,
     specialistTimeSeconds: meta.exam.specialistTimeSeconds || 50,
   };
-  const basic = shuffle(categoryData.questions.filter(q => q.type === 'basic'));
-  const specialist = shuffle(categoryData.questions.filter(q => q.type === 'specialist'));
-
-  const selectedBasic = basic.slice(0, rules.basicQuestions);
-  const selectedSpecialist = specialist.slice(0, rules.specialistQuestions);
-  const leftoverBasic = basic.slice(rules.basicQuestions);
-  const leftoverSpecialist = specialist.slice(rules.specialistQuestions);
+  const basic = categoryData.questions.filter(q => q.type === 'basic');
+  const specialist = categoryData.questions.filter(q => q.type === 'specialist');
+  const basicPick = pickByPointRecipe(basic, BASIC_POINT_DRAW);
+  const specialistPick = pickByPointRecipe(specialist, SPECIALIST_POINT_DRAW);
+  const selectedBasic = basicPick.picked;
+  const selectedSpecialist = specialistPick.picked;
+  const leftoverBasic = shuffle(basic.filter(q => !basicPick.used.has(q.id)));
+  const leftoverSpecialist = shuffle(specialist.filter(q => !specialistPick.used.has(q.id)));
 
   const originalMaxPoints = rules.maxPoints;
-  if (selectedBasic.length < rules.basicQuestions) {
-    console.warn(`Exam: expected ${rules.basicQuestions} basic questions but only ${selectedBasic.length} available. Scaling rules proportionally.`);
-    rules.basicQuestions = selectedBasic.length;
-    rules.basicPoints = rules.basicPoints.slice(0, selectedBasic.length);
-  }
-  if (selectedSpecialist.length < rules.specialistQuestions) {
-    console.warn(`Exam: expected ${rules.specialistQuestions} specialist questions but only ${selectedSpecialist.length} available. Scaling rules proportionally.`);
-    rules.specialistQuestions = selectedSpecialist.length;
-    rules.specialistPoints = rules.specialistPoints.slice(0, selectedSpecialist.length);
-  }
-  const newMaxPoints = rules.basicPoints.reduce((s, p) => s + p, 0)
-    + rules.specialistPoints.reduce((s, p) => s + p, 0);
-  if (newMaxPoints < originalMaxPoints) {
+  rules.basicQuestions = selectedBasic.length;
+  rules.specialistQuestions = selectedSpecialist.length;
+  const newMaxPoints = selectedBasic.reduce((s, q) => s + questionPoints(q), 0)
+    + selectedSpecialist.reduce((s, q) => s + questionPoints(q), 0);
+  if (newMaxPoints > 0 && newMaxPoints !== originalMaxPoints) {
     rules.maxPoints = newMaxPoints;
     rules.passThreshold = Math.round(rules.passThreshold * (newMaxPoints / originalMaxPoints));
   }
@@ -508,9 +539,9 @@ export function startExam(categoryData, meta) {
   const practicePool = [...practiceBasic, ...practiceSpecialist];
 
   const questions = [
-    ...buildExamItems(practicePool, rules, true),
-    ...shuffle(buildExamItems(selectedBasic, rules, false)),
-    ...shuffle(buildExamItems(selectedSpecialist, rules, false)),
+    ...buildExamItems(practicePool, true),
+    ...shuffle(buildExamItems(selectedBasic, false)),
+    ...shuffle(buildExamItems(selectedSpecialist, false)),
   ];
 
   state = {

@@ -6,6 +6,7 @@
       "q": "Jak często należy obracać poszkodowanego nieurazowego na drugi bok po ułożeniu go w pozycji bezpiecznej?",
       "type": "specialist",
       "correct": "B",
+      "points": 2,
       "media": "R_101org.webp",
       "mediaType": "image",
       "a": "Co 60 minut.",
@@ -17,6 +18,7 @@
       "q": "Stwierdzasz brak oddechu u dziecka. Nie masz nikogo do pomocy. Które z wymienionych działań należy podjąć?",
       "type": "specialist",
       "correct": "B",
+      "points": 2,
       "media": "R_110org.webp",
       "mediaType": "image",
       "a": "Wezwać pomoc, a następnie prowadzić sztuczne oddechy i uciśnięcia klatki piersiowej.",
@@ -28,6 +30,7 @@
       "q": "Co należy zrobić w przypadku krwotoku z nosa?",
       "type": "specialist",
       "correct": "A",
+      "points": 2,
       "media": "R_132.webp",
       "mediaType": "image",
       "a": "Ucisnąć skrzydełka nosa i pochylić głowę do przodu.",
@@ -39,6 +42,7 @@
       "q": "Czym należy poprzedzić uciskanie klatki piersiowej u niemowlęcia, które zostało ułożone na stole lub podłodze?",
       "type": "specialist",
       "correct": "A",
+      "points": 2,
       "media": "R_105org.webp",
       "mediaType": "image",
       "a": "Podłożeniem pod jego plecy pieluchy czy ręczniczka, tak by czoło, broda i klatka piersiowa dziecka znajdowały się w jednej linii.",
@@ -50,6 +54,7 @@
       "q": "Który z objawów wskazuje na złamanie żeber u poszkodowanego zachowującego przytomność?",
       "type": "specialist",
       "correct": "A",
+      "points": 2,
       "media": "R_132.webp",
       "mediaType": "image",
       "a": "Poszkodowany skarży się na ból, który nasila się przy głębokim oddychaniu i poruszaniu się.",
@@ -61,6 +66,7 @@
       "q": "Poszkodowany ma złamanie zamknięte kończyny dolnej i skarży się na silny ból. Czeka na przyjazd zespołu ratownictwa medycznego. Jakie działania powinien podjąć świadek zdarzenia?",
       "type": "specialist",
       "correct": "A",
+      "points": 2,
       "media": "R_132.webp",
       "mediaType": "image",
       "a": "Zachęcać poszkodowanego, aby się nie ruszał.",
@@ -72,6 +78,7 @@
       "q": "Co należy zrobić w przypadku podejrzenia urazu kręgosłupa szyjnego oraz braku oddechu  u poszkodowanego w wypadku drogowym?",
       "type": "specialist",
       "correct": "C",
+      "points": 2,
       "media": "R_018org.webp",
       "mediaType": "image",
       "a": "Przygiąć głowę poszkodowanego do klatki piersiowej.",
@@ -83,6 +90,7 @@
       "q": "W jakim przypadku u poszkodowanego nie zastosujesz automatycznego defibrylatora zewnętrznego (AED)?",
       "type": "specialist",
       "correct": "C",
+      "points": 2,
       "media": "R_182org.webp",
       "mediaType": "image",
       "a": "Gdy nastąpiło zatrzymanie krążenia.",
@@ -94,6 +102,7 @@
       "q": "Czy znaki ostrzegawcze zobowiązują kierującego tramwajem do zachowania szczególnej ostrożności?",
       "type": "basic",
       "correct": "T",
+      "points": 1,
       "media": "002TRAM2org.webp",
       "mediaType": "image"
     },
@@ -102,6 +111,7 @@
       "q": "Czy kierujący tramwajem jest obowiązany do stosowania się do znaków ostrzegawczych?",
       "type": "basic",
       "correct": "T",
+      "points": 1,
       "media": "003TRAM2org.webp",
       "mediaType": "image"
     },
@@ -110,6 +120,7 @@
       "q": "Czy w tej sytuacji wolno Ci skręcić w lewo?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "008TRAM1org.webp",
       "mediaType": "image"
     },
@@ -118,6 +129,7 @@
       "q": "Czy w tej sytuacji masz obowiązek ustąpić pierwszeństwa przejazdu pojazdom poruszającym się drogą poprzeczną?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": "013TRAM2org.mp4",
       "mediaType": "video"
     },
@@ -126,6 +138,7 @@
       "q": "Czy w tej sytuacji włączasz się do ruchu?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": "015TRAM1org.mp4",
       "mediaType": "video"
     },
@@ -134,6 +147,7 @@
       "q": "Czy w tej sytuacji kierujący tramwajem jest zobowiązany do zachowania szczególnej ostrożności?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "016TRAM3org.mp4",
       "mediaType": "video"
     },
@@ -142,6 +156,7 @@
       "q": "Czy w tej sytuacji, masz obowiązek zatrzymać pojazd i ustąpić pierwszeństwa kierującym samochodami jadącymi po drodze poprzecznej?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": "019TRAM1org.webp",
       "mediaType": "image"
     },
@@ -150,6 +165,7 @@
       "q": "Czy w tej sytuacji, masz obowiązek ustąpić pierwszeństwa pojazdom poruszającym się drogą poprzeczną?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": "021TRAM1org.webp",
       "mediaType": "image"
     },
@@ -158,6 +174,7 @@
       "q": "Czy skręcanie w prawo na skrzyżowaniu wymaga od Ciebie zachowania szczególnej ostrożności?",
       "type": "basic",
       "correct": "T",
+      "points": 1,
       "media": "022TRAM1Porg.mp4",
       "mediaType": "video"
     },
@@ -166,6 +183,7 @@
       "q": "Czy w tej sytuacji masz obowiązek sygnalizować zamiar zmiany kierunku jazdy?",
       "type": "basic",
       "correct": "T",
+      "points": 1,
       "media": "022TRAM1Porg.mp4",
       "mediaType": "video"
     },
@@ -174,6 +192,7 @@
       "q": "Czy w tej sytuacji masz obowiązek zachowania szczególnej ostrożności?",
       "type": "basic",
       "correct": "T",
+      "points": 1,
       "media": "024TRAM1org.mp4",
       "mediaType": "video"
     },
@@ -182,6 +201,7 @@
       "q": "Czy po wykonaniu manewru skrętu masz obowiązek niezwłocznie wyłączyć kierunkowskaz?",
       "type": "basic",
       "correct": "T",
+      "points": 1,
       "media": "022TRAM1Porg.mp4",
       "mediaType": "video"
     },
@@ -190,6 +210,7 @@
       "q": "Czy w tej sytuacji masz obowiązek zachować szczególną ostrożność?",
       "type": "basic",
       "correct": "T",
+      "points": 2,
       "media": "027TRAM3org.mp4",
       "mediaType": "video"
     },
@@ -198,6 +219,7 @@
       "q": "Czy w tej sytuacji, ze względu na położenie torów, tramwaj może zostać wyprzedzony z lewej strony?",
       "type": "basic",
       "correct": "T",
+      "points": 2,
       "media": "028TRAM3org.mp4",
       "mediaType": "video"
     },
@@ -206,6 +228,7 @@
       "q": "Czy podczas cofania tramwajem motorniczy ma pierwszeństwo przed innymi pojazdami i uczestnikami ruchu?",
       "type": "basic",
       "correct": "N",
+      "points": 2,
       "media": null,
       "mediaType": null
     },
@@ -214,6 +237,7 @@
       "q": "Czy w tej sytuacji kierujący tramwajem ma obowiązek zmniejszyć prędkość, a w razie potrzeby zatrzymać się?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "043TRAM3org.mp4",
       "mediaType": "video"
     },
@@ -222,6 +246,7 @@
       "q": "Czy tramwaj, jako pojazd szynowy posiada pierwszeństwo przed pieszymi przechodzącymi przez przejście dla pieszych?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": "043TRAM3org.mp4",
       "mediaType": "video"
     },
@@ -230,6 +255,7 @@
       "q": "Czy w tej sytuacji masz obowiązek zachowania szczególnej ostrożności?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "043TRAM3org.mp4",
       "mediaType": "video"
     },
@@ -238,6 +264,7 @@
       "q": "Czy ten znak oznacza, że dzieci przeprowadzane są w tym miejscu przez jezdnię przez uprawnioną osobę?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": "046TRAM3org.webp",
       "mediaType": "image"
     },
@@ -246,6 +273,7 @@
       "q": "Czy w tej sytuacji powinieneś spodziewać się, że tym przejściem często przechodzą dzieci?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "046TRAM3org.webp",
       "mediaType": "image"
     },
@@ -254,6 +282,7 @@
       "q": "Czy wskazane jest użycie gaśnicy proszkowej do stłumienia palącego się paliwa, np. po kolizji z samochodem?",
       "type": "basic",
       "correct": "T",
+      "points": 2,
       "media": null,
       "mediaType": null
     },
@@ -262,6 +291,7 @@
       "q": "Czy kierując tramwajem możesz opuścić miejsce wypadku drogowego, w którym jest ranny, by nie powodować utrudnień w ruchu?",
       "type": "basic",
       "correct": "N",
+      "points": 2,
       "media": null,
       "mediaType": null
     },
@@ -270,6 +300,7 @@
       "q": "Czy jako uczestnik wypadku drogowego masz obowiązek podjąć działania służące zapewnieniu bezpieczeństwa w miejscu zdarzenia?",
       "type": "basic",
       "correct": "T",
+      "points": 2,
       "media": null,
       "mediaType": null
     },
@@ -278,6 +309,7 @@
       "q": "W jaką liczbę gaśnic musi być wyposażony skład dwuwagonowy?",
       "type": "specialist",
       "correct": "A",
+      "points": 2,
       "media": null,
       "mediaType": null,
       "a": "Jedną gaśnicę w każdym wagonie.",
@@ -289,6 +321,7 @@
       "q": "Który z czynników atmosferycznych zmniejsza możliwość wystąpienia poślizgu?",
       "type": "specialist",
       "correct": "A",
+      "points": 3,
       "media": null,
       "mediaType": null,
       "a": "Gołoledź.",
@@ -300,6 +333,7 @@
       "q": "Czy  widząc ten znak jesteś ostrzegany o zbliżaniu się do miejsca szczególnie uczęszczanego przez dzieci?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "112TRAM1org.webp",
       "mediaType": "image"
     },
@@ -308,6 +342,7 @@
       "q": "Czy widząc ten znak ostrzegawczy, motorniczy prowadzący tramwaj powinien spodziewać się pojazdów wjeżdżających na tory?",
       "type": "basic",
       "correct": "T",
+      "points": 1,
       "media": "113TRAM3org.webp",
       "mediaType": "image"
     },
@@ -316,25 +351,16 @@
       "q": "Czy zakaz wyrażony widocznym znakiem zostanie odwołany na najbliższym skrzyżowaniu dróg?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": "114KRAKOWorg.webp",
       "mediaType": "image"
-    },
-    {
-      "id": 2684,
-      "q": "Czy kierując tramwajem jesteś obowiązany mieć przy sobie i okazywać na żądanie uprawnionego organu dokument stwierdzający dopuszczenie tramwaju do ruchu?",
-      "type": "specialist",
-      "correct": "A",
-      "media": null,
-      "mediaType": null,
-      "a": "Tak.",
-      "b": "Nie, ponieważ taki dokument znajduje się tylko w zajezdni.",
-      "c": "Nie, ponieważ taki dokument nie dotyczy tramwaju."
     },
     {
       "id": 2686,
       "q": "Kto jest uprawniony do kontroli dokumentów kierującego tramwajem?",
       "type": "specialist",
       "correct": "A",
+      "points": 1,
       "media": null,
       "mediaType": null,
       "a": "Policjant lub strażnik miejski.",
@@ -346,6 +372,7 @@
       "q": "Czy na najbliższym skrzyżowaniu torów lub ich rozwidleniu zakaz wyrażony tym znakiem zostanie odwołany?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "114KRAKOWorg.webp",
       "mediaType": "image"
     },
@@ -354,6 +381,7 @@
       "q": "Czy w tej sytuacji kierujący tramwajem jest obowiązany zachować szczególną ostrożność?",
       "type": "basic",
       "correct": "T",
+      "points": 1,
       "media": "124TRAM3org.mp4",
       "mediaType": "video"
     },
@@ -362,6 +390,7 @@
       "q": "Czy widząc taki sygnał, kierujący tramwajem musi zawsze, niezależnie od okoliczności, zatrzymać pojazd?",
       "type": "basic",
       "correct": "N",
+      "points": 2,
       "media": "138TRAM3org.webp",
       "mediaType": "image"
     },
@@ -370,6 +399,7 @@
       "q": "Czy sygnały świetlne mają pierwszeństwo przed znakami drogowymi regulującymi pierwszeństwo przejazdu?",
       "type": "basic",
       "correct": "T",
+      "points": 2,
       "media": "141KRAKOWorg.webp",
       "mediaType": "image"
     },
@@ -378,6 +408,7 @@
       "q": "Czy ten sygnał oznacza, że za chwilę zapali się sygnał w kształcie kreski poziomej?",
       "type": "basic",
       "correct": "T",
+      "points": 2,
       "media": "138TRAM3org.webp",
       "mediaType": "image"
     },
@@ -386,6 +417,7 @@
       "q": "Czy w tej sytuacji, kierujący tramwajem musi czekać aż zapali się światło zielone?",
       "type": "basic",
       "correct": "N",
+      "points": 2,
       "media": "143TRAM3org.webp",
       "mediaType": "image"
     },
@@ -394,6 +426,7 @@
       "q": "Czy przy tym układzie świateł, kierując tramwajem, masz prawo wjechać na skrzyżowanie?",
       "type": "basic",
       "correct": "N",
+      "points": 2,
       "media": "144TRAM3org.webp",
       "mediaType": "image"
     },
@@ -402,6 +435,7 @@
       "q": "Czy to oznakowanie poziome wskazuje, że motorniczy powinien spodziewać się pojazdów mogących wjechać na wydzielone torowisko z prawej strony?",
       "type": "basic",
       "correct": "N",
+      "points": 1,
       "media": "127TRAM3org.webp",
       "mediaType": "image"
     },
@@ -410,6 +444,7 @@
       "q": "Czy w tym miejscu powinieneś spodziewać się samochodów wjeżdżających na wydzielone torowisko?",
       "type": "basic",
       "correct": "T",
+      "points": 1,
       "media": "135TRAM3org.webp",
       "mediaType": "image"
     },
@@ -418,6 +453,7 @@
       "q": "Czy kierując tramwajem włączającym się do ruchu, jesteś obowiązany obserwować tor, na który zamierzasz wjechać?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "146KRAKOWorg.mp4",
       "mediaType": "video"
     },
@@ -426,6 +462,7 @@
       "q": "Czy ruszając po zatrzymaniu tramwaju wymuszonym przez pieszego, który przekraczał jezdnię w miejscu niedozwolonym, włączasz się do ruchu?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": "147KRAKOWorg.webp",
       "mediaType": "image"
     },
@@ -434,6 +471,7 @@
       "q": "Czy w tej sytuacji, włączając się do ruchu, masz obowiązek ustąpić pierwszeństwa innemu, znajdującemu się w ruchu tramwajowi?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "148KRAKOWPorg.mp4",
       "mediaType": "video"
     },
@@ -442,6 +480,7 @@
       "q": "Czy w tej sytuacji, masz obowiązek stosować się do znaku \"ustąp pierwszeństwa\"?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": "150TRAM1org.webp",
       "mediaType": "image"
     },
@@ -450,6 +489,7 @@
       "q": "Czy w tej sytuacji, masz obowiązek zatrzymać tramwaj przed linią warunkowego zatrzymania?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "151KRAKOWorg.webp",
       "mediaType": "image"
     },
@@ -458,6 +498,7 @@
       "q": "Czy w tej sytuacji kmasz obowiązek sygnalizować zamiar zmiany kierunku jazdy?",
       "type": "basic",
       "correct": "T",
+      "points": 1,
       "media": "156TRAM3org.mp4",
       "mediaType": "video"
     },
@@ -466,6 +507,7 @@
       "q": "Czy ten znak zobowiązuje Cię do zachowania szczególnej ostrożności i dostosowania prędkości, tak aby było możliwe odpowiednio szybkie reagowanie na niebezpieczną sytuację?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "166TRAM1org.webp",
       "mediaType": "image"
     },
@@ -474,6 +516,7 @@
       "q": "Czy ten znak zobowiązuje Cię do zachowania szczególnej ostrożności?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "167TRAM1org.webp",
       "mediaType": "image"
     },
@@ -482,6 +525,7 @@
       "q": "Czy włączając się do ruchu przy wyjeździe z zajezdni, masz obowiązek zachować szczególną ostrożność?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "153KRAKOWorg.mp4",
       "mediaType": "video"
     },
@@ -490,6 +534,7 @@
       "q": "Czy w takiej sytuacji masz prawo ruszyć nie czekając aż pieszy opuści przejście dla pieszych?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": "169TRAM3org.webp",
       "mediaType": "image"
     },
@@ -498,6 +543,7 @@
       "q": "Czy motorniczych obowiązuje taka sama norma dopuszczalnej zawartości alkoholu we krwi co pozostałych kierowców?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": null,
       "mediaType": null
     },
@@ -506,6 +552,7 @@
       "q": "Czy motorniczy przed rozpoczęciem pracy może przyjąć lek, w którego ulotce znajduje się następujący zapis \"w czasie stosowania preparatu nie wolno prowadzić pojazdów\"?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": null,
       "mediaType": null
     },
@@ -514,6 +561,7 @@
       "q": "Czy motorniczy przed rozpoczęciem pracy powinien upewnić się, że przyjmowane przez niego leki nie mają przeciwwskazań do prowadzenia pojazdów?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": null,
       "mediaType": null
     },
@@ -522,6 +570,7 @@
       "q": "Czy kierowanie tramwajem pod wpływem środków działających tak jak alkohol jest zabronione?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": null,
       "mediaType": null
     },
@@ -530,6 +579,7 @@
       "q": "Czy wychodząc z tramwaju podczas postoju na pętli, powinieneś zabezpieczyć go przed uruchomieniem przez osoby niepowołane?",
       "type": "basic",
       "correct": "T",
+      "points": 1,
       "media": null,
       "mediaType": null
     },
@@ -538,6 +588,7 @@
       "q": "Czy hamulce szynowe zadziałają po awarii przetwornicy?",
       "type": "specialist",
       "correct": "A",
+      "points": 1,
       "media": null,
       "mediaType": null,
       "a": "Tak.",
@@ -549,6 +600,7 @@
       "q": "Czy kierując tramwajem powinieneś spodziewać się, że bawiące się niedaleko torów dzieci mogą zachować się nieprzewidywalnie i konieczne będzie zmniejszenie prędkości lub zatrzymanie pojazdu?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": null,
       "mediaType": null
     },
@@ -557,6 +609,7 @@
       "q": "Czy podczas długotrwałej awarii możesz pozwolić pasażerom opuścić tramwaj, nawet jeśli może to utrudnić ruch lub narazić ich na niebezpieczeństwo?",
       "type": "basic",
       "correct": "N",
+      "points": 1,
       "media": null,
       "mediaType": null
     },
@@ -565,6 +618,7 @@
       "q": "Czy jako motorniczy jesteś zobowiązany do podania swoich danych personalnych pasażerowi uczestniczącemu w wypadku?",
       "type": "basic",
       "correct": "T",
+      "points": 2,
       "media": null,
       "mediaType": null
     },
@@ -573,6 +627,7 @@
       "q": "Czy jesteś zobowiązany podać dane firmy, w której pracujesz oraz dane dotyczące ubezpieczyciela tramwaju pasażerowi, który uczestniczy w wypadku?",
       "type": "basic",
       "correct": "T",
+      "points": 2,
       "media": null,
       "mediaType": null
     },
@@ -581,6 +636,7 @@
       "q": "Czy jako motorniczy, niezależnie od tego, czy zostałeś przeszkolony, czy nie, jesteś zobowiązany udzielić niezbędnej pomocy ofiarom wypadku?",
       "type": "basic",
       "correct": "T",
+      "points": 2,
       "media": null,
       "mediaType": null
     },
@@ -589,6 +645,7 @@
       "q": "Czy zmęczenie może powodować skutki zbliżone do działania alkoholu, takie jak obniżona możliwość koncentracji oraz wydłużony czas reakcji?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": null,
       "mediaType": null
     },
@@ -597,6 +654,7 @@
       "q": "Czy przejeżdżając obok tramwaju stojącego na przystanku nieznajdującym się przy chodniku masz obowiązek zachować szczególną ostrożność?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "287TRAM2org.webp",
       "mediaType": "image"
     },
@@ -605,6 +663,7 @@
       "q": "Czy uczestnicząc w wypadku, w którym są zabici lub ranni, masz prawo oddalić się z miejsca wypadku, gdy przybędą służby nadzoru ruchu?",
       "type": "basic",
       "correct": "N",
+      "points": 2,
       "media": null,
       "mediaType": null
     },
@@ -613,6 +672,7 @@
       "q": "Czy uczestnicząc w wypadku, w którym są zabici lub ranni, masz prawo zacząć samodzielnie usuwać jego skutki - sprzątać, przygotowywać tramwaj do holowania itp.?",
       "type": "basic",
       "correct": "N",
+      "points": 2,
       "media": null,
       "mediaType": null
     },
@@ -621,6 +681,7 @@
       "q": "Czy w tej sytuacji motorniczy posiada pierwszeństwo przejazdu przed pojazdami poruszającymi się drogą poprzeczną?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "206TRAM2.mp4",
       "mediaType": "video"
     },
@@ -629,6 +690,7 @@
       "q": "Czy w tej sytuacji, motorniczy posiada pierwszeństwo przejazdu przed pojazdami jadącymi po najbliższej poprzecznej jezdni?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": "207TRAM1org.mp4",
       "mediaType": "video"
     },
@@ -637,6 +699,7 @@
       "q": "Czy w tej sytuacji motorniczy ma obowiązek ustąpić pierwszeństwa przejazdu tramwajom poruszającym się po torowisku poprzecznym?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "211TRAM2org.mp4",
       "mediaType": "video"
     },
@@ -645,6 +708,7 @@
       "q": "Czy ograniczenie prędkości, umieszczone pod tym znakiem ostrzegawczym, dotyczy wyłącznie terenu robót drogowych i jest odwoływane wraz z wyjazdem z tego obszaru?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": "166TRAM1org.webp",
       "mediaType": "image"
     },
@@ -653,6 +717,7 @@
       "q": "Czy w tej sytuacji motorniczy ma obowiązek zatrzymać się na tuż przed linią wyznaczoną przez prostokąty?",
       "type": "basic",
       "correct": "T",
+      "points": 1,
       "media": "132TRAM3org.webp",
       "mediaType": "image"
     },
@@ -661,6 +726,7 @@
       "q": "Czy w tej sytuacji motorniczy ma pierwszeństwo przejazdu przed tramwajami mogącymi nadjechać z lewej strony?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": "264KRAKOWorg.mp4",
       "mediaType": "video"
     },
@@ -669,6 +735,7 @@
       "q": "Czy w tej sytuacji masz prawo pojechać na wprost?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "POL_019org.webp",
       "mediaType": "image"
     },
@@ -677,6 +744,7 @@
       "q": "Czy w tej sytuacji wolno Ci skręcić w lewo?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "POL_019org.webp",
       "mediaType": "image"
     },
@@ -685,6 +753,7 @@
       "q": "Czy w tej sytuacji powinieneś być przygotowany do wjechania na skrzyżowanie?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "POL_026org.webp",
       "mediaType": "image"
     },
@@ -693,6 +762,7 @@
       "q": "Czy masz prawo zaprzestać sygnalizowania zamiaru zmiany kierunku jazdy zaraz po rozpoczęciu manewru?",
       "type": "basic",
       "correct": "N",
+      "points": 1,
       "media": "154TRAM3org.mp4",
       "mediaType": "video"
     },
@@ -701,6 +771,7 @@
       "q": "Czy w tej sytuacji masz obowiązek użyć kierunkowskazu zmieniając tor jazdy?",
       "type": "basic",
       "correct": "T",
+      "points": 1,
       "media": "214TRAM2org.mp4",
       "mediaType": "video"
     },
@@ -709,6 +780,7 @@
       "q": "Czy w tej sytuacji masz obowiązek zastosować zasadę ograniczonego zaufania?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "217TRAM1org.mp4",
       "mediaType": "video"
     },
@@ -717,6 +789,7 @@
       "q": "Czy w tej sytuacji masz obowiązek umożliwić kierowcy opuszczenie skrzyżowania?",
       "type": "basic",
       "correct": "T",
+      "points": 2,
       "media": "219TRAM2org.webp",
       "mediaType": "image"
     },
@@ -725,6 +798,7 @@
       "q": "Czy w tej sytuacji powinieneś być przygotowany na to, że kierowca może wjechać na torowisko, blokując przejazd?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "223TRAM1org.mp4",
       "mediaType": "video"
     },
@@ -733,6 +807,7 @@
       "q": "Czy w tej sytuacji motorniczy powien zaczekać, aż pieszy opuści przejście?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "222TRAM1org.webp",
       "mediaType": "image"
     },
@@ -741,6 +816,7 @@
       "q": "Czy dozwolone jest wyprzedzanie na przejeździe dla rowerzystów, na którym ruch jest kierowany?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "227TRAM3org.webp",
       "mediaType": "image"
     },
@@ -749,6 +825,7 @@
       "q": "Czy w tej sytuacji będziesz miał pierwszeństwo przed rowerzystą, gdy ten znajdzie się na przejeździe?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": "227TRAM3org.webp",
       "mediaType": "image"
     },
@@ -757,6 +834,7 @@
       "q": "Czy w tej sytuacji, skręcając w prawo możesz przyjąć, że nie wystąpi kolizja z innymi kierunkami ruchu?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "213TRAM3org.webp",
       "mediaType": "image"
     },
@@ -765,6 +843,7 @@
       "q": "Czy w tej sytuacji motorniczy jest zobowiązany ustąpić pierwszeństwa i zachować szczególną ostrożność?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "263KRAKOWorg.mp4",
       "mediaType": "video"
     },
@@ -773,6 +852,7 @@
       "q": "Czy w tej sytuacji samochód nadjeżdżający z prawej strony ma pierwszeństwo przejazdu?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": "254TRAM1org.mp4",
       "mediaType": "video"
     },
@@ -781,6 +861,7 @@
       "q": "Czy znak ostrzegawczy \"oszronienie jezdni\" zobowiązuje motorniczego do zachowania szczególnej ostrożności?",
       "type": "basic",
       "correct": "T",
+      "points": 1,
       "media": "256TRAM3org.webp",
       "mediaType": "image"
     },
@@ -789,6 +870,7 @@
       "q": "Czy w tej sytuacji masz obowiązek sygnalizować zamiar skrętu w lewo?",
       "type": "basic",
       "correct": "T",
+      "points": 1,
       "media": "027TRAM3org.mp4",
       "mediaType": "video"
     },
@@ -797,6 +879,7 @@
       "q": "Jeśli tramwaj, wyposażony w hamulec szczękowy toczy się mimo wciśniętego hamulca i świecącej kontrolki hamulców postojowych, świadczyć to może o:",
       "type": "specialist",
       "correct": "C",
+      "points": 1,
       "media": null,
       "mediaType": null,
       "a": "nadmiernej liczbie pasażerów w tramwaju.",
@@ -808,6 +891,7 @@
       "q": "W jaki sposób kierujący tramwajem powinien hamować?",
       "type": "specialist",
       "correct": "B",
+      "points": 3,
       "media": null,
       "mediaType": null,
       "a": "Wykorzystując za każdym razem hamulce szynowe.",
@@ -819,6 +903,7 @@
       "q": "Jak, kierując tramwajem, powinieneś zareagować, gdy warunki atmosferyczne ulegają pogorszeniu, np. pada deszcz lub opadają liście?",
       "type": "specialist",
       "correct": "A",
+      "points": 3,
       "media": null,
       "mediaType": null,
       "a": "Powinienem zmniejszyć prędkość, dostosowując ją do panujących warunków.",
@@ -830,6 +915,7 @@
       "q": "Czy motorniczemu wolno podczas kierowania tramwajem korzystać z trzymanego w ręku telefonu komórkowego?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": null,
       "mediaType": null
     },
@@ -838,6 +924,7 @@
       "q": "Czy podczas kierowania tramwajem dozwolone jest korzystanie z telefonu komórkowego, jeśli nie wymaga to trzymania aparatu w ręku?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": null,
       "mediaType": null
     },
@@ -846,6 +933,7 @@
       "q": "Czy uczestnicząc w wypadku drogowym, w którym są ranni, masz obowiązek niezwłocznie zatrzymać tramwaj, nie powodując przy tym zagrożenia?",
       "type": "basic",
       "correct": "T",
+      "points": 2,
       "media": null,
       "mediaType": null
     },
@@ -854,6 +942,7 @@
       "q": "Czy masz obowiązek, o ile to możliwe, usunąć tramwaj z miejsca wypadku, w którym nie ma rannych, ani zabitych.?",
       "type": "basic",
       "correct": "T",
+      "points": 2,
       "media": null,
       "mediaType": null
     },
@@ -862,6 +951,7 @@
       "q": "Czy uczestnicząc w wypadku, masz obowiązek podać swoje dane personalne na żądanie pasażera, który także uczestniczył w zdarzeniu?",
       "type": "basic",
       "correct": "T",
+      "points": 2,
       "media": null,
       "mediaType": null
     },
@@ -870,6 +960,7 @@
       "q": "Czy uczestnicząc w wypadku drogowym, masz obowiązek powiadomić policję, jeśli w wypadku nie ma zabitych lub rannych?",
       "type": "basic",
       "correct": "N",
+      "points": 2,
       "media": null,
       "mediaType": null
     },
@@ -878,6 +969,7 @@
       "q": "Czy uczestnicząc w wypadku drogowym, masz obowiązek powiadomić policję i wezwać zespół ratownictwa medycznego, jeśli w wypadku są osoby zabite lub ranne?",
       "type": "basic",
       "correct": "T",
+      "points": 2,
       "media": null,
       "mediaType": null
     },
@@ -886,6 +978,7 @@
       "q": "Czy widoczna z prawej strony linia ciągła zezwala na wjechanie na torowisko innego pojazdu?",
       "type": "basic",
       "correct": "N",
+      "points": 1,
       "media": "130TRAM3org_po_korekcie.webp",
       "mediaType": "image"
     },
@@ -894,6 +987,7 @@
       "q": "Czy omijając pojazd do nauki jazdy, masz obowiązek zachować szczególną ostrożność?",
       "type": "basic",
       "correct": "T",
+      "points": 2,
       "media": "032TRAM3po korekcie.webp",
       "mediaType": "image"
     },
@@ -902,6 +996,7 @@
       "q": "Czy wjeżdżając na tak oznakowane skrzyżowanie masz obowiązek ustąpić pierwszeństwa pojazdom znajdującym się na nim?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "007TRAM1org.webp",
       "mediaType": "image"
     },
@@ -910,6 +1005,7 @@
       "q": "Czy podczas kierowania tramwajem masz prawo rozmawiać przez telefon komórkowy, wymagający trzymania słuchawki lub mikrofonu w ręku?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": null,
       "mediaType": null
     },
@@ -918,6 +1014,7 @@
       "q": "Czy w tej sytuacji, przejeżdżając obok przystanku tramwajowego, masz obowiązek zachować szczególną ostrożność?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "133TRAM3Porg3po korekcie.webp",
       "mediaType": "image"
     },
@@ -926,6 +1023,7 @@
       "q": "Czy uniesiona ręka policjanta oznacza mającą nastąpić zmianę nadawanego sygnału?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "POL_059org.webp",
       "mediaType": "image"
     },
@@ -934,6 +1032,7 @@
       "q": "Jak się zachowasz wjeżdżając na skrzyżowanie równorzędne?",
       "type": "specialist",
       "correct": "B",
+      "points": 3,
       "media": null,
       "mediaType": null,
       "a": "Patrzę tylko na wprost.",
@@ -945,6 +1044,7 @@
       "q": "Czy w tak oznakowanym miejscu masz obowiązek być przygotowanym, że na przejeździe pojawi się osoba jadąca rowerem?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "117TRAM3org.webp",
       "mediaType": "image"
     },
@@ -953,6 +1053,7 @@
       "q": "Czy wjeżdżając na tak oznakowane skrzyżowanie masz pierwszeństwo przejazdu przed innymi pojazdami?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": "007TRAM1org.webp",
       "mediaType": "image"
     },
@@ -961,6 +1062,7 @@
       "q": "Czy ten znak ostrzegawczy, oznacza pierwszeństwo przejazdu dla tramwajów?",
       "type": "basic",
       "correct": "N",
+      "points": 1,
       "media": "001TRAM1org.webp",
       "mediaType": "image"
     },
@@ -969,6 +1071,7 @@
       "q": "Z jakiego powodu motorniczy powinien zwolnić przejeżdżając przez miejsce z obniżoną siecią trakcyjną np. pod wiaduktem?",
       "type": "specialist",
       "correct": "B",
+      "points": 2,
       "media": null,
       "mediaType": null,
       "a": "Ponieważ szybki przejazd przez takie miejsce powoduje echo, które może przeszkadzać mieszkańcom okolicznych domów.",
@@ -980,6 +1083,7 @@
       "q": "Czy ten znak ostrzegawczy dotyczy kierującego tramwajem?",
       "type": "basic",
       "correct": "T",
+      "points": 1,
       "media": "255TRAM3org.webp",
       "mediaType": "image"
     },
@@ -988,6 +1092,7 @@
       "q": "Czy te znak,i zawsze zobowiązują kierującego tramwajem do zatrzymania, w celu ustąpienia pierwszeństwa?",
       "type": "basic",
       "correct": "N",
+      "points": 1,
       "media": "005TRAM3org.mp4",
       "mediaType": "video"
     },
@@ -996,6 +1101,7 @@
       "q": "Czy ten znak ostrzega Cię, że nie dalej niż za 100m rozpocznie się teren robót drogowych?",
       "type": "basic",
       "correct": "T",
+      "points": 1,
       "media": "166TRAM1org.webp",
       "mediaType": "image"
     },
@@ -1004,6 +1110,7 @@
       "q": "Czy ograniczenie prędkości, określone przez ten znak, obowiązuje  wyłącznie do najbliższego skrzyżowania bądź przecięcia torów, o ile inne znaki nie nakażą inaczej?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "166TRAM1org.webp",
       "mediaType": "image"
     },
@@ -1012,6 +1119,7 @@
       "q": "Czy ten znak informacyjny wskazuje początek odcinka wielotorowego?",
       "type": "basic",
       "correct": "N",
+      "points": 1,
       "media": "012TRAM3org.webp",
       "mediaType": "image"
     },
@@ -1020,6 +1128,7 @@
       "q": "Zamierzasz skręcić w prawo. Czy masz obowiązek ustąpić pierszeństwa pojazdom nadjeżdżającym z tego samego kierunku, kontynuującym jazdę na wprost?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": "118TRAM3org.webp",
       "mediaType": "image"
     },
@@ -1028,6 +1137,7 @@
       "q": "Czy znak umieszczony na przewodzie trakcyjnym oznacza, że zbliżasz się do skrzyżowania z sygnalizacją zmienianą wzbudzeniowo?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "121TRAM3orgpo korekcie.webp",
       "mediaType": "image"
     },
@@ -1036,6 +1146,7 @@
       "q": "Czy przed ręcznym przełożeniem zwrotnicy motorniczy powinien \"zaparkować\" tramwaj?",
       "type": "basic",
       "correct": "T",
+      "points": 1,
       "media": null,
       "mediaType": null
     },
@@ -1044,6 +1155,7 @@
       "q": "Czy w czasie postoju na pętli masz prawo opuścić tramwaj bez zabezpieczenia go?",
       "type": "basic",
       "correct": "N",
+      "points": 1,
       "media": null,
       "mediaType": null
     },
@@ -1052,6 +1164,7 @@
       "q": "Czy motorniczy ma prawo prowadzić tramwaj w stanie po użyciu alkoholu (np. po wypiciu jednego piwa), jeśli czuje się dobrze?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": null,
       "mediaType": null
     },
@@ -1060,6 +1173,7 @@
       "q": "Czy motorniczy, uwzględniając wszystkie formy zatrudnienia, może odpoczywać krócej niż 11 godzin na dobę?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": null,
       "mediaType": null
     },
@@ -1068,6 +1182,7 @@
       "q": "Czy podczas kierowania tramwajem masz prawo rozmawiać przez telefon komórkowy, jeżeli nie trzymasz słuchawki i mikrofonu w ręku?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": null,
       "mediaType": null
     },
@@ -1076,6 +1191,7 @@
       "q": "Czy w tej sytuacji masz prawo wjechać za sygnalizator jeśli oceniasz, że nie będziesz mógł opuścić skrzyżowania przed zakończeniem nadawanego sygnału?",
       "type": "basic",
       "correct": "N",
+      "points": 2,
       "media": "152TRAM3.mp4",
       "mediaType": "video"
     },
@@ -1084,6 +1200,7 @@
       "q": "Zamierzasz skręcić w lewo na tym skrzyżowaniu. Czy wolno Ci przejechać bez zachowania szczególnej ostrożności?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": "POL_084org.webp",
       "mediaType": "image"
     },
@@ -1092,6 +1209,7 @@
       "q": "Czy w tej sytuacji masz obowiązek sygnalizować zmianę kierunku jazdy?",
       "type": "basic",
       "correct": "T",
+      "points": 1,
       "media": "156TRAM3org.mp4",
       "mediaType": "video"
     },
@@ -1100,6 +1218,7 @@
       "q": "Czy motorniczemu wykonującemu przewozy pasażerskie, przysługuje prawo do co najmniej 35 godzin nieprzerwanego odpoczynku w tygodniu?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": null,
       "mediaType": null
     },
@@ -1108,6 +1227,7 @@
       "q": "Czy w tej sytuacji powinieneś spodziewać się pojazdów mogących z lewej strony wjechać na torowisko?",
       "type": "basic",
       "correct": "T",
+      "points": 1,
       "media": "127TRAM3orgpo korekcie.webp",
       "mediaType": "image"
     },
@@ -1116,6 +1236,7 @@
       "q": "Czy w przedstawionej sytuacji, masz prawo dojechać do sygnalizatora przejeżdżając przez linię wyznaczoną przez prostokąty?",
       "type": "basic",
       "correct": "N",
+      "points": 1,
       "media": "132TRAM3org.webp",
       "mediaType": "image"
     },
@@ -1124,6 +1245,7 @@
       "q": "Czy w tej sytuacji, masz obowiązek zatrzymać tramwaj przed linią złożoną z trójkątów?",
       "type": "basic",
       "correct": "N",
+      "points": 1,
       "media": "126TRAM3org.mp4",
       "mediaType": "video"
     },
@@ -1132,6 +1254,7 @@
       "q": "Czy masz obowiązek zatrzymać tramwaj na linii wyznaczonej przez trójkąty, jeśli drogą poprzeczną nadjeżdżałby kolejny pojazd?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "129TRAM3org.mp4",
       "mediaType": "video"
     },
@@ -1140,6 +1263,7 @@
       "q": "Która z wymienionych przyczyn może powodować przerwy w dopływie prądu wysokiego napięcia bezpośrednio do wagonu?",
       "type": "specialist",
       "correct": "C",
+      "points": 1,
       "media": null,
       "mediaType": null,
       "a": "Uszkodzenie baterii.",
@@ -1151,6 +1275,7 @@
       "q": "Jaki skutek może wywołać wyszczerbienie grafitowej wkładki pantografu?",
       "type": "specialist",
       "correct": "B",
+      "points": 1,
       "media": null,
       "mediaType": null,
       "a": "Zwiększenie poboru prądu z sieci trakcyjnej.",
@@ -1162,6 +1287,7 @@
       "q": "Kiedy używa się hamulca mechanicznego (nazywanego też postojowym)?",
       "type": "specialist",
       "correct": "B",
+      "points": 1,
       "media": null,
       "mediaType": null,
       "a": "We wszystkich fazach hamowania.",
@@ -1173,6 +1299,7 @@
       "q": "Który z wymienionych czynników powoduje działanie hamulca postojowego?",
       "type": "specialist",
       "correct": "B",
+      "points": 1,
       "media": null,
       "mediaType": null,
       "a": "Cewka elektromagnetyczna.",
@@ -1184,6 +1311,7 @@
       "q": "Od czego zależy sprawność hamulców elektrodynamicznych?",
       "type": "specialist",
       "correct": "A",
+      "points": 1,
       "media": null,
       "mediaType": null,
       "a": "Od sprawności silników trakcyjnych.",
@@ -1195,6 +1323,7 @@
       "q": "Co należy zrobić aby zwolnić (zluzować) hamulce postojowe do holowania uszkodzonego tramwaju?",
       "type": "specialist",
       "correct": "B",
+      "points": 1,
       "media": null,
       "mediaType": null,
       "a": "Wyłączyć wagon, po jego wyłączeniu hamulce są automatycznie zluzowane.",
@@ -1206,6 +1335,7 @@
       "q": "Czy na tym skrzyżowaniu motorniczy ma obowiązek ustąpić pierwszeństwa pojazdom jadącym drogą poprzeczną?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "129TRAM3org.mp4",
       "mediaType": "video"
     },
@@ -1214,6 +1344,7 @@
       "q": "Czy za widocznym znakiem masz obowiązek ustąpić pierwszeństwa przejazdu także pojazdom, które nadjeżdżałyby jezdnią z prawej strony?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "265TRAM2org.webp",
       "mediaType": "image"
     },
@@ -1222,6 +1353,7 @@
       "q": "Czy w tej sytuacji masz pierwszeństwo przejazdu przed pojazdami, które jadą obok Ciebie i zamierzają jechać dalej na wprost?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "208TRAM3org.mp4",
       "mediaType": "video"
     },
@@ -1230,6 +1362,7 @@
       "q": "Czy w tym miejscu przecięcia torów masz pierwszeństwo przed tramwajem, który nadjechałby z lewej strony?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": "209TRAM1org.mp4",
       "mediaType": "video"
     },
@@ -1238,6 +1371,7 @@
       "q": "Czy motorniczy ma prawo zwiększyć prędkość, gdy tramwaj, który prowadzi, jest wyprzedzany?",
       "type": "basic",
       "correct": "N",
+      "points": 2,
       "media": "029TRAM3org.mp4",
       "mediaType": "video"
     },
@@ -1246,6 +1380,7 @@
       "q": "Czy konieczność zachowania bezpiecznego odstępu od wolniej jadącego obok Ciebie pojazdu może wymagać zmniejszenia prędkości?",
       "type": "basic",
       "correct": "T",
+      "points": 2,
       "media": "027TRAM3org.mp4",
       "mediaType": "video"
     },
@@ -1254,6 +1389,7 @@
       "q": "Czy podczas omijania masz w każdym przypadku obowiązek zachować bezpieczny odstęp?",
       "type": "basic",
       "correct": "T",
+      "points": 2,
       "media": "032TRAM3po korekcie.webp",
       "mediaType": "image"
     },
@@ -1262,6 +1398,7 @@
       "q": "Czy w tej sytuacji motorniczy wykonuje manewr wymijania?",
       "type": "basic",
       "correct": "T",
+      "points": 2,
       "media": "033TRAM2org.mp4",
       "mediaType": "video"
     },
@@ -1270,6 +1407,7 @@
       "q": "Czy w tej sytuacji wykonujesz manewr omijania?",
       "type": "basic",
       "correct": "N",
+      "points": 2,
       "media": "035TRAM2org.mp4",
       "mediaType": "video"
     },
@@ -1278,6 +1416,7 @@
       "q": "Czy w każdym przypadku masz obowiązek zachować odległość co najmniej 1 metra od omijanego pojazdu, uczestnika ruchu lub przeszkody?",
       "type": "basic",
       "correct": "N",
+      "points": 2,
       "media": null,
       "mediaType": null
     },
@@ -1286,6 +1425,7 @@
       "q": "Czy motorniczy, który nie ma możliwości obserwacji drogi za tramwajem, może cofać, nie zapewniając sobie pomocy innej osoby?",
       "type": "basic",
       "correct": "N",
+      "points": 2,
       "media": null,
       "mediaType": null
     },
@@ -1294,6 +1434,7 @@
       "q": "Czy motorniczy, który źle przełożył zwrotnicę i zauważył to ok. 1 m za nią, ma prawo wycofać tramwaj nie sprawdzając, czy nie spowoduje tym zagrożenia?",
       "type": "basic",
       "correct": "N",
+      "points": 2,
       "media": null,
       "mediaType": null
     },
@@ -1302,6 +1443,7 @@
       "q": "Czy masz obowiązek zachować szczególną ostrożność, gdy omijasz pojazd przewożący zorganizowaną grupę dzieci do 18 lat, które z niego wysiadają?",
       "type": "basic",
       "correct": "T",
+      "points": 2,
       "media": null,
       "mediaType": null
     },
@@ -1310,6 +1452,7 @@
       "q": "Jakiego rodzaju hamulcem jest hamulec postojowy?",
       "type": "specialist",
       "correct": "B",
+      "points": 1,
       "media": null,
       "mediaType": null,
       "a": "Aktywny - działa tylko po załączeniu tramwaju i naciśnięciu pedału hamulca.",
@@ -1321,6 +1464,7 @@
       "q": "Jaki skutek wywoła zatrzymanie wagonu w miejscu styku pantografu z izolatorem?",
       "type": "specialist",
       "correct": "A",
+      "points": 1,
       "media": null,
       "mediaType": null,
       "a": "Zanik rozruchu wagonu oraz pracy przetwornicy.",
@@ -1332,6 +1476,7 @@
       "q": "Czy wobec pieszych zachowujących się w widoczny sposób należy zastosować zasadę ograniczonego zaufania?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "040TRAM3.mp4",
       "mediaType": "video"
     },
@@ -1340,6 +1485,7 @@
       "q": "W jakich sytuacjach motorniczy może wpuścić lub wypuścić pasażera, któremu się bardzo śpieszy?",
       "type": "specialist",
       "correct": "B",
+      "points": 3,
       "media": null,
       "mediaType": null,
       "a": "W czasie oczekiwania na zmianę światła.",
@@ -1351,6 +1497,7 @@
       "q": "Które, z tych oznaczeń tramwaju, oprócz oznakowania liniowego, jest wymagane?",
       "type": "specialist",
       "correct": "A",
+      "points": 1,
       "media": null,
       "mediaType": null,
       "a": "Numer taborowy.",
@@ -1362,6 +1509,7 @@
       "q": "W jakich miejscach motorniczy może wpuszczać lub wypuszczać pasażerów?",
       "type": "specialist",
       "correct": "B",
+      "points": 3,
       "media": null,
       "mediaType": null,
       "a": "W każdym miejscu, w tym także na przystankach.",
@@ -1373,6 +1521,7 @@
       "q": "Czy za widocznym na pierwszym planie znakiem ostrzegawczym powinieneś spodziewać się ruchu rowerzystów?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "167TRAM1org.webp",
       "mediaType": "image"
     },
@@ -1381,6 +1530,7 @@
       "q": "Czy kierując tramwajem, masz obowiązek posiadać przy sobie pozwolenie na kierowanie tym pojazdem?",
       "type": "specialist",
       "correct": "A",
+      "points": 1,
       "media": null,
       "mediaType": null,
       "a": "Tak, zawsze.",
@@ -1392,6 +1542,7 @@
       "q": "Jak należy postąpić w przypadku wymiany przepalonego bezpiecznika topikowego - wysokiego napięcia?",
       "type": "specialist",
       "correct": "B",
+      "points": 1,
       "media": null,
       "mediaType": null,
       "a": "Jedynie wyłączyć przetwornicę.",
@@ -1403,6 +1554,7 @@
       "q": "Co powinien zrobić motorniczy przed rozpoczęciem jazdy, bezpośrednio po zamknięciu drzwi?",
       "type": "specialist",
       "correct": "A",
+      "points": 3,
       "media": null,
       "mediaType": null,
       "a": "Uważnie obserwować otoczenie dookoła i podać sygnał odjazdu dzwonkiem.",
@@ -1414,6 +1566,7 @@
       "q": "Jaka pozycja motorniczego jest prawidłowa podczas ręcznego przestawiania zwrotnicy?",
       "type": "specialist",
       "correct": "C",
+      "points": 3,
       "media": null,
       "mediaType": null,
       "a": "Pozycja motorniczego nie ma znaczenia.",
@@ -1425,6 +1578,7 @@
       "q": "W jakim miejscu motorniczy może wypuścić pasażerów z powodu długotrwałych utrudnień w ruchu drogowym?",
       "type": "specialist",
       "correct": "C",
+      "points": 3,
       "media": null,
       "mediaType": null,
       "a": "W dowolnie wybranym miejscu.",
@@ -1436,6 +1590,7 @@
       "q": "Co powinien zrobić motorniczy, aby bezpiecznie dokonać elektrycznego połączenia wagonów?",
       "type": "specialist",
       "correct": "C",
+      "points": 3,
       "media": null,
       "mediaType": null,
       "a": "Wystarczy, że opuści pantografy.",
@@ -1447,6 +1602,7 @@
       "q": "Jak powinien zachować się motorniczy przed wyjściem z kabiny na jezdnię, poza przystankiem, w celu ręcznego ustawienia zwrotnicy?",
       "type": "specialist",
       "correct": "B",
+      "points": 3,
       "media": null,
       "mediaType": null,
       "a": "Wyłączyć przetwornicę.",
@@ -1458,6 +1614,7 @@
       "q": "Co może być przyczyną przerwania jazdy w czasie rozruchu, jeżeli dzwoni dzwonek wewnętrzny i brak jest sygnalizacji zamkniętych drzwi?",
       "type": "specialist",
       "correct": "B",
+      "points": 3,
       "media": null,
       "mediaType": null,
       "a": "Otwarcie okna, jeżeli wnętrze jest klimatyzowane.",
@@ -1469,6 +1626,7 @@
       "q": "Jak powinieneś zachować się, gdy kierujesz tramwajem w czasie burzy z wyładowaniami atmosferycznymi i obawiasz się uderzenia pioruna?",
       "type": "specialist",
       "correct": "B",
+      "points": 3,
       "media": null,
       "mediaType": null,
       "a": "Zatrzymać tramwaj, opuścić pantografy i wypuścić pasażerów.",
@@ -1480,6 +1638,7 @@
       "q": "Jak powinien zachować się motorniczy przejeżdżając przez miejsca z obniżoną siecią trakcyjną np. pod wiaduktem?",
       "type": "specialist",
       "correct": "A",
+      "points": 2,
       "media": null,
       "mediaType": null,
       "a": "Zmniejszyć prędkość na całym odcinku obniżenia.",
@@ -1491,6 +1650,7 @@
       "q": "W jaki sposób powinien jechać motorniczy zbliżając się do skrzyżowania?",
       "type": "specialist",
       "correct": "A",
+      "points": 2,
       "media": null,
       "mediaType": null,
       "a": "Na wybiegu lub hamując.",
@@ -1502,6 +1662,7 @@
       "q": "W jakiej sytuacji motorniczy może bezpiecznie przejechać przez zwrotnicę?",
       "type": "specialist",
       "correct": "C",
+      "points": 2,
       "media": null,
       "mediaType": null,
       "a": "Gdy sygnalizator zwrotnicy wskazuje, że została przestawiona.",
@@ -1513,6 +1674,7 @@
       "q": "Jakiego zachowania wymaga od motorniczego przejazd tramwajem przez zwrotnice i krzyżownice?",
       "type": "specialist",
       "correct": "B",
+      "points": 2,
       "media": null,
       "mediaType": null,
       "a": "Zwiększenia prędkości.",
@@ -1524,6 +1686,7 @@
       "q": "Jaką zasadą techniki jazdy powinien kierować się motorniczy wjeżdżając w ostry łuk toru?",
       "type": "specialist",
       "correct": "C",
+      "points": 2,
       "media": null,
       "mediaType": null,
       "a": "Zachowania dotychczasowej prędkości.",
@@ -1535,6 +1698,7 @@
       "q": "Jaki wpływ na obsługę urządzeń sterujących ma ustawienie fotela motorniczego?",
       "type": "specialist",
       "correct": "C",
+      "points": 2,
       "media": null,
       "mediaType": null,
       "a": "Nie ma żadnego wpływu.",
@@ -1546,6 +1710,7 @@
       "q": "Jeśli wystąpi poślizg kół tramwaju w czasie rozruchu, należy go przerwać, a następnie:",
       "type": "specialist",
       "correct": "A",
+      "points": 2,
       "media": null,
       "mediaType": null,
       "a": "ponowić rozruch łagodniej.",
@@ -1557,6 +1722,7 @@
       "q": "Co powinien zrobić motorniczy podczas nagłego pojawienia się pojazdu na torach bezpośrednio przed tramwajem?",
       "type": "specialist",
       "correct": "B",
+      "points": 2,
       "media": null,
       "mediaType": null,
       "a": "Łagodnie hamować aby nie powodować zagrożenia dla pasażerów.",
@@ -1568,6 +1734,7 @@
       "q": "Jak należy prowadzić rozruch tramwaju?",
       "type": "specialist",
       "correct": "A",
+      "points": 2,
       "media": null,
       "mediaType": null,
       "a": "W sposób nie powodujący poślizgu kół.",
@@ -1579,6 +1746,7 @@
       "q": "Które hamulce są wykorzystane do łagodnego zatrzymania tramwaju na przystanku?",
       "type": "specialist",
       "correct": "B",
+      "points": 1,
       "media": null,
       "mediaType": null,
       "a": "Wszystkie rodzaje hamulców.",
@@ -1590,6 +1758,7 @@
       "q": "Jaki skutek może spowodować łuk elektryczny powstający przy przejeżdżaniu przez izolator z załączoną jazdą?",
       "type": "specialist",
       "correct": "B",
+      "points": 2,
       "media": null,
       "mediaType": null,
       "a": "Spadek napięcia baterii.",
@@ -1601,6 +1770,7 @@
       "q": "Kiedy motorniczy ma obowiązek dostosowania prędkości do warunków na drodze?",
       "type": "specialist",
       "correct": "A",
+      "points": 2,
       "media": null,
       "mediaType": null,
       "a": "Zawsze.",
@@ -1612,6 +1782,7 @@
       "q": "Co motorniczy powinien zrobić, gdy po wejściu pasażerów nie chcą się zamknąć drzwi i konieczna jest ich fachowa naprawa?",
       "type": "specialist",
       "correct": "A",
+      "points": 3,
       "media": null,
       "mediaType": null,
       "a": "Poprosić wszystkich pasażerów o wyjście i pustym tramwajem wrócić do zajezdni.",
@@ -1623,6 +1794,7 @@
       "q": "Co powinien zrobić motorniczy dojeżdżając do zanieczyszczonej zwrotnicy?",
       "type": "specialist",
       "correct": "B",
+      "points": 1,
       "media": null,
       "mediaType": null,
       "a": "Jechać dalej nie zwracając uwagi na stan zanieczyszczenia.",
@@ -1634,6 +1806,7 @@
       "q": "Co powinien zrobić motorniczy po ruszeniu tramwajem?",
       "type": "specialist",
       "correct": "B",
+      "points": 2,
       "media": null,
       "mediaType": null,
       "a": "Wielokrotnie załączać jazdę, aż do osiągnięcia pożądanej prędkości.",
@@ -1645,6 +1818,7 @@
       "q": "W jaki sposób motorniczy powinien przejeżdżać pod izolatorami sekcyjnymi umieszczonymi na sieci trakcyjnej?",
       "type": "specialist",
       "correct": "B",
+      "points": 2,
       "media": null,
       "mediaType": null,
       "a": "Zawsze na rozruchu, gdyż inaczej tramwaj zatrzyma się pod izolatorem z powodu braku prądu.",
@@ -1656,6 +1830,7 @@
       "q": "Co spowoduje wciśnięcie czuwaka podczas postoju tramwaju?",
       "type": "specialist",
       "correct": "B",
+      "points": 2,
       "media": null,
       "mediaType": null,
       "a": "Opadnięcie hamulców szynowych.",
@@ -1667,6 +1842,7 @@
       "q": "Jaka jest maksymalna dopuszczalna prędkość tramwaju na obszarze zabudowanym w godzinach 5:00 - 23:00 (jeżeli znaki drogowe nie wskazują inaczej)?",
       "type": "specialist",
       "correct": "B",
+      "points": 3,
       "media": null,
       "mediaType": null,
       "a": "60 km/h",
@@ -1678,6 +1854,7 @@
       "q": "Z czym powinien liczyć się motorniczy holując uszkodzony tramwaj?",
       "type": "specialist",
       "correct": "B",
+      "points": 3,
       "media": null,
       "mediaType": null,
       "a": "Ze zwiększonym prawdopodobieństwem wykolejenia tramwaju na ostrym łuku.",
@@ -1689,6 +1866,7 @@
       "q": "Czy zmniejszenie prędkości tramwaju podczas przejeżdżania przez zwrotnicę jest konieczne?",
       "type": "specialist",
       "correct": "B",
+      "points": 3,
       "media": null,
       "mediaType": null,
       "a": "Tak, jest konieczne tylko na zwrotnicach eksploatowanych jednostronnie, oznakowanych znakiem BT-4 \"Z-Stop\".",
@@ -1700,6 +1878,7 @@
       "q": "Na jakim odcinku obowiązuje ograniczenie prędkości wynikające z tego znaku?",
       "type": "specialist",
       "correct": "C",
+      "points": 3,
       "media": "184TRAM3org.webp",
       "mediaType": "image",
       "a": "Do najbliższego przystanku tramwajowego.",
@@ -1711,6 +1890,7 @@
       "q": "Na jakim odcinku obowiązuje ograniczenie prędkości wynikające z tego znaku?",
       "type": "specialist",
       "correct": "B",
+      "points": 3,
       "media": "184TRAM3org.webp",
       "mediaType": "image",
       "a": "Do najbliższego skrzyżowania dróg bez torowiska.",
@@ -1722,6 +1902,7 @@
       "q": "Jak powinien zachować się motorniczy na odcinku za widocznym znakiem zakazu?",
       "type": "specialist",
       "correct": "B",
+      "points": 3,
       "media": "184TRAM3org.webp",
       "mediaType": "image",
       "a": "Może jechać z prędkością o 10 km/h większą od wartości wskazanej na znaku.",
@@ -1733,6 +1914,7 @@
       "q": "Jaki skutek wywoła użycie piasecznic podczas rozruchu na śliskich szynach?",
       "type": "specialist",
       "correct": "A",
+      "points": 2,
       "media": null,
       "mediaType": null,
       "a": "Ułatwi rozruch - zmniejszy poślizg kół.",
@@ -1744,6 +1926,7 @@
       "q": "W którego rodzaju gaśnicę powinien być wyposażony tramwaj?",
       "type": "specialist",
       "correct": "C",
+      "points": 2,
       "media": null,
       "mediaType": null,
       "a": "Pianową.",
@@ -1755,6 +1938,7 @@
       "q": "Czy jazda tramwajem bez osłony sprzęgów międzywagonowych od strony drzwi pasażerskich jest dozwolona?",
       "type": "specialist",
       "correct": "C",
+      "points": 2,
       "media": null,
       "mediaType": null,
       "a": "Jest zabroniona.",
@@ -1766,6 +1950,7 @@
       "q": "W której sytuacji powinieneś używać świateł awaryjnych, jeżeli tramwaj jest w nie wyposażony?",
       "type": "specialist",
       "correct": "C",
+      "points": 2,
       "media": null,
       "mediaType": null,
       "a": "Do podziękowania za udzielenie pierwszeństwa.",
@@ -1777,6 +1962,7 @@
       "q": "W którym przypadku masz prawo wyjechać z zajezdni tramwajem z uszkodzonym zewnętrznym dzwonkiem ostrzegawczym?",
       "type": "specialist",
       "correct": "B",
+      "points": 2,
       "media": null,
       "mediaType": null,
       "a": "Jeżeli będzie jeździć tylko w ciagu dnia.",
@@ -1788,6 +1974,7 @@
       "q": "Które hamulce pełnią w tramwaju funkcję awaryjnych?",
       "type": "specialist",
       "correct": "C",
+      "points": 2,
       "media": null,
       "mediaType": null,
       "a": "Hamulce elektrodynamiczne.",
@@ -1799,6 +1986,7 @@
       "q": "Do czego służy obwód blokady jazdy (\"zielona linia\")?",
       "type": "specialist",
       "correct": "B",
+      "points": 2,
       "media": null,
       "mediaType": null,
       "a": "Nie zezwala na wjazd tramwaju na tor zajęty przez tramwaj jadący z przeciwka.",
@@ -1810,6 +1998,7 @@
       "q": "Jaki skutek wywoła użycie piasecznic podczas hamowania na śliskich szynach?",
       "type": "specialist",
       "correct": "B",
+      "points": 2,
       "media": null,
       "mediaType": null,
       "a": "Wydłuży drogę hamowania.",
@@ -1821,6 +2010,7 @@
       "q": "W jaki sposób motorniczy może regulować siłę hamowania hamulców szynowych?",
       "type": "specialist",
       "correct": "C",
+      "points": 3,
       "media": null,
       "mediaType": null,
       "a": "Tylko w ograniczonym zakresie.",
@@ -1832,6 +2022,7 @@
       "q": "Jaki powinien być odstęp od poprzedzającego tramwaju podczas jazdy?",
       "type": "specialist",
       "correct": "B",
+      "points": 3,
       "media": null,
       "mediaType": null,
       "a": "Wynosić minimum 10m.",
@@ -1843,6 +2034,7 @@
       "q": "Które z wymienionych hamulców zostaną uruchomione, jeżeli puścisz czuwak podczas jazdy?",
       "type": "specialist",
       "correct": "C",
+      "points": 3,
       "media": null,
       "mediaType": null,
       "a": "Wyłącznie hamulce szynowe.",
@@ -1854,6 +2046,7 @@
       "q": "Jak należy się zachować wjeżdżając na przystanek?",
       "type": "specialist",
       "correct": "B",
+      "points": 3,
       "media": null,
       "mediaType": null,
       "a": "Hamować szybko i gwałtownie.",
@@ -1865,6 +2058,7 @@
       "q": "W jaki sposób należy hamować po wyprowadzeniu tramwaju z poślizgu?",
       "type": "specialist",
       "correct": "A",
+      "points": 3,
       "media": null,
       "mediaType": null,
       "a": "Z mniejszą siłą, tak aby nie dopuścić do kolejnego zablokowania kół.",
@@ -1876,6 +2070,7 @@
       "q": "Co powinieneś założyć ustalając odstęp od poprzedzającego tramwaju?",
       "type": "specialist",
       "correct": "A",
+      "points": 3,
       "media": null,
       "mediaType": null,
       "a": "że kierujący nim może gwałtownie zahamować.",
@@ -1887,6 +2082,7 @@
       "q": "Od czego może zależeć bezpieczny odstęp od poprzedzającego tramwaju?",
       "type": "specialist",
       "correct": "B",
+      "points": 3,
       "media": null,
       "mediaType": null,
       "a": "Od czasu przejazdu zawartego w rozkładzie jazdy.",
@@ -1898,6 +2094,7 @@
       "q": "Do czego powinna być dostosowana w szczególności prędkość tramwaju, od której zależy możliwość bezpiecznego zatrzymania się?",
       "type": "specialist",
       "correct": "A",
+      "points": 3,
       "media": null,
       "mediaType": null,
       "a": "Od stanu torowiska i widoczności drogi.",
@@ -1909,6 +2106,7 @@
       "q": "Jak powinieneś zachować się, gdy kierując tramwajem, zbliżasz się do kałuży znajdującej się na torowisku?",
       "type": "specialist",
       "correct": "B",
+      "points": 3,
       "media": null,
       "mediaType": null,
       "a": "Przejechać z jak największą prędkością.",
@@ -1920,6 +2118,7 @@
       "q": "Jaki skutek wywołuje zalegająca na torach substancja, która powstała z wilgotnych liści?",
       "type": "specialist",
       "correct": "C",
+      "points": 3,
       "media": null,
       "mediaType": null,
       "a": "Zmniejsza możliwość wystąpienia poślizgu.",
@@ -1931,6 +2130,7 @@
       "q": "Jaki wpływ na zachowanie tramwaju ma obecność liści na torowisku?",
       "type": "specialist",
       "correct": "B",
+      "points": 3,
       "media": null,
       "mediaType": null,
       "a": "Nie ma wpływu na przyczepność.",
@@ -1942,6 +2142,7 @@
       "q": "Jaki wpływ na stan torowiska ma początkowa faza opadów?",
       "type": "specialist",
       "correct": "B",
+      "points": 3,
       "media": null,
       "mediaType": null,
       "a": "Powoduje poprawienie przyczepności między kołami a szynami.",
@@ -1953,6 +2154,7 @@
       "q": "Kiedy opady deszczu mają największy wpływ na rozruch i hamowanie tramwaju?",
       "type": "specialist",
       "correct": "A",
+      "points": 3,
       "media": null,
       "mediaType": null,
       "a": "W początkowej fazie.",
@@ -1964,6 +2166,7 @@
       "q": "Co zwiększa ryzyko wystąpienia poślizgu tramwaju?",
       "type": "specialist",
       "correct": "C",
+      "points": 3,
       "media": null,
       "mediaType": null,
       "a": "Nagrzanie szyn przez słońce.",
@@ -1975,6 +2178,7 @@
       "q": "W której porze roku warunki do jazdy tramwajem są najtrudniejsze?",
       "type": "specialist",
       "correct": "C",
+      "points": 3,
       "media": null,
       "mediaType": null,
       "a": "Wiosną.",
@@ -1986,6 +2190,7 @@
       "q": "Jak powienien zachować się motorniczy, jeżeli główki szyn są zalane wodą na znaczynym odcinku?",
       "type": "specialist",
       "correct": "A",
+      "points": 3,
       "media": null,
       "mediaType": null,
       "a": "Zatrzymać tramwaj.",
@@ -1997,6 +2202,7 @@
       "q": "Jak powienien zachować się motorniczy, jeśli zauważy kamienie w rowkach szyn?",
       "type": "specialist",
       "correct": "C",
+      "points": 3,
       "media": null,
       "mediaType": null,
       "a": "Przejechać z maksymalną prędkością, aby kamienie zostały odrzucone na boki.",
@@ -2008,6 +2214,7 @@
       "q": "W jaki sposób powinno być ustawione wewnętrzne lusterko w tramwaju?",
       "type": "specialist",
       "correct": "B",
+      "points": 3,
       "media": null,
       "mediaType": null,
       "a": "Aby widzieć tylko przestrzeń kabiny motorniczego.",
@@ -2019,6 +2226,7 @@
       "q": "W jakiej sytuacji motorniczy może rozpocząć jazdę, jeśli pasażerowie nie odsunęli się od krawędzi przystanku?",
       "type": "specialist",
       "correct": "B",
+      "points": 3,
       "media": null,
       "mediaType": null,
       "a": "Jeśli ma opóźnienie względem rozkładu jazdy.",
@@ -2030,6 +2238,7 @@
       "q": "Kiedy motorniczy może zwiększyć prędkość pokonując łuk drogi?",
       "type": "specialist",
       "correct": "B",
+      "points": 2,
       "media": null,
       "mediaType": null,
       "a": "Przy wejściu w łuk.",
@@ -2041,6 +2250,7 @@
       "q": "Co w tej sytuacji powinien zrobić motorniczy, bezpośrednio po zatrzymaniu tramwaju na przystanku?",
       "type": "specialist",
       "correct": "A",
+      "points": 3,
       "media": "184.2org.webp",
       "mediaType": "image",
       "a": "Upewnić się w prawym lusterku zewnętrznym, czy pojazdy na jezdni zatrzymały się.",
@@ -2052,6 +2262,7 @@
       "q": "W jakiej sytuacji, podczas jazdy, motorniczemu wolno wyłączyć blokadę jazdy?",
       "type": "specialist",
       "correct": "C",
+      "points": 1,
       "media": null,
       "mediaType": null,
       "a": "Na żądanie pasażera.",
@@ -2063,6 +2274,7 @@
       "q": "W który z wymienionych systemów hamowania powinien być wyposażony każdy tramwaj liniowy?",
       "type": "specialist",
       "correct": "B",
+      "points": 2,
       "media": null,
       "mediaType": null,
       "a": "Sieciowy.",
@@ -2074,6 +2286,7 @@
       "q": "Co należy sprawdzić w pierwszej kolejności jeśli po załączeniu jazdy tramwaj nie rusza?",
       "type": "specialist",
       "correct": "C",
+      "points": 1,
       "media": null,
       "mediaType": null,
       "a": "Napięcie przetwornicy.",
@@ -2085,6 +2298,7 @@
       "q": "Jakie napięcie powienien wskazywać woltomierz po włączeniu baterii?",
       "type": "specialist",
       "correct": "C",
+      "points": 1,
       "media": null,
       "mediaType": null,
       "a": "Nie mniejsze niż 38 V.",
@@ -2096,6 +2310,7 @@
       "q": "Co powienien zrobić motorniczy, jeśli po załączeniu jazdy nie nastąpi odhamowanie hamulców szczękowych?",
       "type": "specialist",
       "correct": "B",
+      "points": 1,
       "media": null,
       "mediaType": null,
       "a": "Kontynuować jazdę bez podejmowania żadnych działań.",
@@ -2107,6 +2322,7 @@
       "q": "Jaki skutek wywołuje wciśnięcie pedału lub wychylenie dźwigni hamulca elektordynamicznego \"za ogranicznik\"?",
       "type": "specialist",
       "correct": "A",
+      "points": 1,
       "media": null,
       "mediaType": null,
       "a": "Włączenie się hamulców szynowych.",
@@ -2118,6 +2334,7 @@
       "q": "Czym najczęściej spowodowany jest zanik rozruchu?",
       "type": "specialist",
       "correct": "A",
+      "points": 1,
       "media": null,
       "mediaType": null,
       "a": "Brakiem zasilania tramwaju (np. zanik w sieci lub zatrzymanie tramwaju \"na izolatorze\").",
@@ -2129,6 +2346,7 @@
       "q": "Co zrobisz, by zmniejszyć efekt wewnętrznego zaparowania przedniej szyby podczas jazdy w deszczu?",
       "type": "specialist",
       "correct": "B",
+      "points": 3,
       "media": null,
       "mediaType": null,
       "a": "Włączę wycieraczkę przedniej szyby.",
@@ -2140,6 +2358,7 @@
       "q": "Jak motorniczy powinien ustawić  prawe zewnętrzne lusterko?",
       "type": "specialist",
       "correct": "B",
+      "points": 3,
       "media": null,
       "mediaType": null,
       "a": "Aby widać było cały peron i pasażerów.",
@@ -2151,6 +2370,7 @@
       "q": "Z jaką dopuszczalną prędkością możesz jechać w strefie zamieszkania?",
       "type": "specialist",
       "correct": "C",
+      "points": 3,
       "media": null,
       "mediaType": null,
       "a": "40 km/h",
@@ -2162,6 +2382,7 @@
       "q": "Czy na najbliższym skrzyżowaniu torów powinieneś ustąpić pierwszeństwa tramwajowi, który nadjeżdżałby z prawej strony?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "253TRAM1org.mp4",
       "mediaType": "video"
     },
@@ -2170,6 +2391,7 @@
       "q": "Czy ze względu na nakaz zabezpieczenia pojazdu w czasie postoju wszystkie drzwi tramwaju powinny pozostać zamknięte, gdy w kabinie przebywa motorniczy?",
       "type": "basic",
       "correct": "N",
+      "points": 1,
       "media": null,
       "mediaType": null
     },
@@ -2178,6 +2400,7 @@
       "q": "Jak powinieneś zachować się, aby jechać z prędkością bezpieczną?",
       "type": "specialist",
       "correct": "A",
+      "points": 3,
       "media": null,
       "mediaType": null,
       "a": "Utrzymywać prędkość zapewniającą uniknięcie najechania na poprzedzający pojazd.",
@@ -2189,6 +2412,7 @@
       "q": "Czy znak umieszczony pod sygnalizacją oznacza zakaz wjazdu na zwrotnicę oraz obowiązek zatrzymania się i sprawdzenia prawidłowego położenia iglic?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "115TRAM3org.webp",
       "mediaType": "image"
     },
@@ -2197,6 +2421,7 @@
       "q": "Czy widoczna na jezdni linia łamana wyznacza miejsce przystanku dla tramwajów, autobusów lub trolejbusów?",
       "type": "basic",
       "correct": "T",
+      "points": 1,
       "media": "133TRAM3Porg3po korekcie.webp",
       "mediaType": "image"
     },
@@ -2205,6 +2430,7 @@
       "q": "Czy w tej sytuacji skręcając w lewo masz obowiązek ustąpić pierwszeństwa tramwajowi z przeciwka?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "018TRAM1org.mp4",
       "mediaType": "video"
     },
@@ -2213,6 +2439,7 @@
       "q": "Czy widoczny na jezdni znak \"linia łamana\" wyznacza miejsce parkingowe dla niepełnosprawnych?",
       "type": "basic",
       "correct": "N",
+      "points": 1,
       "media": "133TRAM3Porg3po korekcie.webp",
       "mediaType": "image"
     },
@@ -2221,6 +2448,7 @@
       "q": "Czy w tej sytuacji wykonujesz manewr wyprzedzania?",
       "type": "basic",
       "correct": "T",
+      "points": 2,
       "media": "027TRAM3org.mp4",
       "mediaType": "video"
     },
@@ -2229,6 +2457,7 @@
       "q": "Czy w takiej sytuacji masz pierwszeństwo przed pieszym?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": "045TRAM1Porg.webp",
       "mediaType": "image"
     },
@@ -2237,6 +2466,7 @@
       "q": "Jak powinien zachować się motorniczy przy narastającym natężeniu ruchu?",
       "type": "specialist",
       "correct": "C",
+      "points": 3,
       "media": null,
       "mediaType": null,
       "a": "Rozwinąć maksymalną prędkość, aby nadrobić możliwe opóźnienia.",
@@ -2248,6 +2478,7 @@
       "q": "Na czym polega zjawisko \"pocenia się szyn\"?",
       "type": "specialist",
       "correct": "B",
+      "points": 3,
       "media": null,
       "mediaType": null,
       "a": "Na zmoczeniu szyn przez opady deszczu.",
@@ -2259,6 +2490,7 @@
       "q": "Jak powinien zachować się kierujący tramwajem, gdy zaczyna padać deszcz?",
       "type": "specialist",
       "correct": "A",
+      "points": 3,
       "media": null,
       "mediaType": null,
       "a": "Stosować łagodniejszy rozruch.",
@@ -2270,6 +2502,7 @@
       "q": "Co powinien zrobić motorniczy przed wjechaniem na zwrotnicę?",
       "type": "specialist",
       "correct": "B",
+      "points": 3,
       "media": "119TRAM2org.webp",
       "mediaType": "image",
       "a": "Spojrzeć wyłącznie na sygnalizator wskazujący kierunek ustawienia zwrotnicy.",
@@ -2281,6 +2514,7 @@
       "q": "Co powinien zrobić motorniczy widząc sygnalizator informujący o przestawieniu zwrotnicy w prawo?",
       "type": "specialist",
       "correct": "A",
+      "points": 3,
       "media": "119TRAM2org.webp",
       "mediaType": "image",
       "a": "Spojrzeć na iglice zwrotnicy, aby upewnić się, że jest przestawiona w odpowiednim kierunku.",
@@ -2292,6 +2526,7 @@
       "q": "Na czym polega prawidłowa technika kierowania tramwajem?",
       "type": "specialist",
       "correct": "C",
+      "points": 2,
       "media": null,
       "mediaType": null,
       "a": "Na możliwie długim rozruchu, możliwie krótkim wybiegu i łagodnym hamowaniu.",
@@ -2303,6 +2538,7 @@
       "q": "Czy, ograniczenie prędkości określone przez ten znak obowiązuje motorniczego wyłącznie do najbliższego skrzyżowania bądź przecięcia torów, o ile inne znaki nie nakażą inaczej?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "166TRAM1org.webp",
       "mediaType": "image"
     },
@@ -2311,6 +2547,7 @@
       "q": "Czy w tej sytuacji masz prawo wjechać za sygnalizator?",
       "type": "basic",
       "correct": "N",
+      "points": 2,
       "media": "149TRAM1orgpo korkecie.webp",
       "mediaType": "image"
     },
@@ -2319,6 +2556,7 @@
       "q": "Co powinieneś zrobić jeżeli na skutek wypadku drogowego, wokół tramwaju zbiera się paliwo wyciekające z uszkodzonych pojazdów?",
       "type": "specialist",
       "correct": "A",
+      "points": 2,
       "media": null,
       "mediaType": null,
       "a": "Odłączyć pantograf od sieci i przeprowadzić ewakuację pasażerów w bezpieczne miejsce.",
@@ -2328,16 +2566,21 @@
     {
       "id": 4602,
       "q": "Kierujesz pojazdem szynowym. Jak postąpisz, gdy zauważysz pożar instalacji elektrycznej?",
-      "type": "basic",
+      "type": "specialist",
       "correct": "A",
+      "points": 2,
       "media": null,
-      "mediaType": null
+      "mediaType": null,
+      "a": "Zatrzymam pojazd, otworzę drzwi w celu ewakuacji pasażerów, odłącze pantograf od sieci i przystąpie do gaszenia pożaru.",
+      "b": "Dojadę do najbliższego przystanku, a następnie zawiadomię Straż Pożarną.",
+      "c": "Jak najszybciej opuszczę tramwaj."
     },
     {
       "id": 6939,
       "q": "Czy ten znak zabrania Ci wyprzedzania tramwajem innych pojazdów na drodze?",
       "type": "basic",
       "correct": "N",
+      "points": 1,
       "media": "7A1101.webp",
       "mediaType": "image"
     },
@@ -2346,6 +2589,7 @@
       "q": "Czy zbliżając się do miejsca oznaczonego tym znakiem, powinieneś zmniejszyć prędkość tak, aby nie narazić na niebezpieczeństwo pieszych lub rowerzystów znajdujących się na przejściu lub przejeździe?",
       "type": "basic",
       "correct": "T",
+      "points": 1,
       "media": "7A1103.webp",
       "mediaType": "image"
     },
@@ -2354,6 +2598,7 @@
       "q": "Czy zbliżając się do miejsca oznaczonego tym znakiem, powinieneś zmniejszyć prędkość tak, aby nie narazić na niebezpieczeństwo wjeżdżających na nie rowerzystów?",
       "type": "basic",
       "correct": "T",
+      "points": 1,
       "media": "7A1104.webp",
       "mediaType": "image"
     },
@@ -2362,6 +2607,7 @@
       "q": "Czy ten znak informuje o przejściu dla pieszych, po którym mogą przejeżdżać rowerzyści?",
       "type": "basic",
       "correct": "N",
+      "points": 1,
       "media": "7A1105.webp",
       "mediaType": "image"
     },
@@ -2370,6 +2616,7 @@
       "q": "Czy dopuszczalna prędkość tramwaju na drodze oznaczonej tym znakiem wynosi 25 km/h?",
       "type": "basic",
       "correct": "N",
+      "points": 1,
       "media": "7A1107.webp",
       "mediaType": "image"
     },
@@ -2378,6 +2625,7 @@
       "q": "Czy to ograniczenie prędkości obowiązuje kierującego tramwajem?",
       "type": "basic",
       "correct": "T",
+      "points": 1,
       "media": "7A1108.webp",
       "mediaType": "image"
     },
@@ -2386,6 +2634,7 @@
       "q": "Czy ten znak zobowiązuje Cię do zatrzymania tramwaju przed zwrotnicą w każdej sytuacji?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "7A1201.webp",
       "mediaType": "image"
     },
@@ -2394,6 +2643,7 @@
       "q": "Czy ten znak ostrzega Cię o zwrotnicy wielostronnej?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": "7A1202.webp",
       "mediaType": "image"
     },
@@ -2402,6 +2652,7 @@
       "q": "Czy ten znak zakazuje Ci wjazdu tramwajem na zwrotnicę bez zatrzymania się?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "7A1203.webp",
       "mediaType": "image"
     },
@@ -2410,6 +2661,7 @@
       "q": "Czy ten znak ostrzega Cię o zbliżaniu się do miejsca, w którym ruch tramwajów jest kierowany za pomocą sygnalizacji świetlnej?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "7A1205.webp",
       "mediaType": "image"
     },
@@ -2418,6 +2670,7 @@
       "q": "Czy ten znak ostrzega o zbliżaniu się do skrzyżowania, na którym tramwaj wzbudza wydzieloną dla siebie fazę?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "7A1206.webp",
       "mediaType": "image"
     },
@@ -2426,6 +2679,7 @@
       "q": "Czy ten znak ostrzega o zbliżaniu się do znacznego wzniesienia toru tramwajowego o wartości podanej na znaku?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": "7A1207.webp",
       "mediaType": "image"
     },
@@ -2434,6 +2688,7 @@
       "q": "Czy ten znak ostrzega cię o znacznym spadku podłużnym toru tramwajowego o wartości podanej na znaku?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "7A1208.webp",
       "mediaType": "image"
     },
@@ -2442,6 +2697,7 @@
       "q": "Czy ten znak ostrzega cię o znacznym wzniesieniu toru tramwajowego o wartości podanej na znaku?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "7A1209.webp",
       "mediaType": "image"
     },
@@ -2450,6 +2706,7 @@
       "q": "Czy ten znak ostrzega cię o zbliżaniu się do skrzyżowania z sygnalizacją świetlną, na którym skręcając podczas jego opuszczania, jesteś obowiązany ustąpić pierwszeństwa uczestnikom ruchu poruszającym się na wprost?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "7A1210.webp",
       "mediaType": "image"
     },
@@ -2458,6 +2715,7 @@
       "q": "Czy ten znak zobowiązuje Cię do zachowania szczególnej ostrożności?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "7A1211.webp",
       "mediaType": "image"
     },
@@ -2466,6 +2724,7 @@
       "q": "Czy ten znak, zabrania Ci przekraczania prędkości, określonej na znaku?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "7A1212.webp",
       "mediaType": "image"
     },
@@ -2474,6 +2733,7 @@
       "q": "Czy zakaz wyrażony tym znakiem obowiązuje od miejsca jego umieszczenia do najbliższego skrzyżowania dróg?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": "7A1213.webp",
       "mediaType": "image"
     },
@@ -2482,6 +2742,7 @@
       "q": "Czy zakaz wyrażony tym znakiem obowiązuje od miejsca jego umieszczenia do najbliższego skrzyżowania torów?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "7A1214.webp",
       "mediaType": "image"
     },
@@ -2490,6 +2751,7 @@
       "q": "Czy ten znak zabrania ci wjazdu tramwajem na zwrotnicę dopóki nie zostanie ona odblokowana?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": "7A1215.webp",
       "mediaType": "image"
     },
@@ -2498,6 +2760,7 @@
       "q": "Czy za tym znakiem możesz jechać z prędkością 20 km/h?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "7A1216.webp",
       "mediaType": "image"
     },
@@ -2506,6 +2769,7 @@
       "q": "Czy w tej sytuacji masz prawo wjechać za sygnalizator?",
       "type": "basic",
       "correct": "T",
+      "points": 2,
       "media": "7A203.webp",
       "mediaType": "image"
     },
@@ -2514,6 +2778,7 @@
       "q": "Czy w tej sytuacji masz prawo kontynuować jazdę pomimo braku sygnalizatora tramwajowego?",
       "type": "basic",
       "correct": "T",
+      "points": 2,
       "media": "7A205.webp",
       "mediaType": "image"
     },
@@ -2522,6 +2787,7 @@
       "q": "Czy w tej sytuacji wolno Ci skręcić w prawo na skrzyżowaniu?",
       "type": "basic",
       "correct": "T",
+      "points": 2,
       "media": "7A206.webp",
       "mediaType": "image"
     },
@@ -2530,6 +2796,7 @@
       "q": "Czy widząc ten sygnał możesz skręcić w prawo?",
       "type": "basic",
       "correct": "N",
+      "points": 2,
       "media": "7A208.webp",
       "mediaType": "image"
     },
@@ -2538,6 +2805,7 @@
       "q": "Czy widząc ten sygnał masz prawo skręcić w lewo?",
       "type": "basic",
       "correct": "T",
+      "points": 2,
       "media": "7A209.webp",
       "mediaType": "image"
     },
@@ -2546,6 +2814,7 @@
       "q": "Czy widząc ten sygnał masz prawo wjechać za sygnalizator?",
       "type": "basic",
       "correct": "N",
+      "points": 2,
       "media": "7A210.webp",
       "mediaType": "image"
     },
@@ -2554,6 +2823,7 @@
       "q": "Czy ten sygnał oznacza, że podczas skrętu w lewo nie występuje kolizja z innymi uczestnikami ruchu?",
       "type": "basic",
       "correct": "T",
+      "points": 2,
       "media": "7A211.webp",
       "mediaType": "image"
     },
@@ -2562,6 +2832,7 @@
       "q": "Czy ten sygnał oznacza, że podczas skrętu w lewo występuje kolizja z innymi uczestnikami ruchu?",
       "type": "basic",
       "correct": "N",
+      "points": 2,
       "media": "7A212.webp",
       "mediaType": "image"
     },
@@ -2570,6 +2841,7 @@
       "q": "Czy kierując tramwajem, masz obowiązek zatrzymać się na sygnał dawany przez umundurowanego policjanta?",
       "type": "basic",
       "correct": "T",
+      "points": 2,
       "media": "7A214.webp",
       "mediaType": "image"
     },
@@ -2578,6 +2850,7 @@
       "q": "Czy w tej sytuacji masz pierwszeństwo przed samochodem osobowym sygnalizującym zamiar skrętu w lewo?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "7A3102.mp4",
       "mediaType": "video"
     },
@@ -2586,6 +2859,7 @@
       "q": "Czy kierując tramwajem i skręcając w lewo na skrzyżowaniu oznaczonym tym znakiem, masz pierwszeństwo przed pojazdami silnikowymi?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "7A3103.webp",
       "mediaType": "image"
     },
@@ -2594,6 +2868,7 @@
       "q": "Czy kierując tramwajem i zbliżając się do skrzyżowania oznaczonego tym znakiem, masz obowiązek ustąpić pierwszeństwa pojazdom silnikowym nadjeżdżającym z prawej strony?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": "7A3104.webp",
       "mediaType": "image"
     },
@@ -2602,6 +2877,7 @@
       "q": "Czy kierując tramwajem i zbliżając się do skrzyżowania oznaczonego tym znakiem, masz obowiązek ustąpić pierwszeństwa pojazdom silnikowym nadjeżdżającym z lewej strony?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": "7A3150.webp",
       "mediaType": "image"
     },
@@ -2610,6 +2886,7 @@
       "q": "Czy w tej sytuacji masz pierwszeństwo przed pojazdem nadjeżdżającym z prawej strony?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "7A3250.mp4",
       "mediaType": "video"
     },
@@ -2618,6 +2895,7 @@
       "q": "Czy w tej sytuacji powinieneś ustąpić pierwszeństwa pojazdowi nadjeżdżającemu z prawej strony?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": "7A3251.mp4",
       "mediaType": "video"
     },
@@ -2626,6 +2904,7 @@
       "q": "Czy w tej sytuacji masz obowiązek ustąpić pierwszeństwa pojazdowi nadjeżdżającemu z prawej strony?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": "7A3252.mp4",
       "mediaType": "video"
     },
@@ -2634,6 +2913,7 @@
       "q": "Czy w tej sytuacji masz pierwszeństwo przed pojazdem nadjeżdżającym z prawej strony?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "7A3253.mp4",
       "mediaType": "video"
     },
@@ -2642,6 +2922,7 @@
       "q": "Czy w tej sytuacji masz pierwszeństwo przed pojazdami poruszającymi się drogą poprzeczną?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": "7A3254.mp4",
       "mediaType": "video"
     },
@@ -2650,6 +2931,7 @@
       "q": "Czy w tej sytuacji masz obowiązek ustąpić pierwszeństwa pojazdom poruszającym się drogą poprzeczną?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "7A3255.mp4",
       "mediaType": "video"
     },
@@ -2658,6 +2940,7 @@
       "q": "Czy w tej sytuacji powinieneś zatrzymać się bezpośrednio przed sygnalizatorem nie zwracając uwagi na odbywający się ruch pojazdów po jezdni?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": "7A3302.mp4",
       "mediaType": "video"
     },
@@ -2666,6 +2949,7 @@
       "q": "Czy w tej sytuacji masz prawo wjechać na skrzyżowanie?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "7A3350.mp4",
       "mediaType": "video"
     },
@@ -2674,6 +2958,7 @@
       "q": "Czy w tej sytuacji masz obowiązek zatrzymać się przed sygnalizatorem?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": "7A3351.mp4",
       "mediaType": "video"
     },
@@ -2682,6 +2967,7 @@
       "q": "Czy w tej sytuacji masz prawo wjechać za sygnalizator?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": "7A3352.mp4",
       "mediaType": "video"
     },
@@ -2690,6 +2976,7 @@
       "q": "Czy w tej sytuacji masz prawo opuścić skrzyżowanie bez zatrzymania?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "7A3353.mp4",
       "mediaType": "video"
     },
@@ -2698,6 +2985,7 @@
       "q": "Czy w tej sytuacji, zamierzając skręcić w lewo, masz prawo wjechać za sygnalizator?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": "7A3354.mp4",
       "mediaType": "video"
     },
@@ -2706,6 +2994,7 @@
       "q": "Czy w tej sytuacji masz prawo wjechać za sygnalizator?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": "7A3357.mp4",
       "mediaType": "video"
     },
@@ -2714,6 +3003,7 @@
       "q": "Czy widząc taką postawę policjanta kierującego ruchem możesz wjechać na skrzyżowanie?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": "7A3450.webp",
       "mediaType": "image"
     },
@@ -2722,6 +3012,7 @@
       "q": "Czy widząc taką postawę policjanta kierującego ruchem możesz przejechać na wprost przez skrzyżowanie?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "7A3451.webp",
       "mediaType": "image"
     },
@@ -2730,6 +3021,7 @@
       "q": "Czy widząc taką postawę policjanta kierującego ruchem masz prawo wjechać na skrzyżowanie z zamiarem skrętu w prawo?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": "7A3452.webp",
       "mediaType": "image"
     },
@@ -2738,6 +3030,7 @@
       "q": "Czy w tej sytuacji masz prawo kontynuować jazdę?",
       "type": "basic",
       "correct": "N",
+      "points": 2,
       "media": "7A4150.mp4",
       "mediaType": "video"
     },
@@ -2746,6 +3039,7 @@
       "q": "Czy w tej sytuacji masz obowiązek zatrzymać się?",
       "type": "basic",
       "correct": "T",
+      "points": 2,
       "media": "7A4151.mp4",
       "mediaType": "video"
     },
@@ -2754,6 +3048,7 @@
       "q": "Czy w tej sytuacji wolno Ci skręcić w lewo bez zatrzymania?",
       "type": "basic",
       "correct": "N",
+      "points": 2,
       "media": "7A4152.mp4",
       "mediaType": "video"
     },
@@ -2762,6 +3057,7 @@
       "q": "Czy w tej sytuacji, skręcając w lewo do zajezdni, masz pierwszeństwo przed pojazdem nadjeżdżającym z przeciwka?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "7A4201.webp",
       "mediaType": "image"
     },
@@ -2770,6 +3066,7 @@
       "q": "Czy wyjeżdżając z zajezdni, masz pierwszeństwo przed pojazdami poruszającymi się drogą poprzeczną?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": "7A4202.webp",
       "mediaType": "image"
     },
@@ -2778,6 +3075,7 @@
       "q": "Czy w tej sytuacji, wyjeżdżając z pętli, masz obowiązek ustąpić pierwszeństwa w razie nadjeżdżania tramwaju z prawej strony?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "7A4252.mp4",
       "mediaType": "video"
     },
@@ -2786,6 +3084,7 @@
       "q": "Czy w tej sytuacji, skręcając w lewo do zajezdni, masz obowiązek ustąpić pierwszeństwa pojazdowi nadjeżdżającemu z przeciwka?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": "7A4253.webp",
       "mediaType": "image"
     },
@@ -2794,6 +3093,7 @@
       "q": "Czy w tej sytuacji podczas skrętu, masz obowiązek sygnalizować zamiar zmiany kierunku jazdy?",
       "type": "basic",
       "correct": "T",
+      "points": 1,
       "media": "7A4301.webp",
       "mediaType": "image"
     },
@@ -2802,6 +3102,7 @@
       "q": "Czy w tej sytuacji masz obowiązek sygnalizować zamiar skrętu?",
       "type": "basic",
       "correct": "N",
+      "points": 1,
       "media": "7A4302.mp4",
       "mediaType": "video"
     },
@@ -2810,6 +3111,7 @@
       "q": "Czy w tej sytuacji podczas skrętu w lewo masz obowiązek ustąpić pierwszeństwa pojazdom nadjeżdżającym z przeciwka?",
       "type": "basic",
       "correct": "N",
+      "points": 1,
       "media": "7A4303.webp",
       "mediaType": "image"
     },
@@ -2818,6 +3120,7 @@
       "q": "Czy w tej sytuacji masz obowiązek sygnalizować zamiar skrętu?",
       "type": "basic",
       "correct": "T",
+      "points": 1,
       "media": "7A4304.mp4",
       "mediaType": "video"
     },
@@ -2826,6 +3129,7 @@
       "q": "Czy takie ustawienie zwrotnicy umożliwi manewr skrętu w prawo na skrzyżowaniu?",
       "type": "basic",
       "correct": "N",
+      "points": 1,
       "media": "7A4305.webp",
       "mediaType": "image"
     },
@@ -2834,6 +3138,7 @@
       "q": "Czy cofanie tramwajem dwuwagonowym jest zawsze zabronione?",
       "type": "basic",
       "correct": "N",
+      "points": 2,
       "media": "7A4401.webp",
       "mediaType": "image"
     },
@@ -2842,6 +3147,7 @@
       "q": "Czy masz prawo zatrzymać na zwrotnicy tramwaj dwuwagonowy, którym cofasz?",
       "type": "basic",
       "correct": "N",
+      "points": 2,
       "media": "7A4402.webp",
       "mediaType": "image"
     },
@@ -2850,6 +3156,7 @@
       "q": "Czy w tej sytuacji masz prawo wyprzedzić rowerzystę?",
       "type": "basic",
       "correct": "T",
+      "points": 2,
       "media": "7A4403.mp4",
       "mediaType": "video"
     },
@@ -2858,6 +3165,7 @@
       "q": "Czy w tej sytuacji, kierując tramwajem, masz prawo wyprzedzić rowerzystę bezpośrednio przed oznakowanym przejściem dla pieszych?",
       "type": "basic",
       "correct": "T",
+      "points": 2,
       "media": "7A4404.webp",
       "mediaType": "image"
     },
@@ -2866,6 +3174,7 @@
       "q": "Czy w tej sytuacji, na obszarze zabudowanym, masz prawo wyprzedzić pojazd straży miejskiej wysyłający niebieski sygnał świetlny i sygnał dźwiękowy o zmiennym tonie?",
       "type": "basic",
       "correct": "N",
+      "points": 2,
       "media": "7A4405.webp",
       "mediaType": "image"
     },
@@ -2874,6 +3183,7 @@
       "q": "Czy na obszarze zabudowanym masz prawo wyprzedzić pojazd uprzywilejowany?",
       "type": "basic",
       "correct": "N",
+      "points": 2,
       "media": "7A4406.webp",
       "mediaType": "image"
     },
@@ -2882,6 +3192,7 @@
       "q": "Czy w tej sytuacji masz prawo wyprzedzić motocyklistę zachowując odstęp 1 m?",
       "type": "basic",
       "correct": "T",
+      "points": 2,
       "media": "7A4407.webp",
       "mediaType": "image"
     },
@@ -2890,6 +3201,7 @@
       "q": "Czy będąc wyprzedzanym przez inny pojazd masz prawo zwiększyć prędkość?",
       "type": "basic",
       "correct": "N",
+      "points": 2,
       "media": "7A4408.webp",
       "mediaType": "image"
     },
@@ -2898,6 +3210,7 @@
       "q": "Czy podczas wyprzedzania masz prawo przekroczyć dopuszczalną prędkość obowiązującą na danym odcinku drogi?",
       "type": "basic",
       "correct": "N",
+      "points": 2,
       "media": "7A4409.webp",
       "mediaType": "image"
     },
@@ -2906,6 +3219,7 @@
       "q": "Czy kierując tramwajem, masz prawo na nieoświetlonej drodze używać świateł drogowych, jeżeli nie oślepisz innych kierujących?",
       "type": "basic",
       "correct": "T",
+      "points": 1,
       "media": "7A503.webp",
       "mediaType": "image"
     },
@@ -2914,6 +3228,7 @@
       "q": "Czy kierując tramwajem podczas zatrzymania wynikającego z warunków ruchu drogowego w warunkach zmniejszonej przejrzystości powietrza, możesz używać świateł przeciwmgłowych przednich?",
       "type": "basic",
       "correct": "T",
+      "points": 1,
       "media": "7A505.webp",
       "mediaType": "image"
     },
@@ -2922,6 +3237,7 @@
       "q": "Czy podczas zatrzymania tramwaju, które wynika z warunków ruchu drogowego, masz obowiązek włączyć światła awaryjne?",
       "type": "basic",
       "correct": "N",
+      "points": 1,
       "media": "7A506.webp",
       "mediaType": "image"
     },
@@ -2930,6 +3246,7 @@
       "q": "Czy kierując tramwajem podczas jazdy od zmierzchu do świtu po nieoświetlonych drogach na obszarze zabudowanym masz prawo używać świateł drogowych?",
       "type": "basic",
       "correct": "T",
+      "points": 1,
       "media": "7A509.webp",
       "mediaType": "image"
     },
@@ -2938,6 +3255,7 @@
       "q": "Czy kierując tramwajem z włączonymi światłami drogowymi masz obowiązek przełączyć je na światła mijania w przypadku możliwości oślepienia pieszych idących w kolumnie?",
       "type": "basic",
       "correct": "T",
+      "points": 1,
       "media": "7A511.webp",
       "mediaType": "image"
     },
@@ -2946,6 +3264,7 @@
       "q": "Czy w tej sytuacji możesz użyć sygnału dźwiękowego?",
       "type": "basic",
       "correct": "T",
+      "points": 1,
       "media": "7A513.mp4",
       "mediaType": "video"
     },
@@ -2954,6 +3273,7 @@
       "q": "Czy w tej sytuacji masz obowiązek zachować szczególną ostrożność?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "7B101.webp",
       "mediaType": "image"
     },
@@ -2962,6 +3282,7 @@
       "q": "Czy wyjeżdżając z zajezdni na drogę, masz obowiązek zachować szczególną ostrożność?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "7B151.webp",
       "mediaType": "image"
     },
@@ -2970,6 +3291,7 @@
       "q": "Czy w tej sytuacji powinieneś rozpocząć hamowanie?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "7B152.mp4",
       "mediaType": "video"
     },
@@ -2978,6 +3300,7 @@
       "q": "Czy w tej sytuacji masz prawo użyć sygnału dźwiękowego?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "7B153.mp4",
       "mediaType": "video"
     },
@@ -2986,6 +3309,7 @@
       "q": "Czy w tej sytuacji masz obowiązek zachować ostrożność?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "7B154.mp4",
       "mediaType": "video"
     },
@@ -2994,6 +3318,7 @@
       "q": "Czy w tej sytuacji masz obowiązek zachować szczególną ostrożność?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "7B155.mp4",
       "mediaType": "video"
     },
@@ -3002,6 +3327,7 @@
       "q": "Czy w tej sytuacji masz obowiązek zatrzymać się w miejscu wskazanym przez linię warunkowego zatrzymania?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "7B201.webp",
       "mediaType": "image"
     },
@@ -3010,6 +3336,7 @@
       "q": "Czy w tej sytuacji masz prawo kontynuować jazdę pod warunkiem ustąpienia pierwszeństwa pieszym?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": "7B202.webp",
       "mediaType": "image"
     },
@@ -3018,6 +3345,7 @@
       "q": "Czy w tej sytuacji powinieneś przygotować się do hamowania?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "7B250.mp4",
       "mediaType": "video"
     },
@@ -3026,6 +3354,7 @@
       "q": "Czy w tej sytuacji powinieneś uważnie obserwować pieszych znajdujących się na przystanku?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "7B253.mp4",
       "mediaType": "video"
     },
@@ -3034,6 +3363,7 @@
       "q": "Czy w tej sytuacji masz obowiązek ustąpić pierwszeństwa pieszym?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "7B254.mp4",
       "mediaType": "video"
     },
@@ -3042,6 +3372,7 @@
       "q": "Czy w tej sytuacji, kierując tramwajem, masz prawo użyć sygnału dźwiękowego?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "7B301.webp",
       "mediaType": "image"
     },
@@ -3050,6 +3381,7 @@
       "q": "Czy w tej sytuacji, kierując tramwajem, masz obowiązek ustąpić pierwszeństwa rowerzyście, który jedzie drogą dla rowerów?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "7B302.webp",
       "mediaType": "image"
     },
@@ -3058,6 +3390,7 @@
       "q": "Czy masz prawo wyprzedzić rowerzystę, jeśli odstęp tramwaju od niego wynosi 0,5 m?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": "7B303.webp",
       "mediaType": "image"
     },
@@ -3066,6 +3399,7 @@
       "q": "Czy masz obowiązek upewnić się, że wszyscy pasażerowie wysiedli z tramwaju, zanim wjedziesz na teren zajezdni?",
       "type": "basic",
       "correct": "T",
+      "points": 1,
       "media": "7B450.webp",
       "mediaType": "image"
     },
@@ -3074,6 +3408,7 @@
       "q": "Czy masz prawo wjechać na teren zajezdni nie upewniając się, że wszyscy pasażerowie wysiedli z tramwaju?",
       "type": "basic",
       "correct": "N",
+      "points": 1,
       "media": "7B451.webp",
       "mediaType": "image"
     },
@@ -3082,6 +3417,7 @@
       "q": "Czy masz obowiązek zabezpieczyć tramwaj przed możliwością samoczynnego ruszenia w przypadku, gdy zamierzasz się od niego oddalić?",
       "type": "basic",
       "correct": "T",
+      "points": 1,
       "media": "7B452.webp",
       "mediaType": "image"
     },
@@ -3090,6 +3426,7 @@
       "q": "Czy zanim oddalisz się od tramwaju, masz obowiązek zabezpieczyć go przed możliwością uruchomienia przez osobę niepowołaną?",
       "type": "basic",
       "correct": "T",
+      "points": 1,
       "media": "7B453.webp",
       "mediaType": "image"
     },
@@ -3098,6 +3435,7 @@
       "q": "Czy uczestnicząc w wypadku drogowym, w którym są ranni, masz prawo oddalić się z miejsca zdarzenia po wezwaniu służb ratunkowych?",
       "type": "basic",
       "correct": "N",
+      "points": 2,
       "media": "7C150.webp",
       "mediaType": "image"
     },
@@ -3106,6 +3444,7 @@
       "q": "Czy uczestnicząc w wypadku drogowym, w którym są ranni, masz prawo zjechać ze skrzyżowania, aby nie utrudniać ruchu innym pojazdom?",
       "type": "basic",
       "correct": "N",
+      "points": 2,
       "media": "7C151.webp",
       "mediaType": "image"
     },
@@ -3114,6 +3453,7 @@
       "q": "Czy uczestnicząc w wypadku drogowym, w którym są ranni, masz obowiązek pozostawić tramwaj w miejscu zdarzenia?",
       "type": "basic",
       "correct": "T",
+      "points": 2,
       "media": "7C152.webp",
       "mediaType": "image"
     },
@@ -3122,6 +3462,7 @@
       "q": "Czy uczestnicząc w wypadku drogowym, w którym nie ma zabitych lub rannych, masz obowiązek wezwać Policję?",
       "type": "basic",
       "correct": "N",
+      "points": 2,
       "media": "7C153.webp",
       "mediaType": "image"
     },
@@ -3130,6 +3471,7 @@
       "q": "Czy uczestnicząc w wypadku drogowym, masz obowiązek podać swoje dane personalne na żądanie innej osoby uczestniczącej w tym wypadku?",
       "type": "basic",
       "correct": "T",
+      "points": 2,
       "media": "7C155.webp",
       "mediaType": "image"
     },
@@ -3138,6 +3480,7 @@
       "q": "Czy uczestnicząc w wypadku drogowym, masz obowiązek udzielić niezbędnej pomocy poszkodowanemu, chociaż nie masz uprawnień ratownika medycznego?",
       "type": "basic",
       "correct": "T",
+      "points": 2,
       "media": "7C156.webp",
       "mediaType": "image"
     },
@@ -3146,6 +3489,7 @@
       "q": "Czy uczestnicząc w wypadku drogowym masz obowiązek podać swoje dane personalne na żądanie pasażera tramwaju uczestniczącego w tym wypadku?",
       "type": "basic",
       "correct": "T",
+      "points": 2,
       "media": "7C157.webp",
       "mediaType": "image"
     },
@@ -3154,6 +3498,7 @@
       "q": "Czy zażycie amfetaminy może powodować zwiększenie skłonności motorniczego do ryzykownych i agresywnych zachowań?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "7C250.webp",
       "mediaType": "image"
     },
@@ -3162,6 +3507,7 @@
       "q": "Czy zażywanie leków uspokajających lub nasennych, może wpływać na sposób kierowania tramwajem?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "7C251.webp",
       "mediaType": "image"
     },
@@ -3170,6 +3516,7 @@
       "q": "Czy spożyty alkohol wpływa na zmianę pola widzenia kierującego tramwajem?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "7C252.webp",
       "mediaType": "image"
     },
@@ -3178,6 +3525,7 @@
       "q": "Czy substancje psychoaktywne, wpływają na zdolność bezpiecznego kierowania tramwajem, nawet przez doświadczonego motorniczego?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "7C253.webp",
       "mediaType": "image"
     },
@@ -3186,6 +3534,7 @@
       "q": "Czy w każdym przypadku, po zażyciu leku przepisanego przez lekarza, możesz kierować tramwajem?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": "7C254.webp",
       "mediaType": "image"
     },
@@ -3194,6 +3543,7 @@
       "q": "Czy zamierzając kierować tramwajem po zażyciu leków, powinieneś upewnić się, że nie mają one negatywnego wpływu na twój stan psychofizyczny?",
       "type": "basic",
       "correct": "T",
+      "points": 3,
       "media": "7C255.webp",
       "mediaType": "image"
     },
@@ -3202,6 +3552,7 @@
       "q": "Z jaką maksymalną dopuszczalną prędkością możesz jechać kierując tramwajem na drodze jednojezdniowej posiadającej jeden pas ruchu w każdym kierunku, oznaczonej tym znakiem?",
       "type": "specialist",
       "correct": "B",
+      "points": 3,
       "media": "8A101.webp",
       "mediaType": "image",
       "a": "60 km/h.",
@@ -3213,6 +3564,7 @@
       "q": "Do jakiego miejsca obowiązuje maksymalna prędkość podana na znaku?",
       "type": "specialist",
       "correct": "B",
+      "points": 3,
       "media": "8A102.webp",
       "mediaType": "image",
       "a": "Do rozwidlenia torowisk.",
@@ -3224,6 +3576,7 @@
       "q": "Jaka powinna być prędkość przejazdu przez krzyżownicę tramwajową?",
       "type": "specialist",
       "correct": "B",
+      "points": 3,
       "media": "8A103.webp",
       "mediaType": "image",
       "a": "Nie mniejsza niż wskazana na znaku.",
@@ -3235,6 +3588,7 @@
       "q": "Do jakiego miejsca obowiązuje maksymalna prędkość podana na tym znaku?",
       "type": "specialist",
       "correct": "A",
+      "points": 3,
       "media": "8A105.webp",
       "mediaType": "image",
       "a": "Do rozwidlenia torowisk.",
@@ -3246,6 +3600,7 @@
       "q": "Jaka jest maksymalna dopuszczalna prędkość tramwaju na drodze oznaczonej tym znakiem na obszarze zabudowanym w godzinach od 5:00 do 23:00?",
       "type": "specialist",
       "correct": "A",
+      "points": 3,
       "media": "8A106.webp",
       "mediaType": "image",
       "a": "50 km/h.",
@@ -3257,6 +3612,7 @@
       "q": "Z jaką prędkością możesz kierować tramwajem na drodze oznaczonej tym znakiem na obszarze zabudowanym w godzinach od 5:00 do 23:00?",
       "type": "specialist",
       "correct": "A",
+      "points": 3,
       "media": "8A108.webp",
       "mediaType": "image",
       "a": "50 km/h.",
@@ -3268,6 +3624,7 @@
       "q": "W jakiej sytuacji najtrudniej jest ocenić odległość od omijanego, zaparkowanego pojazdu?",
       "type": "specialist",
       "correct": "C",
+      "points": 3,
       "media": "8B101.webp",
       "mediaType": "image",
       "a": "Podczas deszczu.",
@@ -3279,6 +3636,7 @@
       "q": "Jaki odstęp należy zachować od poprzedzającego tramwaju?",
       "type": "specialist",
       "correct": "C",
+      "points": 3,
       "media": "8B103.webp",
       "mediaType": "image",
       "a": "30-50 m podczas jazdy z prędkością 50 km/h.",
@@ -3290,6 +3648,7 @@
       "q": "W jaki sposób wykonasz hamowanie służbowe tramwajem?",
       "type": "specialist",
       "correct": "A",
+      "points": 3,
       "media": "8B104.webp",
       "mediaType": "image",
       "a": "Poprzez płynne wciśnięcie pedału hamulca nie dalej niż do ogranicznika, aby zatrzymać się w określonym miejscu za jednym wciśnięciem pedału.",
@@ -3301,6 +3660,7 @@
       "q": "Czy w tej sytuacji jednoczesna jazda obu tramwajów na wprost jest dozwolona?",
       "type": "specialist",
       "correct": "C",
+      "points": 3,
       "media": "8B201.webp",
       "mediaType": "image",
       "a": "Tak, bez ograniczeń.",
@@ -3312,6 +3672,7 @@
       "q": "Jakie mogą być przyczyny nieprzylegania iglic zwrotnicy?",
       "type": "specialist",
       "correct": "C",
+      "points": 3,
       "media": null,
       "mediaType": null,
       "a": "Obce przedmioty znajdujące się w międzytorzu.",
@@ -3323,6 +3684,7 @@
       "q": "Co może być przyczyną nadmiernego poślizgu?",
       "type": "specialist",
       "correct": "A",
+      "points": 3,
       "media": "8B203.webp",
       "mediaType": "image",
       "a": "Zalegające liście na szynach.",
@@ -3334,6 +3696,7 @@
       "q": "Co może być przyczyną nadmiernego poślizgu tramwaju podczas rozruchu i hamowania?",
       "type": "specialist",
       "correct": "A",
+      "points": 3,
       "media": "8B204.webp",
       "mediaType": "image",
       "a": "Czarna szyna \"mada\".",
@@ -3345,6 +3708,7 @@
       "q": "W jakim przypadku zalecane jest stosowanie piasecznic stanowiących wyposażenie tramwaju?",
       "type": "specialist",
       "correct": "C",
+      "points": 3,
       "media": "8B205.webp",
       "mediaType": "image",
       "a": "Tylko na nawierzchni pokrytej wodą.",
@@ -3356,6 +3720,7 @@
       "q": "Jakie czynniki mogą ograniczać pole widzenia motorniczego?",
       "type": "specialist",
       "correct": "A",
+      "points": 3,
       "media": "8B350.webp",
       "mediaType": "image",
       "a": "Osoby znajdujące się w kabinie.",
@@ -3367,6 +3732,7 @@
       "q": "Który z wymienionych czynników może mieć wpływ na zmniejszenie pola widzenia motorniczego?",
       "type": "specialist",
       "correct": "B",
+      "points": 3,
       "media": "8B351.webp",
       "mediaType": "image",
       "a": "Jedynie intensywne opady atmosferyczne.",
@@ -3378,6 +3744,7 @@
       "q": "Czy wzrost prędkości może mieć wpływ na sposób postrzegania przez motorniczego?",
       "type": "specialist",
       "correct": "A",
+      "points": 3,
       "media": "8B352.webp",
       "mediaType": "image",
       "a": "Tak, większa prędkość powoduje zmianę postrzegania.",
@@ -3389,6 +3756,7 @@
       "q": "Jaki czynnik może zakłócić prawidłowy sposób obserwacji drogi w czasie prowadzenia tramwaju w nocy?",
       "type": "specialist",
       "correct": "A",
+      "points": 3,
       "media": "8B353.webp",
       "mediaType": "image",
       "a": "Brak zdolności rozróżniania kształtów w mroku.",
@@ -3400,6 +3768,7 @@
       "q": "Czy możesz przejeżdżać pod izolatorem sekcyjnym z wciśniętym pedałem jazdy (przyspieszenia)?",
       "type": "specialist",
       "correct": "B",
+      "points": 2,
       "media": "8B401.webp",
       "mediaType": "image",
       "a": "Tak, ale z ograniczoną prędkością.",
@@ -3411,6 +3780,7 @@
       "q": "Podczas przejazdu przez jaką zwrotnicę ma miejsce jazda na/pod iglicę?",
       "type": "specialist",
       "correct": "B",
+      "points": 2,
       "media": "8B402.webp",
       "mediaType": "image",
       "a": "Tylko sprężynową.",
@@ -3422,6 +3792,7 @@
       "q": "Co należy uwzględnić podczas przejazdu przez krzyżownicę tramwajową?",
       "type": "specialist",
       "correct": "B",
+      "points": 2,
       "media": "8B403.webp",
       "mediaType": "image",
       "a": "Liczbę pasażerów w tramwaju.",
@@ -3433,6 +3804,7 @@
       "q": "Jakie ustawienie nawrotnika może być przyczyną braku możliwości jazdy tramwajem dwu-wagonowym?",
       "type": "specialist",
       "correct": "B",
+      "points": 2,
       "media": "8B407.webp",
       "mediaType": "image",
       "a": "W pierwszym wagonie na \"P\" a w drugim wagonie na \"0\".",
@@ -3444,6 +3816,7 @@
       "q": "Jakie ustawienie nawrotnika może być przyczyną braku możliwości jazdy tramwajem jedno-wagonowym?",
       "type": "specialist",
       "correct": "A",
+      "points": 2,
       "media": "8B408.webp",
       "mediaType": "image",
       "a": "Nawrotnik ustawiony na \"0\".",
@@ -3455,6 +3828,7 @@
       "q": "Jakie ustawienie nawrotnika może być przyczyną braku możliwości jazdy tramwajem dwu-wagonowym?",
       "type": "specialist",
       "correct": "B",
+      "points": 2,
       "media": "8B409.webp",
       "mediaType": "image",
       "a": "W pierwszym wagonie na \"P\" a w drugim wagonie na \"0\".",
@@ -3466,6 +3840,7 @@
       "q": "Co należy zrobić w przypadku pojawienia się nadmiernego poślizgu kół (buksowania) podczas rozruchu?",
       "type": "specialist",
       "correct": "B",
+      "points": 2,
       "media": "8B410.webp",
       "mediaType": "image",
       "a": "Zatrzymać skład i następnie rozpocząć ruszanie.",
@@ -3477,6 +3852,7 @@
       "q": "Jak powinieneś ustawić zwrotnicę najazdową sterowaną hydraulicznie w przypadku konieczności przejazdu podczas cofania składem dwu-wagonowym?",
       "type": "specialist",
       "correct": "A",
+      "points": 2,
       "media": "8B411.webp",
       "mediaType": "image",
       "a": "Ustawić ją w pożądanym kierunku jazdy.",
@@ -3488,6 +3864,7 @@
       "q": "Jak powinieneś ustawić zwrotnicę zjazdową w przypadku konieczności przejazdu podczas cofania tramwajem?",
       "type": "specialist",
       "correct": "C",
+      "points": 2,
       "media": "8B412.webp",
       "mediaType": "image",
       "a": "Ustawić ją w przeciwnym kierunku jazdy.",
@@ -3499,6 +3876,7 @@
       "q": "Co służy do zmiany położenia iglicy w zwrotnicy sterowanej mechanicznie?",
       "type": "specialist",
       "correct": "B",
+      "points": 2,
       "media": "8B416.webp",
       "mediaType": "image",
       "a": "Nawrotnik.",
@@ -3510,6 +3888,7 @@
       "q": "Co służy do zmiany prędkości jazdy?",
       "type": "specialist",
       "correct": "B",
+      "points": 2,
       "media": "8B417.webp",
       "mediaType": "image",
       "a": "Nawrotnik.",
@@ -3521,6 +3900,7 @@
       "q": "Co umożliwia jazdę tramwajem do tyłu?",
       "type": "specialist",
       "correct": "A",
+      "points": 2,
       "media": "8B418.webp",
       "mediaType": "image",
       "a": "Nawrotnik.",
@@ -3532,6 +3912,7 @@
       "q": "Czy możesz kontynuować jazdę z pasażerami, po stwierdzeniu awarii mechanizmu zamykania drugich drzwi, w pierwszym wagonie?",
       "type": "specialist",
       "correct": "A",
+      "points": 3,
       "media": "8C101.webp",
       "mediaType": "image",
       "a": "Nie.",
@@ -3543,6 +3924,7 @@
       "q": "Których z podanych rodzajów hamulców, nie można sprawdzić na terenie zajezdni?",
       "type": "specialist",
       "correct": "B",
+      "points": 3,
       "media": "8C102.webp",
       "mediaType": "image",
       "a": "Bębnowych (szczękowych).",
@@ -3554,6 +3936,7 @@
       "q": "Którego, z podanych rodzajów hamulców, nie ma możliwości sprawdzić na terenie zajezdni?",
       "type": "specialist",
       "correct": "C",
+      "points": 3,
       "media": "8C103.webp",
       "mediaType": "image",
       "a": "Hamulca bezpieczeństwa.",
@@ -3565,6 +3948,7 @@
       "q": "Co, między innymi, należy sprawdzić przed przystąpieniem do jazdy tramwajem dwuwagonowym?",
       "type": "specialist",
       "correct": "B",
+      "points": 3,
       "media": "8C104.webp",
       "mediaType": "image",
       "a": "Wyposażenie apteczki.",
@@ -3576,6 +3960,7 @@
       "q": "Co, między innymi, należy sprawdzić przed przystąpieniem do jazdy tramwajem?",
       "type": "specialist",
       "correct": "A",
+      "points": 3,
       "media": "8C105.webp",
       "mediaType": "image",
       "a": "Stan nadwozia i zamocowanie foteli pasażerskich, poręczy.",
@@ -3587,6 +3972,7 @@
       "q": "W jakiej pozycji powinien znajdować się sprzęg podczas łączenia wagonów tramwajowych?",
       "type": "specialist",
       "correct": "B",
+      "points": 3,
       "media": "8C106.webp",
       "mediaType": "image",
       "a": "Złożony.",
@@ -3598,6 +3984,7 @@
       "q": "Czego nie należy robić w trakcie sprzęgania ze sobą dwóch wagonów?",
       "type": "specialist",
       "correct": "A",
+      "points": 3,
       "media": "8C107.webp",
       "mediaType": "image",
       "a": "Luzować hamulców szczękowych wagonu sprzęganego.",
@@ -3609,6 +3996,7 @@
       "q": "Czego nie należy robić w trakcie sprzęgania ze sobą dwóch wagonów?",
       "type": "specialist",
       "correct": "A",
+      "points": 3,
       "media": "8C108.webp",
       "mediaType": "image",
       "a": "Zwalniać luzowników wagonu sprzęganego.",
@@ -3620,6 +4008,7 @@
       "q": "Czym może być spowodowane rozłączenie stycznika liniowego w tramwaju?",
       "type": "specialist",
       "correct": "C",
+      "points": 3,
       "media": "8C109.webp",
       "mediaType": "image",
       "a": "Uszkodzoną przetwornicą.",
@@ -3631,6 +4020,7 @@
       "q": "Jaki dokument uprawnia do kierowania tramwajem?",
       "type": "specialist",
       "correct": "C",
+      "points": 1,
       "media": "8C250.webp",
       "mediaType": "image",
       "a": "Prawo jazdy kategorii B.",
@@ -3642,6 +4032,7 @@
       "q": "Co mogą spowodować niskie obrzeża kół biegowych?",
       "type": "specialist",
       "correct": "A",
+      "points": 1,
       "media": "8C301.webp",
       "mediaType": "image",
       "a": "Wypadanie kół z torowiska.",
@@ -3653,6 +4044,7 @@
       "q": "Co może spowodować wyszczerbiona wkładka grafitowa pantografu?",
       "type": "specialist",
       "correct": "B",
+      "points": 1,
       "media": "8C302.webp",
       "mediaType": "image",
       "a": "Znaczne zwiększenie oporów toczenia tramwaju.",
@@ -3664,6 +4056,7 @@
       "q": "Czym może być spowodowane samoczynne załączenie się hamulców szynowych?",
       "type": "specialist",
       "correct": "C",
+      "points": 1,
       "media": "8C303.webp",
       "mediaType": "image",
       "a": "Uszkodzeniem wału napędowego w tylnym zestawie kołowym.",
@@ -3675,6 +4068,7 @@
       "q": "Co należy zrobić w przypadku braku zadziałania zwrotnicy zdalnie sterowanej?",
       "type": "specialist",
       "correct": "A",
+      "points": 1,
       "media": "8C304.webp",
       "mediaType": "image",
       "a": "Przełożyć zwrotnicę ręcznie.",
@@ -3686,6 +4080,7 @@
       "q": "Jaka powinna być odległość dolnej krawędzi odgarniacza od główki szyny?",
       "type": "specialist",
       "correct": "C",
+      "points": 1,
       "media": "8C306.webp",
       "mediaType": "image",
       "a": "150 mm.",
@@ -3697,6 +4092,7 @@
       "q": "Co może być przyczyną wydobywania się dymu z wózka napędowego?",
       "type": "specialist",
       "correct": "B",
+      "points": 1,
       "media": "8C307.webp",
       "mediaType": "image",
       "a": "Złe ustawienie nawrotnika w drugim wagonie.",
@@ -3708,6 +4104,7 @@
       "q": "Czy w przypadku stwierdzenia przepalenia jednej linki bocznikującej w pantografie dalsza jazda może być kontynuowana?",
       "type": "specialist",
       "correct": "C",
+      "points": 1,
       "media": "8C308.webp",
       "mediaType": "image",
       "a": "Tak, bez ograniczeń.",
@@ -3719,6 +4116,7 @@
       "q": "W jaki sposób należy wykonać nagłe hamowanie tramwajem?",
       "type": "specialist",
       "correct": "C",
+      "points": 2,
       "media": "8C310.webp",
       "mediaType": "image",
       "a": "W pierwszej fazie hamowania należy wcisnąć pedał hamulca do ogranicznika a następnie puścić pedał czuwaka.",
@@ -3730,6 +4128,7 @@
       "q": "Co może spowodować uszkodzona przetwornica wirująca?",
       "type": "specialist",
       "correct": "C",
+      "points": 1,
       "media": "8C311.webp",
       "mediaType": "image",
       "a": "Brak możliwości przestawienia nastawiacza.",
@@ -3741,6 +4140,7 @@
       "q": "W jakiej sytuacji zaleca się stosowanie piasecznic znajdujących się na wyposażeniu tramwaju?",
       "type": "specialist",
       "correct": "C",
+      "points": 2,
       "media": "8C312.webp",
       "mediaType": "image",
       "a": "Zawsze przy hamowaniu.",
@@ -3752,6 +4152,7 @@
       "q": "Co powinieneś zrobić kierując tramwajem wyposażonym w piasecznice w przypadku braku piasku w zbiornikach?",
       "type": "specialist",
       "correct": "C",
+      "points": 2,
       "media": "8C313.webp",
       "mediaType": "image",
       "a": "Zatrzymać tramwaj i czekać na obsługę techniczną.",
@@ -3763,6 +4164,7 @@
       "q": "O czym należy pamiętać przed rozpoczęciem holowania  składu tramwajów, uszkodzonego w wyniku kolizji?",
       "type": "specialist",
       "correct": "C",
+      "points": 2,
       "media": "8D101.webp",
       "mediaType": "image",
       "a": "O umieszczeniu trójkąta ostrzegawczego z tyłu drugiego wagonu.",
@@ -3774,6 +4176,7 @@
       "q": "O czym należy pamiętać przed rozpoczęciem spychania składu tramwajów, uszkodzonego w wyniku kolizji ?",
       "type": "specialist",
       "correct": "B",
+      "points": 2,
       "media": "8D102.webp",
       "mediaType": "image",
       "a": "O włączeniu świateł awaryjnych w pierwszym składzie.",
@@ -3785,6 +4188,7 @@
       "q": "O czym należy pamiętać podczas spychania uszkodzonego w wyniku kolizji składu tramwajów?",
       "type": "specialist",
       "correct": "A",
+      "points": 2,
       "media": "8D103.webp",
       "mediaType": "image",
       "a": "O wydłużeniu drogi hamowania.",
@@ -3796,6 +4200,7 @@
       "q": "Co powinieneś zrobić w przypadku agresywnego zachowania pasażera wobec Ciebie lub innych pasażerów, gdy sytuacja utrudnia kierowanie pojazdem?",
       "type": "specialist",
       "correct": "B",
+      "points": 2,
       "media": "8D150.webp",
       "mediaType": "image",
       "a": "Kontynuować jazdę do najbliższego komisariatu policji.",
@@ -3807,6 +4212,7 @@
       "q": "O co należy zadbać, w pierwszej kolejności, w przypadku pożaru tramwaju podczas jazdy?",
       "type": "specialist",
       "correct": "A",
+      "points": 2,
       "media": "8D151.webp",
       "mediaType": "image",
       "a": "O bezpieczeństwo pasażerów i własne.",
@@ -3818,6 +4224,7 @@
       "q": "W jaki sposób zorganizować ewakuację pasażerów, jeżeli w wyniku wypadku drogowego nastąpiła blokada drzwi?",
       "type": "specialist",
       "correct": "B",
+      "points": 2,
       "media": "8D152.webp",
       "mediaType": "image",
       "a": "Wezwać pomoc drogową.",
@@ -3829,6 +4236,7 @@
       "q": "Jak należy się zachować w przypadku pożaru wewnątrz tramwaju, podczas jazdy?",
       "type": "specialist",
       "correct": "C",
+      "points": 2,
       "media": "8D153.webp",
       "mediaType": "image",
       "a": "Dojechać do najbliższego przystanku i rozpocząć ewakuację pasażerów.",
@@ -3840,6 +4248,7 @@
       "q": "Czy kierujący pojazdem ciężarowym, zatrzymując się w tym miejscu postąpił zgodnie z obowiązującymi przepisami ?",
       "type": "basic",
       "correct": "N",
+      "points": 2,
       "media": "w10_korytarz_209.mp4",
       "mediaType": "video"
     },
@@ -3848,6 +4257,7 @@
       "q": "Czy masz obowiązek stosować się do poleceń lub sygnałów dawanych przez pilota pojazdu nienormatywnego?",
       "type": "basic",
       "correct": "T",
+      "points": 1,
       "media": null,
       "mediaType": null
     },
@@ -3856,14 +4266,25 @@
       "q": "Czy w tej sytuacji zbliżasz się do przecięcia z torowiskiem, które jest z pierwszeństwem przejazdu?",
       "type": "basic",
       "correct": "T",
+      "points": 1,
       "media": "GM_ W1(352)1.webp",
       "mediaType": "image"
+    },
+    {
+      "id": 13102,
+      "q": "Czy w tej sytuacji masz obowiązek ustąpienia pierwszeństwa pojazdom poruszającym się drogą poprzeczną?",
+      "type": "basic",
+      "correct": "T",
+      "points": 1,
+      "media": "GM_W1_353_.mp4",
+      "mediaType": "video"
     },
     {
       "id": 13105,
       "q": "Czy masz obowiązek wyłączyć światła przeciwmgłowe tylne, jeżeli widoczność jest większa niż 50 m?",
       "type": "basic",
       "correct": "T",
+      "points": 1,
       "media": "GM_W14(155)1.webp",
       "mediaType": "image"
     },
@@ -3872,7 +4293,26 @@
       "q": "Czy masz obowiązek ustąpić pierwszeństwa pieszemu zbliżającemu się do przejścia dla pieszych?",
       "type": "basic",
       "correct": "N",
+      "points": 3,
       "media": "GM_W16_316_317.mp4",
+      "mediaType": "video"
+    },
+    {
+      "id": 13107,
+      "q": "Czy w tej sytuacji masz obowiązek zwiększyć uwagę w stopniu umożliwiającym odpowiednio szybkie reagowanie?",
+      "type": "basic",
+      "correct": "T",
+      "points": 3,
+      "media": "GM_W16_327n.mp4",
+      "mediaType": "video"
+    },
+    {
+      "id": 13118,
+      "q": "Czy w tej sytuacji powinieneś zwiększyć uwagę, w stopniu umożliwiającym odpowiednio szybkie\r\nreagowanie?",
+      "type": "basic",
+      "correct": "T",
+      "points": 3,
+      "media": "GM_W16_326.mp4",
       "mediaType": "video"
     },
     {
@@ -3880,70 +4320,64 @@
       "q": "Czy masz obowiązek ustąpić pierwszeństwa pieszemu wchodzącemu na przejście dla pieszych?",
       "type": "basic",
       "correct": "N",
-      "media": null,
-      "mediaType": null
+      "points": 3,
+      "media": "GM_W16_327n.mp4",
+      "mediaType": "video"
     },
     {
-      "id": 13487,
-      "q": "Czy dozwolone jest wyprzedzanie pojazdu na przejściu dla pieszych o ruchu niekierowanym?",
-      "type": "basic",
-      "correct": "N",
-      "media": null,
-      "mediaType": null
-    },
-    {
-      "id": 13488,
-      "q": "Czy dozwolone jest wyprzedzanie pojazdu na przejściu dla pieszych o ruchu kierowanym?",
+      "id": 13164,
+      "q": "Czy w tej sytuacji masz obowiązek zmniejszyć prędkość, żeby nie narazić pieszego na niebezpieczeństwo?",
       "type": "basic",
       "correct": "T",
-      "media": null,
-      "mediaType": null
+      "points": 3,
+      "media": "GM_W16_326.mp4",
+      "mediaType": "video"
+    },
+    {
+      "id": 13485,
+      "q": "Czy w miejscu, o którym informuje widoczny znak jesteś obowiązany ustąpić pierwszeństwa osobie poruszającej się przy użyciu urządzenia wspomagającego ruch, która znajdzie się na przejeździe dla rowerów?",
+      "type": "basic",
+      "correct": "T",
+      "points": 3,
+      "media": "D-6b.webp",
+      "mediaType": "image"
     },
     {
       "id": 13523,
       "q": "Czy podczas przechodzenia przez jezdnię, poza przejściem dla pieszych, przez  osobę niepełnosprawną używającą specjalnego znaku w postaci  białej laski,  jesteś obowiązany zatrzymać się, aby umożliwić jej przejście ?",
       "type": "basic",
       "correct": "T",
-      "media": null,
-      "mediaType": null
-    },
-    {
-      "id": 13539,
-      "q": "Czy zbliżając się do przejścia dla pieszych, na którym znajduje się osoba pchająca urządzenie wspomagające ruch, masz obowiązek zachować szczególną ostrożność i ustąpić jej pierwszeństwa ?",
-      "type": "basic",
-      "correct": "T",
-      "media": null,
-      "mediaType": null
+      "points": 3,
+      "media": "GNI03.jpg.webp",
+      "mediaType": "image"
     },
     {
       "id": 13540,
       "q": "Czy kierujący pojazdem podczas omijania pieszego musi w razie potrzeby zmniejszyć prędkość?",
       "type": "basic",
       "correct": "T",
-      "media": null,
-      "mediaType": null
-    },
-    {
-      "id": 13545,
-      "q": "Czy kierującemu pojazdem, zbliżającemu się do pieszych poruszających się w kolumnie, wolno używać świateł drogowych, jeżeli istnieje możliwość ich oślepienia?",
-      "type": "basic",
-      "correct": "N",
+      "points": 3,
       "media": null,
       "mediaType": null
     },
     {
       "id": 13560,
       "q": "Czy każdy kierujący pojazdem ma obowiązek jechać z prędkością zapewniającą panowanie nad pojazdem ?",
-      "type": "basic",
+      "type": "specialist",
       "correct": "A",
+      "points": 3,
       "media": null,
-      "mediaType": null
+      "mediaType": null,
+      "a": "Tak, zawsze obowiązek dotyczy wszystkich kierujących pojazdami.",
+      "b": "Nie, obowiązek dotyczy jedynie kierowców pojazdów samochodowych.",
+      "c": "Tak, ale wyłącznie w obszarze zabudowanym."
     },
     {
       "id": 13562,
       "q": "Czy prędkość pojazdu powinna być dostosowana do widoczności drogi ?",
       "type": "specialist",
       "correct": "A",
+      "points": 1,
       "media": null,
       "mediaType": null,
       "a": "Tak, jadę na tyle szybko na ile mam zapewnioną pełną widoczność drogi - niezależnie od limitów prędkości.",
@@ -3951,21 +4385,11 @@
       "c": "Tak ,ale wyłącznie po zmroku."
     },
     {
-      "id": 13564,
-      "q": "Kierujący pojazdem jest obowiązany jechać z prędkością zapewniającą panowanie nad pojazdem, z uwzględnieniem warunków ,w jakich ruch się odbywa, a w szczególności:",
-      "type": "specialist",
-      "correct": "B",
-      "media": null,
-      "mediaType": null,
-      "a": "prognozy pogody.",
-      "b": "natężenia ruchu.",
-      "c": "własnego doświadczenia w kierowaniu pojazdem."
-    },
-    {
       "id": 13569,
       "q": "Jaki jest wpływ prędkości pojazdu na reakcję kierującego?",
       "type": "specialist",
       "correct": "C",
+      "points": 1,
       "media": null,
       "mediaType": null,
       "a": "Żaden.",
@@ -3977,6 +4401,7 @@
       "q": "Czy prędkość przy jakiej doszło do wypadku ma wpływ na jego skutki ?",
       "type": "specialist",
       "correct": "C",
+      "points": 3,
       "media": null,
       "mediaType": null,
       "a": "Nie.",
@@ -3984,100 +4409,52 @@
       "c": "Tak."
     },
     {
-      "id": 13582,
-      "q": "Czy jazda z prędkością dopuszczalną na danej drodze zawsze oznacza jazdę z prędkością, którą powinieneś się poruszać żeby panować nad pojazdem ?",
-      "type": "basic",
-      "correct": "N",
-      "media": null,
-      "mediaType": null
-    },
-    {
-      "id": 13586,
-      "q": "Czy jazda z prędkością bezpieczną zawsze oznacza poruszanie się z prędkością nie większą niż prędkość dopuszczalna na danej drodze?",
-      "type": "basic",
-      "correct": "N",
-      "media": null,
-      "mediaType": null
-    },
-    {
-      "id": 13590,
-      "q": "Czy jazda z prędkością niedostosowaną do panujących warunków stanowi zagrożenie bezpieczeństwa ruchu drogowego nawet wtedy, gdy nie przekroczymy limitu prędkości określonego dla danego obszaru (danej drogi) ?",
-      "type": "basic",
-      "correct": "T",
-      "media": null,
-      "mediaType": null
-    },
-    {
       "id": 13623,
       "q": "Czy zbliżając się do przejazdu kolejowego powinieneś zwracać uwagę na sygnały, które mogą wskazywać, że zbliża się pojazd szynowy?",
       "type": "basic",
       "correct": "T",
-      "media": null,
-      "mediaType": null
-    },
-    {
-      "id": 13677,
-      "q": "Czy kierując pojazdem w czasie mgły, dla zachowania szczególnej ostrożności powinieneś dostosować prędkość do widoczności drogi i zachować odpowiedni odstęp od poprzedzającego pojazdu?”",
-      "type": "basic",
-      "correct": "T",
-      "media": null,
-      "mediaType": null
-    },
-    {
-      "id": 13678,
-      "q": "Czy w tych warunkach powinieneś kierować pojazdem z wykorzystaniem limitu prędkości 50 m/h w obszarze zabudowanym?",
-      "type": "basic",
-      "correct": "N",
+      "points": 3,
       "media": null,
       "mediaType": null
     },
     {
       "id": 13684,
       "q": "Które z poniższych zachowań świadczy o rozważnym i bezpiecznym prowadzeniu pojazdu?",
-      "type": "basic",
+      "type": "specialist",
       "correct": "C",
+      "points": 2,
       "media": null,
-      "mediaType": null
+      "mediaType": null,
+      "a": "Utrzymywanie stałej maksymalnej dopuszczalnej prędkości niezależnie od zmieniających się  warunków drogowych.",
+      "b": "Rozwijanie maksymalnych dopuszczalnych prędkości i maksymalnych możliwych przyspieszeń, wtedy jest większa szansa na uniknięcie zagrożenia bezpieczeństwa.",
+      "c": "Zwiększenie uwagi przy zbliżaniu się do przejścia dla pieszych."
     },
     {
-      "id": 13690,
-      "q": "Jakie zachowanie kierującego świadczy o prawidłowym stosowaniu zasady ograniczonego zaufania?",
-      "type": "basic",
-      "correct": "C",
-      "media": null,
-      "mediaType": null
-    },
-    {
-      "id": 13719,
-      "q": "Czy w przypadku przechodzenia przez jezdnię osoby niepełnosprawnej używającej specjalnego znaku masz obowiązek zatrzymać pojazd w celu umożliwienia jej przejścia?",
+      "id": 13784,
+      "q": "Czy na drodze tak oznakowanej osoba poruszająca się przy użyciu urządzenia wspomagającego ruch ma pierwszeństwo przed pojazdem?",
       "type": "basic",
       "correct": "T",
-      "media": null,
-      "mediaType": null
+      "points": 2,
+      "media": "D-40.webp",
+      "mediaType": "image"
     },
     {
-      "id": 13720,
-      "q": "Czy w przypadku przechodzenia przez jezdnię osoby o widocznej ograniczonej sprawności ruchowej masz obowiązek zatrzymać pojazd w celu umożliwienia jej przejścia?",
-      "type": "basic",
-      "correct": "T",
-      "media": null,
-      "mediaType": null
-    },
-    {
-      "id": 13733,
-      "q": "Czy na obszarze zabudowanym wolno Ci wyprzedzić pojazd uprzywilejowany?",
+      "id": 13785,
+      "q": "Czy kierując pojazdem na drodze tak oznakowanej masz pierwszeństwo przed osobą poruszającą się przy użyciu urządzenia wspomagającego ruch?",
       "type": "basic",
       "correct": "N",
-      "media": null,
-      "mediaType": null
+      "points": 2,
+      "media": "D-40.webp",
+      "mediaType": "image"
     },
     {
-      "id": 13779,
-      "q": "Czy ten znak informacyjny odnosi się również do rowerzystów?",
+      "id": 13787,
+      "q": "Czy na drodze tak oznakowanej osoba poruszająca się przy użyciu urządzenia wspomagającego ruch może korzystać z całej szerokości drogi i ma pierwszeństwo przed pojazdem?",
       "type": "basic",
       "correct": "T",
-      "media": null,
-      "mediaType": null
+      "points": 2,
+      "media": "D-40.webp",
+      "mediaType": "image"
     }
   ]
 }
