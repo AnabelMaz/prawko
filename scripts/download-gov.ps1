@@ -1,19 +1,18 @@
 # Download ministry catalogue + media ZIPs from gov.pl (Windows, no Python).
 # Excel → gov-data\baza_pytan.xlsx
 # Multimedia (JPG/WMV) → gov-data\raw
-# PJM sign-language WMV → gov-data\pjm (unpack only, not mixed with raw, no conversion yet)
+# PJM (sign-language) links are still matched on gov.pl; Sync-GovPjmAsset can
+# unpack them later. Default import does not call it (~10 GB, unused in the app).
 #
 # Helpers (paths, gov.pl, curl, zip) live here. Other scripts load them with:
 #   . scripts\download-gov.ps1 -LibraryOnly
 #
 # powershell -ExecutionPolicy Bypass -File scripts/download-gov.ps1
 # powershell -ExecutionPolicy Bypass -File scripts/download-gov.ps1 -ExcelOnly
-# powershell -ExecutionPolicy Bypass -File scripts/download-gov.ps1 -SkipPjm
 
 param(
     [switch]$LibraryOnly,
     [switch]$ExcelOnly,
-    [switch]$SkipPjm,
     [switch]$SkipMedia
 )
 
@@ -280,6 +279,42 @@ function Test-GovPjmAsset ($item) {
     return ($item.Opis -match "migow") -or ($item.Url -match "migowe")
 }
 
+# Not called from the default download/install path. Kept so we can fetch
+# ministry sign-language ZIPs later without rewriting gov.pl matching.
+function Sync-GovPjmAsset ($item) {
+    if (-not $item) { return }
+    $govDir = Get-GovDataDir
+    $overflowRoot = Get-GovDataOverflowRoot
+    $pjmPreferred = Get-GovPjmDir
+    $pjmDir = Resolve-GovStagingDir -Preferred $pjmPreferred -Overflow (Join-Path $overflowRoot "pjm") -MinFreeBytes 22GB -What "PJM WMV"
+    New-GovDataJunction -linkPath $pjmPreferred -targetPath $pjmDir
+    New-Item -ItemType Directory -Path $pjmDir -Force | Out-Null
+    $zipPreferred = Get-GovZipCacheDir
+    $zipCache = Resolve-GovStagingDir -Preferred $zipPreferred -Overflow (Join-Path $overflowRoot "cache") -MinFreeBytes 12GB -What "ZIP-y MI"
+    New-Item -ItemType Directory -Path $zipCache -Force | Out-Null
+
+    $urlHash = Get-UrlFingerprint $item.Url
+    $pjmMarkerPath = Join-Path $pjmDir ".downloaded_$urlHash"
+    $hashFile = Join-Path $govDir ".pjm_$urlHash.hash"
+    $zipPath = Join-Path $zipCache "pjm_$urlHash.zip"
+
+    Write-Host "-> Hash 1 MB paczki tłumaczeń migowych (PJM)..." -ForegroundColor Cyan
+    if (-not (Test-RemoteFileNeedsDownload -url $item.Url -hashFilePath $hashFile -localFilePath $pjmMarkerPath)) {
+        Write-Host "-> Paczka PJM bez zmian. Pomijam pobieranie." -ForegroundColor Gray
+    } else {
+        Write-Host "-> Pobieram tłumaczenia migowe (PJM) z gov.pl (wznawiane, jeśli przerwane)..." -ForegroundColor Yellow
+        Invoke-CurlDownload -url $item.Url -outFile $zipPath
+        Write-Host "-> Rozpakowuję PJM do $pjmDir (osobno od gov-data\raw, bez konwersji)..." -ForegroundColor Green
+        Expand-ZipToDirectory -zipPath $zipPath -destination $pjmDir
+        Flatten-MediaDirectory -directory $pjmDir
+        New-Item -ItemType File -Path $pjmMarkerPath -Force | Out-Null
+        Save-PrefixHash -hashFilePath $hashFile -url $item.Url
+        Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
+    }
+    $wmvCount = @(Get-ChildItem -LiteralPath $pjmDir -File -Filter "*.wmv" -ErrorAction SilentlyContinue).Count
+    Write-Host "-> PJM WMV w $pjmDir : $wmvCount (na razie tylko źródło; convert-media.ps1 tego nie rusza)." -ForegroundColor Green
+}
+
 function Get-GovPlAssetLinks {
     Write-Host "-> Parsuję $mainUrl ..." -ForegroundColor Cyan
     $response = Invoke-WebRequest -Uri $mainUrl -UserAgent $ua -UseBasicParsing
@@ -355,23 +390,7 @@ $excelPath = Join-Path $govDir "baza_pytan.xlsx"
 $excelHash = Join-Path $govDir ".baza_pytan.hash"
 $overflowRoot = Get-GovDataOverflowRoot
 
-Move-LegacyContribRawMediaDir
-
-$rawPreferred = Get-ContribRawMediaDir
-$rawMediaDir = Resolve-GovStagingDir -Preferred $rawPreferred -Overflow (Join-Path $overflowRoot "raw") -MinFreeBytes 8GB -What "surowe JPG/WMV"
-New-GovDataJunction -linkPath $rawPreferred -targetPath $rawMediaDir
-
-$pjmPreferred = Get-GovPjmDir
-$pjmDir = Resolve-GovStagingDir -Preferred $pjmPreferred -Overflow (Join-Path $overflowRoot "pjm") -MinFreeBytes 22GB -What "PJM WMV"
-New-GovDataJunction -linkPath $pjmPreferred -targetPath $pjmDir
-
-$zipPreferred = Get-GovZipCacheDir
-$zipCache = Resolve-GovStagingDir -Preferred $zipPreferred -Overflow (Join-Path $overflowRoot "cache") -MinFreeBytes 12GB -What "ZIP-y MI"
-
 New-Item -ItemType Directory -Path $govDir -Force | Out-Null
-New-Item -ItemType Directory -Path $rawMediaDir -Force | Out-Null
-New-Item -ItemType Directory -Path $pjmDir -Force | Out-Null
-New-Item -ItemType Directory -Path $zipCache -Force | Out-Null
 
 if ($ExcelOnly) {
     Write-Host "download-gov: tylko Excel → $excelPath" -ForegroundColor Cyan
@@ -383,10 +402,21 @@ if ($ExcelOnly) {
     return
 }
 
-Write-Host "download-gov: Excel + ZIP z gov.pl → gov-data (gitignore)." -ForegroundColor Cyan
+Move-LegacyContribRawMediaDir
+
+$rawPreferred = Get-ContribRawMediaDir
+$rawMediaDir = Resolve-GovStagingDir -Preferred $rawPreferred -Overflow (Join-Path $overflowRoot "raw") -MinFreeBytes 8GB -What "surowe JPG/WMV"
+New-GovDataJunction -linkPath $rawPreferred -targetPath $rawMediaDir
+
+$zipPreferred = Get-GovZipCacheDir
+$zipCache = Resolve-GovStagingDir -Preferred $zipPreferred -Overflow (Join-Path $overflowRoot "cache") -MinFreeBytes 12GB -What "ZIP-y MI"
+
+New-Item -ItemType Directory -Path $rawMediaDir -Force | Out-Null
+New-Item -ItemType Directory -Path $zipCache -Force | Out-Null
+
+Write-Host "download-gov: Excel + ZIP multimediów sytuacyjnych z gov.pl → gov-data (gitignore)." -ForegroundColor Cyan
 Write-Host "ZIP: $zipCache" -ForegroundColor Gray
 Write-Host "Sytuacyjne JPG/WMV: $rawMediaDir" -ForegroundColor Gray
-Write-Host "PJM WMV (bez konwersji): $pjmDir" -ForegroundColor Gray
 
 $znalezione = Get-GovPlAssetLinks
 foreach ($item in $znalezione) {
@@ -409,30 +439,7 @@ foreach ($item in $znalezione) {
         }
     }
     elseif ($isPjm) {
-        if ($SkipPjm) {
-            Write-Host "-> Pomijam PJM (-SkipPjm)." -ForegroundColor DarkGray
-        } else {
-            $urlHash = Get-UrlFingerprint $item.Url
-            $pjmMarkerPath = Join-Path $pjmDir ".downloaded_$urlHash"
-            $hashFile = Join-Path $govDir ".pjm_$urlHash.hash"
-            $zipPath = Join-Path $zipCache "pjm_$urlHash.zip"
-
-            Write-Host "-> Hash 1 MB paczki tłumaczeń migowych (PJM)..." -ForegroundColor Cyan
-            if (-not (Test-RemoteFileNeedsDownload -url $item.Url -hashFilePath $hashFile -localFilePath $pjmMarkerPath)) {
-                Write-Host "-> Paczka PJM bez zmian. Pomijam pobieranie." -ForegroundColor Gray
-            } else {
-                Write-Host "-> Pobieram tłumaczenia migowe (PJM) z gov.pl (wznawiane, jeśli przerwane)..." -ForegroundColor Yellow
-                Invoke-CurlDownload -url $item.Url -outFile $zipPath
-                Write-Host "-> Rozpakowuję PJM do $pjmDir (osobno od gov-data\raw, bez konwersji)..." -ForegroundColor Green
-                Expand-ZipToDirectory -zipPath $zipPath -destination $pjmDir
-                Flatten-MediaDirectory -directory $pjmDir
-                New-Item -ItemType File -Path $pjmMarkerPath -Force | Out-Null
-                Save-PrefixHash -hashFilePath $hashFile -url $item.Url
-                Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
-            }
-            $wmvCount = @(Get-ChildItem -LiteralPath $pjmDir -File -Filter "*.wmv" -ErrorAction SilentlyContinue).Count
-            Write-Host "-> PJM WMV w $pjmDir : $wmvCount (na razie tylko źródło; convert-media.ps1 tego nie rusza)." -ForegroundColor Green
-        }
+        Write-Host "-> Tłumaczenia migowe (PJM): znalezione, nie pobieram." -ForegroundColor DarkGray
     }
     elseif ($isMedia) {
         if ($SkipMedia) {
@@ -468,4 +475,4 @@ if (-not (Test-Path -LiteralPath $excelPath)) {
     throw "Brak $excelPath — baza pytań z gov.pl nie została pobrana."
 }
 Write-Host "Done. Excel: $excelPath" -ForegroundColor Green
-Write-Host "Sytuacyjne: $rawMediaDir   PJM: $pjmDir" -ForegroundColor Gray
+Write-Host "Sytuacyjne: $rawMediaDir" -ForegroundColor Gray

@@ -1,4 +1,4 @@
-﻿param(
+param(
     [switch]$Help,
     [switch]$NonInteractive,
     [switch]$Uninstall,
@@ -6,6 +6,7 @@
     [switch]$GovQuestions,
     [switch]$Merge,
     [switch]$Patch,
+    [switch]$DropMissingMedia,
     [string]$Export,
     [string]$Dev
 )
@@ -52,17 +53,21 @@ PRZEŁĄCZNIKI
                     (żadnego git checkout). Lokalny contrib: -Patch.
                     Pytania MI na dysk: -InstallGov. Od zera: -Uninstall.
 
-  -InstallGov       Excel + ZIP z gov.pl: staging w %LOCALAPPDATA%\prawko\gov-data
-                    (ZIP, surowe JPG/WMV, PJM). Konwersja (WebP/MP4) i JSON idą
-                    na serwer C:\ProgramData\prawko — jedna kopia do oglądania.
+  -InstallGov       Excel + ZIP multimediów sytuacyjnych z gov.pl: staging w
+                    %LOCALAPPDATA%\prawko\gov-data (ZIP, surowe JPG/WMV).
+                    Konwersja (WebP/MP4) i JSON idą na serwer
+                    C:\ProgramData\prawko — jedna kopia do oglądania.
                     Nie dubluje mediów w git/contrib. Mało miejsca na C:
-                    ZIP/raw/PJM mogą spaść na gov-data w checkoutcie (inny dysk).
-                    PJM na razie tylko rozpakowane (bez konwersji). Nie rusza
-                    src\data w gicie. Gdy serwer stoi, przełącza MEDIA_BASE
-                    na lokalne pliki. -Patch pomija data\ i media\. Po
-                    -Uninstall i instalacji bez tego przełącznika znowu
-                    AnabelMaz/prawko + CDN. Bez administratora, bez reinstalu
-                    usługi.
+                    ZIP/raw mogą spaść na gov-data w checkoutcie (inny dysk).
+                    Tłumaczeń migowych (PJM) nie pobiera. Nie rusza src\data
+                    w gicie. Gdy serwer stoi, przełącza MEDIA_BASE na lokalne
+                    pliki. -Patch pomija data\ i media\. Po -Uninstall i
+                    instalacji bez tego przełącznika znowu AnabelMaz/prawko
+                    + CDN. Bez administratora, bez reinstalu usługi.
+
+  -DropMissingMedia Tylko z -InstallGov: parser wykreśla z JSON media, których
+                    pliku nie ma w lokalnym raw. Domyślnie NIE — nazwa z
+                    Excela zostaje (CDN / Pobierz offline).
 
   -GovQuestions     Tylko katalog pytań z ministerstwa na żywy serwer.
                     Excel → %LOCALAPPDATA%\prawko\gov-data, JSON na
@@ -463,6 +468,7 @@ if (-not $GovQuestions -and -not $InstallGov -and -not $PSBoundParameters.Contai
     if ($NonInteractive) { $argList += "-NonInteractive" }
     if ($Uninstall) { $argList += "-Uninstall" }
     if ($InstallGov) { $argList += "-InstallGov" }
+    if ($DropMissingMedia) { $argList += "-DropMissingMedia" }
     if ($GovQuestions) { $argList += "-GovQuestions" }
     if ($Merge) { $argList += "-Merge" }
     if ($Patch) { $argList += "-Patch" }
@@ -1584,7 +1590,8 @@ function Convert-GovExcelToDataFiles {
         [string]$excelPath,
         [string]$mediaDir,
         [string]$outDir,
-        [switch]$KeepMediaRefs
+        [switch]$KeepMediaRefs,
+        [switch]$DropMissingMedia
     )
     $categories = Get-PrawkoCategoryIds
     $exam = [ordered]@{
@@ -1601,12 +1608,11 @@ function Convert-GovExcelToDataFiles {
     }
 
     # KeepMediaRefs: nazwy plików z Excela zostają (CDN / Pobierz offline).
-    # Bez tego, gdy lokalnego .wmv/.jpg nie ma na dysku, parser zeruje media —
-    # i pytanie w aplikacji nie ma filmu mimo że Backblaze już go ma.
-    $parsed = if ($KeepMediaRefs) {
-        Get-GovExcelCategoryQuestions -excelPath $excelPath
-    } else {
+    # DropMissingMedia tylko na życzenie — inaczej parser nie zeruje mediów.
+    $parsed = if ($DropMissingMedia) {
         Get-GovExcelCategoryQuestions -excelPath $excelPath -mediaDir $mediaDir -DropMissingMedia
+    } else {
+        Get-GovExcelCategoryQuestions -excelPath $excelPath
     }
     if ($parsed.MissingMedia) {
         Write-Host "  WARNING: $($parsed.MissingMedia) pytań wskazuje na media, których nie ma w katalogu źródłowym." -ForegroundColor DarkYellow
@@ -1742,9 +1748,9 @@ function Publish-GovInstall {
     $imgOut = Join-Path $mediaRoot $(if ($serverReady) { "src\media\img" } else { "media\img" })
     $vidOut = Join-Path $mediaRoot $(if ($serverReady) { "src\media\vid" } else { "media\vid" })
 
-    Write-Host "InstallGov: Excel + ZIP z gov.pl → $govDir (nie ProgramData, nie git)." -ForegroundColor Cyan
-    Write-Host "download-gov → raw + pjm; convert-media → src\media (bez PJM); parse-excel → JSON." -ForegroundColor Gray
-    Write-Host "Na serwer dopiero ten przełącznik (tylko JSON + img/vid). Czysta instalacja bez niego = AnabelMaz/prawko + CDN." -ForegroundColor Gray
+    Write-Host "InstallGov: Excel + ZIP multimediów sytuacyjnych z gov.pl → $govDir (nie ProgramData, nie git)." -ForegroundColor Cyan
+    Write-Host "download-gov → raw; convert-media → src\media; parse-excel → JSON." -ForegroundColor Gray
+    Write-Host "Tłumaczeń migowych (PJM) nie pobieram. Czysta instalacja bez tego przełącznika = AnabelMaz/prawko + CDN." -ForegroundColor Gray
 
     Update-SessionPath
     if (-not (Resolve-FfmpegExe)) {
@@ -1762,7 +1768,7 @@ function Publish-GovInstall {
         throw "Brak $excelPath — baza pytań z gov.pl nie została pobrana."
     }
 
-    Write-Host "`n=== Konwersja mediów sytuacyjnych (JPG→WebP, WMV→MP4); PJM pomijane ===" -ForegroundColor Cyan
+    Write-Host "`n=== Konwersja mediów sytuacyjnych (JPG→WebP, WMV→MP4) ===" -ForegroundColor Cyan
     Invoke-PrawkoScript "convert-media.ps1" @(
         "-FfmpegExe", $ffmpegExe,
         "-ImgOut", $imgOut,
@@ -1770,12 +1776,12 @@ function Publish-GovInstall {
     )
 
     Write-Host "`n=== JSON z Excela → gov-data ===" -ForegroundColor Cyan
-    Invoke-PrawkoScript "parse-excel.ps1" @(
-        "-Excel", $excelPath,
-        "-OutDir", $govDir,
-        "-MediaDir", (Get-ContribRawMediaDir),
-        "-DropMissingMedia"
-    )
+    $parseArgs = @("-Excel", $excelPath, "-OutDir", $govDir)
+    if ($DropMissingMedia) {
+        $parseArgs += @("-MediaDir", (Get-ContribRawMediaDir), "-DropMissingMedia")
+        Write-Host "DropMissingMedia: pytania bez lokalnego pliku w raw tracą odwołanie do mediów." -ForegroundColor DarkYellow
+    }
+    Invoke-PrawkoScript "parse-excel.ps1" $parseArgs
     Assert-GovDataParsed -govDir $govDir -excelPath $excelPath
 
     Remove-LegacyServerRawMediaDir

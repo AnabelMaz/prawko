@@ -8,10 +8,12 @@
 # Liczba punktow is stored on each question; exam draw uses those values.
 #
 # Default: keep media file names even if the local pack is missing (CDN).
+# -DropMissingMedia only when asked: then missing raw files clear media in JSON.
 #
 # powershell -ExecutionPolicy Bypass -File scripts/parse-excel.ps1
 # powershell -ExecutionPolicy Bypass -File scripts/parse-excel.ps1 -Excel gov-data\baza_pytan.xlsx -OutDir src\data
 # Instalator: Install_Prawko.ps1 -GovQuestions / -InstallGov (katalog główny repo)
+# Wycinanie braków mediów: parse-excel.ps1 -DropMissingMedia albo Install_Prawko.ps1 -InstallGov -DropMissingMedia
 
 param(
     [string]$Excel,
