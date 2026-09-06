@@ -95,21 +95,6 @@ function showResumeToast(currentIndex, total) {
   showToast(msg);
 }
 
-function showQueueToast(filter, order) {
-  const parts = [t(`learnFilter${capitalizeFilter(filter)}`)];
-  parts.push(order === 'random' ? t('learnOrderRandom') : t('learnOrderSeq'));
-  showToast(parts.join(' · '));
-}
-
-function capitalizeFilter(filter) {
-  if (filter === 'all') return 'All';
-  if (filter === 'unknown') return 'Unknown';
-  if (filter === 'new') return 'New';
-  if (filter === 'wrong') return 'Wrong';
-  if (filter === 'known') return 'Known';
-  return 'All';
-}
-
 function emptyFilterMessage(filter) {
   if (filter === 'new') return t('learnFilterEmptyNew');
   if (filter === 'wrong') return t('learnFilterEmptyWrong');
@@ -269,7 +254,6 @@ function setFilter(filter) {
     showToast(emptyFilterMessage(filter));
     return false;
   }
-  showQueueToast(filter, state.order);
   return true;
 }
 
@@ -282,7 +266,6 @@ function setOrder(order) {
   state.order = order;
   if (!adoptActiveList({ keepId: true })) return false;
   saveQueuePreference(state.category, { filter: state.filter, order });
-  showQueueToast(state.filter, order);
   syncListView(previousId);
   return true;
 }
