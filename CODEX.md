@@ -3,8 +3,8 @@
 ## Project Structure
 - `src/` — deployed to GitHub Pages (SPA)
 - `scripts/` — data pipeline (Excel→JSON, media conversion)
-- Source Excel: `Pytania_egzaminacyjne_na_kierowcę_122025.xlsx`
-- Source media: `Pytania egzaminacyjne na prawo jazdy 2025/`
+- Source Excel / ZIP / raw / PJM (Windows): `%LOCALAPPDATA%\prawko\gov-data` (not the git working copy, not ProgramData). Overflow: `gov-data/` in the checkout if that disk has space.
+- Converted media for the app: `C:\ProgramData\prawko\src\media` (one copy). Git `src/media` stays empty / LFS.
 
 ## Key Rules
 - Vanilla JS (ES modules), no frameworks, no build step
@@ -32,7 +32,8 @@
 - `src/js/` — app.js (router), data.js, exam.js, learn.js, ui.js, timer.js, stats.js, i18n.js
 - `src/data/` — meta.json, {category}.json, translations_en.json
 - `src/media/` — img/ (WebP), vid/ (MP4) — Git LFS
-- `scripts/` — parse-excel.py, convert-videos.sh, optimize-images.sh, filter-no-media.py, upload-media.sh
+- `Install_Prawko.ps1` — Windows installer (repo root). Download and run from anywhere; clones the repo and uses `scripts/`.
+- `scripts/` — download-gov.ps1, convert-media.ps1, parse-excel.ps1, filter-no-media.ps1 (Windows). Legacy .py/.sh left in place.
 - `.codex/skills/translate-questions/` — skill for translating questions to new languages
 
 ## Data Pipeline

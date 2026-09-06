@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SRC_DIR="/Users/szymonkocot/Projects/prawko/Pytania egzaminacyjne na prawo jazdy 2025"
-OUT_DIR="/Users/szymonkocot/Projects/prawko/src/media/vid"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+SRC_DIR="$ROOT/gov-data/raw"
+OUT_DIR="$ROOT/src/media/vid"
 
 mkdir -p "$OUT_DIR"
 

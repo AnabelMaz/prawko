@@ -2,7 +2,46 @@
 
 To **fork** projektu [szkocot/prawko](https://github.com/szkocot/prawko) (demo źródła: https://szkocot.github.io/prawko/). Tutaj zostaje układ stacji WORD, skórki Image/PWPW, profile lokalne i przebudowana nauka. Małe, samodzielne łatki mogą iść do repozytorium źródłowego; ta kopia trzyma pełną wersję.
 
-Aplikacja webowa (PWA) do nauki i symulacji egzaminu na prawo jazdy w Polsce. Baza w repo to JSON z katalogu MI (**3556** unikalnych pytań). Zdjęcia i filmy nie są w gicie. Publiczny katalog na gov.pl: **lipiec 2026** (`KATALOG_dla_kandydatów_na_kierowców_072026.xlsx`).
+Aplikacja webowa (PWA) do nauki i symulacji egzaminu na prawo jazdy w Polsce. Baza w repo to JSON z katalogu MI (**3518** unikalnych pytań). Zdjęcia i filmy nie są w gicie. Publiczny katalog na gov.pl: **lipiec 2026** (`KATALOG_dla_kandydatów_na_kierowców_072026.xlsx`).
+
+## Instalacja na Windows
+
+Ściągnij [`Install_Prawko.ps1`](https://github.com/AnabelMaz/prawko/blob/main/Install_Prawko.ps1) (przycisk **Raw**, potem Zapisz jako) **gdzie chcesz** — Pulpit, Pobrane, pendrive. Nie musisz klonować repo ręcznie.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Install_Prawko.ps1
+```
+
+Albo w PowerShellu, bez przeglądarki:
+
+```powershell
+Invoke-WebRequest -Uri https://raw.githubusercontent.com/AnabelMaz/prawko/main/Install_Prawko.ps1 -OutFile Install_Prawko.ps1
+powershell -ExecutionPolicy Bypass -File .\Install_Prawko.ps1
+```
+
+Instalator doinstaluje Git, Node.js i NSSM, sklonuje to repo do `C:\ProgramData\prawko` i wystawi aplikację na [http://localhost:5173](http://localhost:5173). Pytania są z repo, filmy i zdjęcia z CDN. Lokalna paczka z gov.pl (opcjonalnie, kilka GB): `Install_Prawko.ps1 -InstallGov`.
+
+### Gdzie to ląduje (bez podwójnych GB)
+
+**Zwykły użytkownik** (zainstalować, ewentualnie dociągnąć media z gov.pl):
+
+| Co | Gdzie |
+|---|---|
+| Aplikacja + usługa | `C:\ProgramData\prawko` |
+| ZIP / surowe JPG·WMV / PJM | `%LOCALAPPDATA%\prawko\gov-data` |
+| Skonwertowane WebP / MP4 i JSON z Excela | `C:\ProgramData\prawko\src\media` i `src\data` |
+
+Nie potrzebuje drugiego klona gita. `-InstallGov` nie kopiuje mediów jeszcze raz obok.
+
+**Osoba jak Ty (kod + push na GitHub)** — ten sam `Install_Prawko.ps1`, z folderem na gita:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Install_Prawko.ps1 -Dev D:\prawko
+```
+
+Ścieżkę podajesz sam (`D:\prawko`, `Documents\prawko`, … — nie ProgramData). Gdy serwer jeszcze nie stoi, instalator stawia ProgramData **i** klonuje. Gdy serwer już jest: tylko klon, bez admina. Tam edytujesz, commitujesz, pushujesz. Na podgląd: `Install_Prawko.ps1 -Patch` (albo znowu `-Dev` ta sama ścieżka + `-Patch`). Gov ZIP-y i WebP **nie** idą drugi raz do tego folderu.
+
+Jedyna powtórka, której nie da się uniknąć przy `-InstallGov`: archiwum ZIP + rozpakowane JPG/WMV (żeby nie ściągać od zera) oraz surowe pliki + WebP/MP4 (źródło vs to, co odtwarza aplikacja). To nie są dwie kopie tej samej paczki w ProgramData i w gicie.
 
 ## Funkcje
 
@@ -23,11 +62,11 @@ Aplikacja webowa (PWA) do nauki i symulacji egzaminu na prawo jazdy w Polsce. Ba
 
 ## Generowanie danych
 
-Wymagania: Python 3 z `openpyxl`, `ffmpeg`, `cwebp`
+Wymagania na Windows: PowerShell. Media: `ffmpeg`, `cwebp`.
 
 ```bash
-# Parsowanie Excela → JSON
-python3 scripts/parse-excel.py
+# Parsowanie Excela → JSON (Windows, bez Pythona)
+powershell -ExecutionPolicy Bypass -File scripts/parse-excel.ps1
 
 # Konwersja wideo WMV → MP4 (GPU: h264_videotoolbox na macOS)
 bash scripts/convert-videos.sh
@@ -68,7 +107,17 @@ Kod aplikacji jest na [ISC](LICENSE) (tak jak w `package.json` źródła). Przy 
 
 This is a **fork** of [szkocot/prawko](https://github.com/szkocot/prawko) (upstream demo: https://szkocot.github.io/prawko/). It keeps a WORD station layout, Image/PWPW skins, local profiles, and a rebuilt learn mode. Small standalone fixes can still go upstream; this repository holds the full local product.
 
-A PWA web app for Polish driving license exam preparation. The repo JSON has **3556** unique ministry questions. The public catalogue on gov.pl is **July 2026** (`KATALOG_dla_kandydatów_na_kierowców_072026.xlsx`).
+A PWA web app for Polish driving license exam preparation. The repo JSON has **3518** unique ministry questions. The public catalogue on gov.pl is **July 2026** (`KATALOG_dla_kandydatów_na_kierowców_072026.xlsx`).
+
+## Install on Windows
+
+Download [`Install_Prawko.ps1`](https://github.com/AnabelMaz/prawko/blob/main/Install_Prawko.ps1) (**Raw**, then Save as) anywhere. You do not need to clone the repo first.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Install_Prawko.ps1
+```
+
+The installer installs Git, Node.js and NSSM, clones this repo to `C:\ProgramData\prawko`, and serves the app at [http://localhost:5173](http://localhost:5173). Optional `-InstallGov` stores ZIP/raw under `%LOCALAPPDATA%\prawko\gov-data` and converted WebP/MP4 only on the server — not a second copy in a git clone. Developers use the same installer with `-Dev <folder>` to clone a working tree for code and `git push`; ProgramData stays the running app.
 
 ## Features
 

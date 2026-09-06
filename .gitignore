@@ -6,6 +6,7 @@ Thumbs.db
 *.xlsx
 .baza_pytan.hash
 gov-data/
+# leftover Mac unpack dir; new packs go to gov-data/raw/
 Pytania egzaminacyjne na prawo jazdy 2025/
 
 # Python
