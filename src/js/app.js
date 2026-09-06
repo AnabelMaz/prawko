@@ -4,7 +4,7 @@ import { fetchMeta, fetchCategory, fetchUniqueQuestionCount } from './data.js';
 import { startExam, setupExamListeners, cleanupExam, getLastExamCategory, refreshExamQuestion } from './exam.js';
 import { startLearn, setupLearnListeners, cleanupLearn, refreshLearnQuestion } from './learn.js';
 import { showScreen, renderCategories, applyLanguage, renderHistory, renderLearnProgress, renderResults, showConfirmModal } from './ui.js';
-import { setLang, getLang, loadQuestionTranslations, t } from './i18n.js';
+import { setLang, getLang, loadQuestionTranslations, nextLang, LANG_LABELS, t } from './i18n.js';
 import { downloadCategoryMedia, getDownloadedCategories, reconcileDownloadedCategories } from './offline.js';
 import { getProfileSummary, loadHistory, loadLastResult, clearHistory, clearLearnProgress } from './stats.js';
 import { setupUiFitScale, refitUiScale, layoutCategoryGrid } from './scale.js';
@@ -272,13 +272,13 @@ function handleCategorySelect(categoryId) {
 }
 
 function updateLanguageButtons(lang) {
-  document.documentElement.lang = lang;
-  document.querySelectorAll('.lang-btn').forEach((btn) => {
-    const isActive = btn.dataset.lang === lang;
-    btn.classList.toggle('active', isActive);
-    btn.setAttribute('role', 'radio');
-    btn.setAttribute('aria-checked', isActive ? 'true' : 'false');
-  });
+  document.documentElement.lang = lang === 'uk' ? 'uk' : lang;
+  const btn = document.querySelector('.lang-cycle');
+  if (!btn) return;
+  btn.dataset.lang = lang;
+  btn.textContent = LANG_LABELS[lang] || lang.toUpperCase();
+  btn.classList.add('active');
+  btn.setAttribute('aria-label', t('langToggle'));
 }
 
 function getInitialTheme() {
@@ -687,38 +687,38 @@ async function init() {
   if (savedLang !== 'pl') {
     setLang(savedLang);
     applyLanguage();
+    updateLanguageButtons(savedLang);
     paintHomeTagline();
     fillProfilePanel();
-    await loadQuestionTranslations();
+    await loadQuestionTranslations(savedLang);
   }
-  document.querySelectorAll('.lang-btn').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const lang = btn.dataset.lang;
-      updateLanguageButtons(lang);
-      setLang(lang);
-      applyLanguage();
-      paintHomeTagline();
-      fillProfilePanel();
-      applyExamSkin(document.documentElement.getAttribute('data-exam-skin'));
-      syncCategoriesProgressLink();
-      renderCategories(meta, getDownloadedCategories());
-      syncCategoryCardVisibility();
-      renderRecentCategories();
-      applyCategoryUiTranslations();
-      applyCategorySearch();
-      if (lang === 'en') await loadQuestionTranslations();
-      // Re-render current question if on quiz screen
-      if (document.getElementById('quiz').classList.contains('active')) {
-        refreshLearnQuestion();
-        refreshExamQuestion();
-      }
-      if (document.getElementById('results').classList.contains('active')) {
-        const last = loadLastResult();
-        if (last) renderResults(last);
-      }
-      if (document.getElementById('history').classList.contains('active')) renderHistory();
-      if (document.getElementById('learn-progress').classList.contains('active')) renderLearnProgress(meta);
-    });
+  document.querySelector('.lang-cycle')?.addEventListener('click', async () => {
+    const lang = nextLang(getLang());
+    updateLanguageButtons(lang);
+    setLang(lang);
+    applyLanguage();
+    updateLanguageButtons(lang);
+    paintHomeTagline();
+    fillProfilePanel();
+    applyExamSkin(document.documentElement.getAttribute('data-exam-skin'));
+    syncCategoriesProgressLink();
+    renderCategories(meta, getDownloadedCategories());
+    syncCategoryCardVisibility();
+    renderRecentCategories();
+    applyCategoryUiTranslations();
+    applyCategorySearch();
+    if (lang !== 'pl') await loadQuestionTranslations(lang);
+    else await loadQuestionTranslations('pl');
+    if (document.getElementById('quiz').classList.contains('active')) {
+      refreshLearnQuestion();
+      refreshExamQuestion();
+    }
+    if (document.getElementById('results').classList.contains('active')) {
+      const last = loadLastResult();
+      if (last) renderResults(last);
+    }
+    if (document.getElementById('history').classList.contains('active')) renderHistory();
+    if (document.getElementById('learn-progress').classList.contains('active')) renderLearnProgress(meta);
   });
 
   // Offline download handler

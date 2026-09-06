@@ -23,6 +23,8 @@ const APP_SHELL = [
   './js/scale-boot.js',
   './data/meta.json',
   './data/translations_en.json',
+  './data/translations_de.json',
+  './data/translations_uk.json',
   './manifest.json'
 ];
 

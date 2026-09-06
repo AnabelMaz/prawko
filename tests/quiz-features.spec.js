@@ -152,14 +152,14 @@ test.describe('Language switch during quiz', () => {
     await page.waitForSelector('#home.active');
 
     await expect(page.locator('html')).toHaveAttribute('lang', 'pl');
-    await expect(page.locator('.lang-btn[data-lang="pl"]')).toHaveAttribute('aria-checked', 'true');
-    await expect(page.locator('.lang-btn[data-lang="en"]')).toHaveAttribute('aria-checked', 'false');
+    await expect(page.locator('.lang-cycle')).toHaveAttribute('data-lang', 'pl');
+    await expect(page.locator('.lang-cycle')).toHaveText('PL');
 
-    await page.click('.lang-btn[data-lang="en"]');
+    await page.click('.lang-cycle');
 
     await expect(page.locator('html')).toHaveAttribute('lang', 'en');
-    await expect(page.locator('.lang-btn[data-lang="pl"]')).toHaveAttribute('aria-checked', 'false');
-    await expect(page.locator('.lang-btn[data-lang="en"]')).toHaveAttribute('aria-checked', 'true');
+    await expect(page.locator('.lang-cycle')).toHaveAttribute('data-lang', 'en');
+    await expect(page.locator('.lang-cycle')).toHaveText('EN');
   });
 
   test('switching language updates question text in learn mode', async ({ page }) => {
@@ -170,7 +170,7 @@ test.describe('Language switch during quiz', () => {
     expect(questionTextPl.length).toBeGreaterThan(0);
 
     // Switch to English
-    await page.click('.lang-btn[data-lang="en"]');
+    await page.click('.lang-cycle');
     // Wait for translations to load
     await page.waitForTimeout(500);
 
@@ -191,7 +191,7 @@ test.describe('Language switch during quiz', () => {
     );
 
     // Switch to English
-    await page.click('.lang-btn[data-lang="en"]');
+    await page.click('.lang-cycle');
     await page.waitForTimeout(500);
 
     const answersEn = await page.evaluate(() =>
@@ -218,7 +218,7 @@ test.describe('Language switch during quiz', () => {
     expect(hasHighlight).toBe(true);
 
     // Switch to English
-    await page.click('.lang-btn[data-lang="en"]');
+    await page.click('.lang-cycle');
     await page.waitForTimeout(500);
 
     // Highlight should still be present
@@ -236,7 +236,7 @@ test.describe('Language switch during quiz', () => {
     const prevPl = await page.textContent('.btn-prev');
     expect(prevPl).toBe('Poprzednie');
 
-    await page.click('.lang-btn[data-lang="en"]');
+    await page.click('.lang-cycle');
     await page.waitForTimeout(500);
 
     const prevEn = await page.textContent('.btn-prev');
@@ -250,7 +250,7 @@ test.describe('Language switch during quiz', () => {
     expect(questionTextPl.length).toBeGreaterThan(0);
 
     // Switch to English
-    await page.click('.lang-btn[data-lang="en"]');
+    await page.click('.lang-cycle');
     await page.waitForTimeout(500);
 
     const questionTextEn = await page.textContent('.question-text');
@@ -569,7 +569,7 @@ test.describe('Local profiles', () => {
   test('switching to English shows Me and New', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('#home.active');
-    await page.click('.lang-btn[data-lang="en"]');
+    await page.click('.lang-cycle');
     await expect(page.locator('.profile-toggle-name')).toHaveText('Me');
     await page.click('.profile-toggle');
     await expect(page.locator('.profile-action-new')).toHaveText('New');
@@ -585,7 +585,7 @@ test.describe('Local profiles', () => {
     await page.click('.btn-confirm-end');
     await page.waitForSelector('#home.active');
     await expect(page.locator('.profile-toggle-name')).toHaveText('Ja');
-    await page.click('.lang-btn[data-lang="en"]');
+    await page.click('.lang-cycle');
     await expect(page.locator('.profile-toggle-name')).toHaveText('Me');
     await page.click('.profile-toggle');
     await expect(page.locator('.profile-list-btn')).toHaveText(['Me']);
