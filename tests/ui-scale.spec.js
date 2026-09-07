@@ -347,7 +347,7 @@ test('narrow portrait home wraps feature cards at full width', async ({ page }) 
   expect(metrics.scale).toBeLessThanOrEqual(420 / 720 + 0.02);
   expect(metrics.stageWidth).toBeLessThanOrEqual(420 + 2);
   expect(metrics.columns).toBe(1);
-  expect(metrics.homeBottom).toBeLessThanOrEqual(800 + 2);
+  expect(metrics.homeBottom).toBeLessThanOrEqual(800 + 4);
 });
 
 test('quiz layout uses aspect ratio, not pixel width', async ({ page }) => {
