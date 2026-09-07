@@ -84,7 +84,7 @@ DWA TYPY UŻYTKOWNIKA
     --dev            Git + klon (bez Node, bez serwera, bez sudo)
     --patch          nic, gdy serwer stoi; bez serwera: Node + launchd + overlay
     --install-gov    FFmpeg gdy brak; Excel+ZIP z gov.pl
-    --gov-questions  Node (gov.pl) + Python do parsera
+    --gov-questions  Python do parsera
     --merge          Node + Python; zapis do stojącego serwera
     --export         nic (kopia plików)
     --uninstall      nic nowego
@@ -94,7 +94,7 @@ CZEGO WYMAGA
   --dev: tylko Git + klon (bez Node, bez serwera, bez sudo). Nie instaluje Homebrew,
          chyba że brew już jest i brakuje gita — wtedy brew install git.
   --install-gov: FFmpeg; Python+openpyxl do parse-excel.py.
-  --gov-questions / --merge: Node (gov.pl) + Python do parsera; --merge wymaga serwera.
+  --gov-questions: Python do parsera. --merge: Node + Python; wymaga serwera.
 EOF
 }
 
@@ -289,18 +289,26 @@ stamp_cache() {
   say_c "Service worker: ${prefix}-${stamp}"
 }
 
+remove_legacy_server_raw() {
+  local legacy="$TARGET_DIR/Pytania egzaminacyjne na prawo jazdy 2025"
+  [ -e "$legacy" ] || return 0
+  say_y "Usuwam zbędny katalog surowych mediów z serwera: $legacy"
+  rm -rf "$legacy"
+  [ ! -e "$legacy" ] || die "Nie udało się usunąć $legacy."
+}
+
 copy_gov_json_to_server() {
   local gov_dir="$1" sw_prefix="$2" cat tr
   [ -f "$TARGET_DIR/src/index.html" ] && [ -d "$TARGET_DIR/src/data" ] || return 1
-  cp "$gov_dir/meta.json" "$TARGET_DIR/src/data/meta.json"
+  cp "$gov_dir/meta.json" "$TARGET_DIR/src/data/meta.json" || return 2
   for cat in A A1 A2 AM B B1 C C1 D D1 PT T; do
     if [ -f "$gov_dir/$cat.json" ]; then
-      cp "$gov_dir/$cat.json" "$TARGET_DIR/src/data/$cat.json"
+      cp "$gov_dir/$cat.json" "$TARGET_DIR/src/data/$cat.json" || return 2
     fi
   done
   for tr in translations_en.json translations_de.json translations_uk.json; do
     if [ -f "$gov_dir/$tr" ]; then
-      cp "$gov_dir/$tr" "$TARGET_DIR/src/data/$tr"
+      cp "$gov_dir/$tr" "$TARGET_DIR/src/data/$tr" || return 2
     fi
   done
   stamp_cache "$TARGET_DIR" "$sw_prefix"
@@ -441,7 +449,7 @@ assert_gov_parsed() {
   local gov_dir="$1" excel="$2" meta qtotal
   meta="$gov_dir/meta.json"
   [ -f "$meta" ] || die "Brak meta.json po parsowaniu Excela."
-  qtotal="$(node -e "const m=require(process.argv[1]); console.log((m.categories||[]).reduce((s,c)=>s+(c.questionCount||0),0))" "$meta")"
+  qtotal="$(as_user python3 -c "import json,sys; m=json.load(open(sys.argv[1],encoding='utf-8')); print(sum(int(c.get('questionCount') or 0) for c in (m.get('categories') or [])))" "$meta")"
   if [ "${qtotal:-0}" -lt 100 ]; then
     die "Parser Excela zapisał za mało pytań ($qtotal). Sprawdź układ kolumn w $excel."
   fi
@@ -665,30 +673,33 @@ do_uninstall() {
   fi
   [ ! -e "$TARGET_DIR" ] || die "Nie udało się usunąć $TARGET_DIR."
   say_g "Usunięto usługę $LAUNCH_LABEL i katalog aplikacji."
-  say_d "Homebrew, Git i Node zostają. FFmpeg z tools/ w katalogu Prawko znika razem z folderem."
+  say_d "Homebrew, Git i Node zostają. FFmpeg z Homebrew też (nie leży w $TARGET_DIR/tools)."
   say_d "Staging gov-data zostaje w $GOV_DATA"
 }
 
 publish_gov_questions() {
-  local excel="$GOV_DATA/baza_pytan.xlsx"
-  ensure_cmd node node
+  local excel="$GOV_DATA/baza_pytan.xlsx" copy_rc=0
   ensure_python_openpyxl
+  remove_legacy_server_raw
   say_c "GovQuestions: Excel z gov.pl → $GOV_DATA (contrib/src/data nietknięty)"
   say_d "Bez ZIP multimediów, bez src/media, bez zmiany CDN."
   run_pipeline download-gov.sh --excel-only
   run_parse_excel "$excel" "$GOV_DATA"
   assert_gov_parsed "$GOV_DATA" "$excel"
-  if copy_gov_json_to_server "$GOV_DATA" "prawko-govq"; then
+  copy_gov_json_to_server "$GOV_DATA" "prawko-govq" || copy_rc=$?
+  if [ "$copy_rc" -eq 0 ]; then
     say_g "Done. Serwer czyta JSON z ministerstwa. --patch tego nie cofnie (pomija data/)."
     say_d "Oryginały nadal w contrib/src/data. Filmy z CDN."
-  else
+  elif [ "$copy_rc" -eq 1 ]; then
     say_y "Serwer nie zainstalowany — JSON ministerstwa tylko w gov-data. Po instalacji odpal --gov-questions jeszcze raz."
+  else
+    say_y "JSON ministerstwa jest w gov-data, ale nie udało się zapisać na serwer."
+    say_d "contrib/src/data nietknięty. Sprawdź uprawnienia do $TARGET_DIR albo skopiuj gov-data ręcznie."
   fi
 }
 
 publish_gov_install() {
-  local excel="$GOV_DATA/baza_pytan.xlsx" img_out vid_out ffmpeg
-  ensure_cmd node node
+  local excel="$GOV_DATA/baza_pytan.xlsx" img_out vid_out ffmpeg copy_rc=0
   ensure_cmd ffmpeg ffmpeg
   if ! command -v cwebp >/dev/null 2>&1; then
     if command -v brew >/dev/null 2>&1; then
@@ -717,16 +728,29 @@ publish_gov_install() {
   say_c "=== JSON z Excela → gov-data ==="
   run_parse_excel "$excel" "$GOV_DATA"
   assert_gov_parsed "$GOV_DATA" "$excel"
+  remove_legacy_server_raw
   if ! server_installed; then
     say_y "Serwer nie zainstalowany — Excel/JSON/media w $GOV_DATA. Po instalacji odpal --install-gov jeszcze raz."
     return 0
   fi
   say_c "Kopiuję JSON MI na serwer (git/ contrib/src/data nietknięty)..."
-  copy_gov_json_to_server "$GOV_DATA" "prawko-govmedia" || die "Brak src/data na serwerze."
+  copy_gov_json_to_server "$GOV_DATA" "prawko-govmedia" || copy_rc=$?
+  if [ "$copy_rc" -ne 0 ]; then
+    say_y "JSON/media są w staging, ale nie udało się zapisać na serwer."
+    say_d "Sprawdź uprawnienia do $TARGET_DIR."
+    return 0
+  fi
   mkdir -p "$TARGET_DIR/src/media/img" "$TARGET_DIR/src/media/vid"
   if [ "$img_out" != "$TARGET_DIR/src/media/img" ]; then
-    rsync -a "$img_out/" "$TARGET_DIR/src/media/img/"
-    rsync -a "$vid_out/" "$TARGET_DIR/src/media/vid/"
+    say_c "Kopiuję WebP/MP4: $img_out + $vid_out → $TARGET_DIR/src/media"
+    rsync -a "$img_out/" "$TARGET_DIR/src/media/img/" || {
+      say_y "JSON jest na serwerze, ale kopia mediów nie weszła. Sprawdź uprawnienia do $TARGET_DIR."
+      return 0
+    }
+    rsync -a "$vid_out/" "$TARGET_DIR/src/media/vid/" || {
+      say_y "JSON jest na serwerze, ale kopia mediów nie weszła. Sprawdź uprawnienia do $TARGET_DIR."
+      return 0
+    }
   fi
   set_local_media_base "$TARGET_DIR"
   say_g "Done. Serwer: JSON + media z gov.pl. --patch nie nadpisze data/ ani media/."
@@ -736,12 +760,15 @@ do_merge() {
   local excel="$GOV_DATA/baza_pytan.xlsx" js ffmpeg="" media_args=()
   ensure_cmd node node
   ensure_python_openpyxl
+  remove_legacy_server_raw
   run_pipeline download-gov.sh --excel-only
   [ -f "$excel" ] || die "Brak $excel — nie ma ściągniętej bazy ministerstwa do merge."
   run_parse_excel "$excel" "$GOV_DATA"
   js="$(resolve_pipeline merge-gov.js)" || die "Brak scripts/merge-gov.js"
   if command -v ffmpeg >/dev/null 2>&1; then
     ffmpeg="$(command -v ffmpeg)"
+  else
+    say_y "-> Brak FFmpeg — merge bez porównania klatek (tylko nazwa pliku mediów)."
   fi
   media_args=(--gov-dir "$GOV_DATA" --out-dir "$TARGET_DIR/src/data")
   [ -n "$ffmpeg" ] && media_args+=(--ffmpeg "$ffmpeg")
@@ -774,6 +801,7 @@ if [ "$DEV_SET" -eq 1 ] && [ "$UNINSTALL" -eq 0 ]; then
   install_dev_clone "$DEV"
   if [ "$PATCH" -eq 1 ]; then
     if server_installed; then
+      remove_legacy_server_raw
       apply_patch
       say_g "Gotowe. W otwartej aplikacji baner: Dostępna aktualizacja / Odśwież."
     else
@@ -809,6 +837,7 @@ if [ "$MERGE" -eq 1 ]; then
 fi
 
 if [ "$PATCH" -eq 1 ] && [ "$MERGE" -eq 0 ] && [ "$UNINSTALL" -eq 0 ] && [ "$DEV_SET" -eq 0 ] && server_installed; then
+  remove_legacy_server_raw
   apply_patch
   say_g "Gotowe. W otwartej aplikacji baner: Dostępna aktualizacja / Odśwież."
   pause_if_interactive
@@ -816,6 +845,7 @@ if [ "$PATCH" -eq 1 ] && [ "$MERGE" -eq 0 ] && [ "$UNINSTALL" -eq 0 ] && [ "$DEV
 fi
 
 if [ "$UNINSTALL" -eq 0 ] && [ "$MERGE" -eq 0 ] && [ "$GOV_QUESTIONS" -eq 0 ] && [ "$INSTALL_GOV" -eq 0 ] && [ "$PATCH" -eq 0 ] && [ "$DEV_SET" -eq 0 ] && server_installed; then
+  remove_legacy_server_raw
   say_y "Serwer już stoi w $TARGET_DIR — nie nadpisuję plików (żadnego git checkout / pull)."
   say_d "  Kod z lokalnego contrib: ./Install_Prawko.macos.sh --patch"
   say_d "  Pytania MI:        ./Install_Prawko.macos.sh --install-gov   albo   --gov-questions"
@@ -876,6 +906,7 @@ else
   install_from_github_zip "$TARGET_DIR"
 fi
 say_g "Katalog aplikacji gotowy: $TARGET_DIR"
+remove_legacy_server_raw
 
 say_c "=== 4–5. POMINIĘTE (baza z ZIP AnabelMaz/prawko) ==="
 say_d "-> Pytania: src/data z paczki. Media: CDN prawko-maz."

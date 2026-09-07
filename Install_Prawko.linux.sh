@@ -94,18 +94,19 @@ DWA TYPY UŻYTKOWNIKA
     (brak)           Node (paczka albo tarball), ZIP, systemd
     --dev            Git + klon (bez Node, bez serwera, bez sudo)
     --patch          nic, gdy serwer stoi; bez serwera: Node + systemd + overlay
-    --install-gov    FFmpeg gdy brak; Excel+ZIP z gov.pl
-    --gov-questions  Node (gov.pl) + Python do parsera
+    --install-gov    FFmpeg gdy brak (paczka albo tarball); Excel+ZIP z gov.pl
+    --gov-questions  Python do parsera
     --merge          Node + Python; zapis do stojącego serwera
     --export         nic (kopia plików)
     --uninstall      nic nowego
 
 CZEGO WYMAGA
   Serwer (bez przełączników): sudo, Node gdy brak, ZIP, systemd. Bez Gita. Wymaga systemd.
-  --dev: tylko Git + klon (bez Node, bez serwera, bez sudo). Gita nie doinstalowuje —
-         zainstaluj z dystrybucji (apt/dnf/pacman/zypper/apk).
-  --install-gov: FFmpeg; Python+openpyxl do parse-excel.py.
-  --gov-questions / --merge: Node (gov.pl) + Python do parsera; --merge wymaga serwera.
+  --dev: tylko Git + klon (bez Node, bez serwera, bez sudo). Brak gita: jako root
+         doinstaluje pakiet; bez sudo zainstaluj z dystrybucji (apt/dnf/pacman/zypper/apk).
+  --install-gov: FFmpeg (paczka albo przenośny tarball w tools/, jak na Windows);
+                 Python+openpyxl do parse-excel.py. Bez sudo.
+  --gov-questions: Python do parsera. --merge: Node + Python; wymaga serwera.
 EOF
 }
 
@@ -299,18 +300,26 @@ stamp_cache() {
   say_c "Service worker: ${prefix}-${stamp}"
 }
 
+remove_legacy_server_raw() {
+  local legacy="$TARGET_DIR/Pytania egzaminacyjne na prawo jazdy 2025"
+  [ -e "$legacy" ] || return 0
+  say_y "Usuwam zbędny katalog surowych mediów z serwera: $legacy"
+  rm -rf "$legacy"
+  [ ! -e "$legacy" ] || die "Nie udało się usunąć $legacy."
+}
+
 copy_gov_json_to_server() {
   local gov_dir="$1" sw_prefix="$2" cat tr
   [ -f "$TARGET_DIR/src/index.html" ] && [ -d "$TARGET_DIR/src/data" ] || return 1
-  cp "$gov_dir/meta.json" "$TARGET_DIR/src/data/meta.json"
+  cp "$gov_dir/meta.json" "$TARGET_DIR/src/data/meta.json" || return 2
   for cat in A A1 A2 AM B B1 C C1 D D1 PT T; do
     if [ -f "$gov_dir/$cat.json" ]; then
-      cp "$gov_dir/$cat.json" "$TARGET_DIR/src/data/$cat.json"
+      cp "$gov_dir/$cat.json" "$TARGET_DIR/src/data/$cat.json" || return 2
     fi
   done
   for tr in translations_en.json translations_de.json translations_uk.json; do
     if [ -f "$gov_dir/$tr" ]; then
-      cp "$gov_dir/$tr" "$TARGET_DIR/src/data/$tr"
+      cp "$gov_dir/$tr" "$TARGET_DIR/src/data/$tr" || return 2
     fi
   done
   stamp_cache "$TARGET_DIR" "$sw_prefix"
@@ -343,7 +352,7 @@ apply_patch() {
 }
 
 load_tool_env() {
-  export PATH="${TARGET_DIR}/tools/node/bin:/usr/local/bin:/usr/bin:/bin:${PATH:-}"
+  export PATH="${TARGET_DIR}/tools/ffmpeg/bin:${TARGET_DIR}/tools/node/bin:${REAL_HOME}/.local/share/prawko/tools/ffmpeg/bin:/usr/local/bin:/usr/bin:/bin:${PATH:-}"
 }
 
 as_user() {
@@ -474,6 +483,15 @@ ensure_git() {
     say_g "[OK] git"
     return 0
   fi
+  if is_root; then
+    say_y "[Brak git] Instaluję z dystrybucji..."
+    pkg_install git || die "Nie udało się zainstalować git."
+    if command -v git >/dev/null 2>&1 && git --version >/dev/null 2>&1; then
+      say_g "[OK] git"
+      return 0
+    fi
+    die "git nie jest dostępny po instalacji pakietu."
+  fi
   die "Brak Git. --dev nie instaluje Node ani serwera. Zainstaluj git z dystrybucji (np. sudo apt install git / sudo dnf install git / sudo pacman -S git) i ponów."
 }
 
@@ -489,6 +507,99 @@ ensure_python_openpyxl() {
   say_y "Instaluję openpyxl (parse-excel.py)..."
   as_user python3 -m pip install --user openpyxl
   as_user python3 -c "import openpyxl" || die "openpyxl nie jest dostępny (python3 -m pip install --user openpyxl)."
+}
+
+run_parse_excel() {
+  local excel="$1" out="$2"
+  shift 2
+  local py extra=()
+  py="$(resolve_pipeline parse-excel.py)" || die "Brak scripts/parse-excel.py"
+  extra=(--excel "$excel" --out-dir "$out")
+  if [ "$DROP_MISSING_MEDIA" -eq 1 ]; then
+    extra+=(--drop-missing-media --media-dir "$GOV_DATA/raw")
+    say_y "DropMissingMedia: pytania bez lokalnego pliku w raw tracą odwołanie do mediów."
+  fi
+  say_c "-> parse-excel.py ${extra[*]}"
+  as_user python3 "$py" "${extra[@]}"
+}
+
+assert_gov_parsed() {
+  local gov_dir="$1" excel="$2" meta qtotal
+  meta="$gov_dir/meta.json"
+  [ -f "$meta" ] || die "Brak meta.json po parsowaniu Excela."
+  qtotal="$(as_user python3 -c "import json,sys; m=json.load(open(sys.argv[1],encoding='utf-8')); print(sum(int(c.get('questionCount') or 0) for c in (m.get('categories') or [])))" "$meta")"
+  if [ "${qtotal:-0}" -lt 100 ]; then
+    die "Parser Excela zapisał za mało pytań ($qtotal). Sprawdź układ kolumn w $excel."
+  fi
+  say_g "-> W gov-data: $qtotal przypisań pytań. Oryginały w contrib/src/data zostają."
+}
+
+ffmpeg_tools_root() {
+  if mkdir -p "$TARGET_DIR/tools" 2>/dev/null && [ -w "$TARGET_DIR/tools" ]; then
+    printf '%s\n' "$TARGET_DIR/tools"
+    return 0
+  fi
+  printf '%s\n' "$REAL_HOME/.local/share/prawko/tools"
+}
+
+resolve_ffmpeg() {
+  load_tool_env
+  local c
+  for c in "$(command -v ffmpeg 2>/dev/null || true)" \
+    "${TARGET_DIR}/tools/ffmpeg/bin/ffmpeg" \
+    "$REAL_HOME/.local/share/prawko/tools/ffmpeg/bin/ffmpeg" \
+    /usr/bin/ffmpeg /usr/local/bin/ffmpeg; do
+    if [ -n "$c" ] && [ -x "$c" ]; then
+      printf '%s\n' "$c"
+      return 0
+    fi
+  done
+  return 1
+}
+
+install_portable_ffmpeg() {
+  local arch url stage inner dest root
+  case "$(uname -m)" in
+    x86_64) arch=linux64 ;;
+    aarch64|arm64) arch=linuxarm64 ;;
+    *) die "Architektura $(uname -m): zainstaluj ffmpeg z dystrybucji i ponów." ;;
+  esac
+  root="$(ffmpeg_tools_root)"
+  dest="$root/ffmpeg"
+  url="https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-${arch}-gpl.tar.xz"
+  say_y "[Brak FFmpeg] Pobieram przenośną paczkę (${arch}) do $dest ..."
+  mkdir -p "$root"
+  stage="$(mktemp -d "${TMPDIR:-/tmp}/prawko-ffmpeg.XXXXXX")"
+  curl -fsSL --retry 5 -o "$stage/ffmpeg.tar.xz" "$url" || die "Nie udało się pobrać FFmpeg (BtbN/FFmpeg-Builds)."
+  tar -xf "$stage/ffmpeg.tar.xz" -C "$stage" || die "Nie udało się rozpakować FFmpeg (potrzebny tar z obsługą xz)."
+  inner="$(find "$stage" -mindepth 1 -maxdepth 1 -type d -name 'ffmpeg-*' | head -n 1)"
+  [ -n "$inner" ] || die "Tarball FFmpeg nie zawiera katalogu."
+  rm -rf "$dest"
+  mv "$inner" "$dest"
+  rm -rf "$stage"
+  load_tool_env
+  [ -x "$dest/bin/ffmpeg" ] || die "Po rozpakowaniu nie ma ffmpeg w $dest/bin."
+  say_g "[OK] FFmpeg (przenośny) $dest/bin/ffmpeg"
+}
+
+ensure_ffmpeg() {
+  load_tool_env
+  if resolve_ffmpeg >/dev/null; then
+    say_g "[OK] ffmpeg: $(resolve_ffmpeg)"
+    return 0
+  fi
+  if is_root; then
+    say_y "[Brak ffmpeg] Instaluję z dystrybucji..."
+    pkg_install ffmpeg || true
+    load_tool_env
+    if resolve_ffmpeg >/dev/null; then
+      say_g "[OK] ffmpeg: $(resolve_ffmpeg)"
+      return 0
+    fi
+  fi
+  install_portable_ffmpeg
+  resolve_ffmpeg >/dev/null || die "FFmpeg nie jest dostępny (ani w systemie, ani w tools/)."
+  say_g "[OK] ffmpeg: $(resolve_ffmpeg)"
 }
 
 resolve_node() {
@@ -690,31 +801,34 @@ do_uninstall() {
   fi
   [ ! -e "$TARGET_DIR" ] || die "Nie udało się usunąć $TARGET_DIR."
   say_g "Usunięto usługę $SERVICE_NAME i katalog aplikacji."
-  say_d "Git i Node z dystrybucji zostają. FFmpeg/Node z tools/ w katalogu Prawko znikają razem z folderem."
-  say_d "Staging gov-data zostaje w $GOV_DATA"
+  say_d "Git i Node z dystrybucji zostają. FFmpeg/Node w $TARGET_DIR/tools znikają z folderem."
+  say_d "Staging gov-data zostaje w $GOV_DATA. Przenośny FFmpeg w ~/.local/share/prawko/tools też (gdy /opt nie był zapisywalny)."
 }
 
 publish_gov_questions() {
-  local excel="$GOV_DATA/baza_pytan.xlsx"
-  ensure_node
+  local excel="$GOV_DATA/baza_pytan.xlsx" copy_rc=0
   ensure_python_openpyxl
+  remove_legacy_server_raw
   say_c "GovQuestions: Excel z gov.pl → $GOV_DATA (contrib/src/data nietknięty)"
   say_d "Bez ZIP multimediów, bez src/media, bez zmiany CDN."
   run_pipeline download-gov.sh --excel-only
   run_parse_excel "$excel" "$GOV_DATA"
   assert_gov_parsed "$GOV_DATA" "$excel"
-  if copy_gov_json_to_server "$GOV_DATA" "prawko-govq"; then
+  copy_gov_json_to_server "$GOV_DATA" "prawko-govq" || copy_rc=$?
+  if [ "$copy_rc" -eq 0 ]; then
     say_g "Done. Serwer czyta JSON z ministerstwa. --patch tego nie cofnie (pomija data/)."
     say_d "Oryginały nadal w contrib/src/data. Filmy z CDN."
-  else
+  elif [ "$copy_rc" -eq 1 ]; then
     say_y "Serwer nie zainstalowany — JSON ministerstwa tylko w gov-data. Po instalacji odpal --gov-questions jeszcze raz."
+  else
+    say_y "JSON ministerstwa jest w gov-data, ale nie udało się zapisać na serwer."
+    say_d "contrib/src/data nietknięty. Sprawdź uprawnienia do $TARGET_DIR albo skopiuj gov-data ręcznie."
   fi
 }
 
 publish_gov_install() {
-  local excel="$GOV_DATA/baza_pytan.xlsx" img_out vid_out ffmpeg
-  ensure_node
-  ensure_cmd ffmpeg ffmpeg
+  local excel="$GOV_DATA/baza_pytan.xlsx" img_out vid_out ffmpeg copy_rc=0
+  ensure_ffmpeg
   if ! command -v cwebp >/dev/null 2>&1; then
     if is_root; then
       pkg_install webp libwebp-tools 2>/dev/null || pkg_install libwebp 2>/dev/null || true
@@ -736,44 +850,60 @@ publish_gov_install() {
     vid_out="$REAL_HOME/.local/share/prawko/media/vid"
   fi
   say_c "=== Konwersja mediów sytuacyjnych (JPG→WebP, WMV→MP4) ==="
-  ffmpeg="$(command -v ffmpeg)"
+  ffmpeg="$(resolve_ffmpeg)" || die "FFmpeg nie jest dostępny (ani w systemie, ani w tools/)."
   run_pipeline convert-media.sh --source "$GOV_DATA/raw" --img-out "$img_out" --vid-out "$vid_out" --ffmpeg "$ffmpeg"
   say_c "=== JSON z Excela → gov-data ==="
   run_parse_excel "$excel" "$GOV_DATA"
   assert_gov_parsed "$GOV_DATA" "$excel"
+  remove_legacy_server_raw
   if ! server_installed; then
-    say_y "Serwer nie zainstalowany — Excel/JSON/media w $GOV_DATA. Po instalacji odpal --install-gov jeszcze raz."
+    say_y "Serwer nie zainstalowany — Excel/JSON/media w $GOV_DATA i $REAL_HOME/.local/share/prawko/media. Po instalacji odpal --install-gov jeszcze raz."
     return 0
   fi
   say_c "Kopiuję JSON MI na serwer (git/ contrib/src/data nietknięty)..."
-  copy_gov_json_to_server "$GOV_DATA" "prawko-govmedia" || die "Brak src/data na serwerze."
+  copy_gov_json_to_server "$GOV_DATA" "prawko-govmedia" || copy_rc=$?
+  if [ "$copy_rc" -ne 0 ]; then
+    say_y "JSON/media są w staging, ale nie udało się zapisać na serwer."
+    say_d "Sprawdź uprawnienia do $TARGET_DIR."
+    return 0
+  fi
   mkdir -p "$TARGET_DIR/src/media/img" "$TARGET_DIR/src/media/vid"
   if [ "$img_out" != "$TARGET_DIR/src/media/img" ]; then
-    rsync -a "$img_out/" "$TARGET_DIR/src/media/img/"
-    rsync -a "$vid_out/" "$TARGET_DIR/src/media/vid/"
+    say_c "Kopiuję WebP/MP4: $img_out + $vid_out → $TARGET_DIR/src/media"
+    rsync -a "$img_out/" "$TARGET_DIR/src/media/img/" || {
+      say_y "JSON jest na serwerze, ale kopia mediów nie weszła. Sprawdź uprawnienia do $TARGET_DIR."
+      return 0
+    }
+    rsync -a "$vid_out/" "$TARGET_DIR/src/media/vid/" || {
+      say_y "JSON jest na serwerze, ale kopia mediów nie weszła. Sprawdź uprawnienia do $TARGET_DIR."
+      return 0
+    }
   fi
   set_local_media_base "$TARGET_DIR"
   say_g "Done. Serwer: JSON + media z gov.pl. --patch nie nadpisze data/ ani media/."
 }
 
 do_merge() {
-  local excel="$GOV_DATA/baza_pytan.xlsx" js ffmpeg="" media_args=()
+  local excel="$GOV_DATA/baza_pytan.xlsx" js ffmpeg="" media_args=() node_exe
   ensure_node
   ensure_python_openpyxl
+  remove_legacy_server_raw
   run_pipeline download-gov.sh --excel-only
   [ -f "$excel" ] || die "Brak $excel — nie ma ściągniętej bazy ministerstwa do merge."
   run_parse_excel "$excel" "$GOV_DATA"
   js="$(resolve_pipeline merge-gov.js)" || die "Brak scripts/merge-gov.js"
-  if command -v ffmpeg >/dev/null 2>&1; then
-    ffmpeg="$(command -v ffmpeg)"
-  fi
   media_args=(--gov-dir "$GOV_DATA" --out-dir "$TARGET_DIR/src/data")
-  [ -n "$ffmpeg" ] && media_args+=(--ffmpeg "$ffmpeg")
+  if ffmpeg="$(resolve_ffmpeg)"; then
+    media_args+=(--ffmpeg "$ffmpeg")
+  else
+    say_y "-> Brak FFmpeg — merge bez porównania klatek (tylko nazwa pliku mediów)."
+  fi
   [ -d "$GOV_DATA/raw" ] && media_args+=(--media-dir "$GOV_DATA/raw")
   [ -d "$TARGET_DIR/src/media/img" ] && media_args+=(--media-dir "$TARGET_DIR/src/media/img")
   [ -d "$TARGET_DIR/src/media/vid" ] && media_args+=(--media-dir "$TARGET_DIR/src/media/vid")
   say_c "-> merge-gov.js ${media_args[*]}"
-  node "$js" "${media_args[@]}"
+  node_exe="$(resolve_node)" || die "Brak node"
+  "$node_exe" "$js" "${media_args[@]}"
   restore_media_base_if_needed "$TARGET_DIR"
 }
 
@@ -798,6 +928,7 @@ if [ "$DEV_SET" -eq 1 ] && [ "$UNINSTALL" -eq 0 ]; then
   install_dev_clone "$DEV"
   if [ "$PATCH" -eq 1 ]; then
     if server_installed; then
+      remove_legacy_server_raw
       apply_patch
       say_g "Gotowe. W otwartej aplikacji baner: Dostępna aktualizacja / Odśwież."
     else
@@ -833,6 +964,7 @@ if [ "$MERGE" -eq 1 ]; then
 fi
 
 if [ "$PATCH" -eq 1 ] && [ "$MERGE" -eq 0 ] && [ "$UNINSTALL" -eq 0 ] && [ "$DEV_SET" -eq 0 ] && server_installed; then
+  remove_legacy_server_raw
   apply_patch
   say_g "Gotowe. W otwartej aplikacji baner: Dostępna aktualizacja / Odśwież."
   pause_if_interactive
@@ -840,6 +972,7 @@ if [ "$PATCH" -eq 1 ] && [ "$MERGE" -eq 0 ] && [ "$UNINSTALL" -eq 0 ] && [ "$DEV
 fi
 
 if [ "$UNINSTALL" -eq 0 ] && [ "$MERGE" -eq 0 ] && [ "$GOV_QUESTIONS" -eq 0 ] && [ "$INSTALL_GOV" -eq 0 ] && [ "$PATCH" -eq 0 ] && [ "$DEV_SET" -eq 0 ] && server_installed; then
+  remove_legacy_server_raw
   say_y "Serwer już stoi w $TARGET_DIR — nie nadpisuję plików (żadnego git checkout / pull)."
   say_d "  Kod z lokalnego contrib: ./Install_Prawko.linux.sh --patch"
   say_d "  Pytania MI:        ./Install_Prawko.linux.sh --install-gov   albo   --gov-questions"
@@ -900,6 +1033,7 @@ else
   install_from_github_zip "$TARGET_DIR"
 fi
 say_g "Katalog aplikacji gotowy: $TARGET_DIR"
+remove_legacy_server_raw
 
 say_c "=== 4–5. POMINIĘTE (baza z ZIP AnabelMaz/prawko) ==="
 say_d "-> Pytania: src/data z paczki. Media: CDN prawko-maz."
