@@ -1,7 +1,7 @@
 {
   "name": "Prawko - Egzamin na prawo jazdy",
   "short_name": "Prawko",
-  "description": "Wszystkie 3719 oficjalnych pytań egzaminacyjnych na prawo jazdy",
+  "description": "Oficjalne pytania egzaminacyjne na prawo jazdy",
   "start_url": ".",
   "display": "standalone",
   "theme_color": "#6366f1",
