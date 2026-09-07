@@ -1,13 +1,14 @@
 <!DOCTYPE html>
-<html lang="pl">
+<html lang="pl" data-exam-skin="panel">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <script src="js/scale-boot.js"></script>
   <meta name="theme-color" content="#6366f1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' https://*.backblazeb2.com; media-src 'self' https://*.backblazeb2.com; connect-src 'self' https://*.backblazeb2.com; object-src 'none'; base-uri 'self'; form-action 'none';">
-  <meta name="description" content="Prawko — aplikacja do nauki pytań egzaminacyjnych na prawo jazdy. Wszystkie 3719 oficjalnych pytań.">
+  <meta name="description" content="Prawko — aplikacja do nauki pytań egzaminacyjnych na prawo jazdy.">
   <meta property="og:title" content="Prawko — Egzamin na prawo jazdy">
-  <meta property="og:description" content="Wszystkie 3719 oficjalnych pytań egzaminacyjnych na prawo jazdy. Nauka i symulacja egzaminu.">
+  <meta property="og:description" content="Oficjalne pytania egzaminacyjne na prawo jazdy. Nauka i symulacja egzaminu.">
   <meta property="og:type" content="website">
   <meta property="og:image" content="icons/icon-512.png">
   <title>Prawko — Egzamin na prawo jazdy</title>
@@ -48,36 +49,64 @@
       <symbol id="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
       </symbol>
+      <symbol id="icon-profile" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+        <circle cx="12" cy="7" r="4"/>
+      </symbol>
     </defs>
   </svg>
 
-  <main id="app">
-
+  <div class="app-chrome">
     <div class="offline-banner" id="offline-banner" role="status" aria-live="polite" style="display:none">
       <span data-i18n="offlineNotice">Jesteś offline</span>
     </div>
-
-    <div class="update-banner" id="update-banner" role="status" aria-live="polite" style="display:none">
+    <div class="update-banner" id="update-banner" role="status" aria-live="polite" hidden>
       <span data-i18n="updateAvailable">Dostępna aktualizacja</span>
       <button class="update-banner-btn" id="update-banner-btn" data-i18n="tapToRefresh">Odśwież</button>
     </div>
+  </div>
 
-    <div class="top-controls">
-      <button class="theme-btn" aria-label="Toggle dark mode" aria-pressed="false">
-        <svg class="theme-icon" width="20" height="20"><use href="#icon-moon"/></svg>
+  <div class="ui-frame">
+  <div class="ui-slot" id="ui-slot">
+  <div class="ui-stage" id="ui-stage">
+  <div class="top-controls">
+    <button class="theme-btn" aria-label="Toggle dark mode" aria-pressed="false">
+      <svg class="theme-icon" width="20" height="20"><use href="#icon-moon"/></svg>
+    </button>
+    <button class="skin-btn" type="button" aria-pressed="true" data-i18n-aria="examSkinToggle" aria-label="Skórka">Panel</button>
+    <button class="lang-btn lang-cycle active" type="button" data-lang="pl" data-i18n-aria="langToggle" aria-label="Język">PL</button>
+    <div class="profile-switch">
+      <button type="button" class="profile-toggle" aria-expanded="false" aria-controls="profile-panel" aria-haspopup="dialog" aria-label="Profil">
+        <svg class="profile-toggle-icon" width="16" height="16" aria-hidden="true"><use href="#icon-profile"/></svg>
+        <span class="profile-toggle-name">Ja</span>
       </button>
-      <button class="exam-skin-btn" type="button" data-i18n="examSkin" aria-pressed="false">Tryb egzaminatora</button>
-      <div class="lang-toggle" role="radiogroup" aria-label="Wybór języka">
-        <button class="lang-btn active" data-lang="pl" role="radio" aria-checked="true">PL</button>
-        <button class="lang-btn" data-lang="en" role="radio" aria-checked="false">EN</button>
+      <div id="profile-panel" class="profile-panel" hidden role="dialog" aria-labelledby="profile-panel-title">
+        <div class="profile-panel-head">
+          <h2 id="profile-panel-title" data-i18n="profileLabel">Profil</h2>
+          <button type="button" class="profile-panel-close" data-i18n-aria="profileClose" aria-label="Zamknij">&times;</button>
+        </div>
+        <ul class="profile-list"></ul>
+        <button type="button" class="profile-stat profile-stat-learn" data-navigate="learn-progress">Nauka: 0 umiem</button>
+        <button type="button" class="profile-stat profile-stat-exams" data-navigate="history">Egzaminy: 0 (0 zdane)</button>
+        <label class="profile-pref">
+          <input type="checkbox" class="profile-practice-exam">
+          <span data-i18n="profilePracticeExam">Egzamin próbny (5 pytań)</span>
+        </label>
+        <div class="profile-panel-actions">
+          <button type="button" class="profile-action-rename" data-i18n="profileRename">Zmień nazwę</button>
+          <button type="button" class="profile-action-new" data-i18n="profileNew">Nowy</button>
+          <button type="button" class="profile-action-delete">Usuń</button>
+        </div>
       </div>
     </div>
+  </div>
+  <main id="app">
 
     <!-- ===== 1. LANDING PAGE ===== -->
     <section id="home" class="screen active">
       <header class="hero">
         <h1 class="hero-title">Prawko</h1>
-        <p class="hero-tagline" data-i18n="tagline">Wszystkie 3719 oficjalnych pytań egzaminacyjnych</p>
+        <p class="hero-tagline" data-i18n="tagline">Oficjalne pytania egzaminacyjne</p>
       </header>
 
       <div class="loading-spinner" id="home-spinner"></div>
@@ -125,7 +154,7 @@
       </div>
 
       <footer class="app-footer">
-        <p data-i18n="copyright">&copy; 2025 Prawko</p>
+        <p data-i18n="copyright">&copy; 2026 Prawko</p>
         <p class="footer-attribution"><span data-i18n="attribution">Pytania na podstawie oficjalnej bazy</span> <a href="https://www.gov.pl/web/infrastruktura/prawo-jazdy" target="_blank" rel="noopener" data-i18n="ministryName">Ministerstwa Infrastruktury</a></p>
       </footer>
     </section>
@@ -144,8 +173,8 @@
 
       <p id="mode-description" class="mode-description" data-i18n="modeLearnDesc">Ucz się we własnym tempie z natychmiastową informacją zwrotną</p>
 
-      <div style="text-align:center;margin-bottom:8px">
-        <button class="btn btn-link btn-history-link" data-navigate="history" data-i18n="examHistory">Historia egzaminów</button>
+      <div class="categories-extra">
+        <button class="btn btn-link btn-history-link" data-navigate="learn-progress" data-i18n="learnProgress">Postęp nauki</button>
       </div>
 
       <div class="category-search-wrap">
@@ -241,52 +270,117 @@
       </div>
     </section>
 
-    <!-- ===== 3. QUIZ SCREEN ===== -->
+    <!-- ===== 3. QUIZ SCREEN — official WORD station from the poglądowy film ===== -->
     <section id="quiz" class="screen">
-      <header class="quiz-header">
-        <button class="btn btn-back quiz-back" data-navigate="categories" data-i18n="back">&#8592; Powrót</button>
-        <div class="timer-display">
-          <div class="timer-block">
-            <span class="timer-label" data-i18n="questionTimer">Pytanie</span>
-            <span class="question-timer" aria-label="Czas na pytanie">00:00</span>
-          </div>
-          <span class="timer-separator">|</span>
-          <div class="timer-block">
-            <span class="timer-label" data-i18n="totalTimer">Razem</span>
-            <span class="total-timer" aria-label="Czas egzaminu">00:00</span>
-          </div>
+      <div class="quiz-shell">
+      <div class="word-layout">
+      <header class="word-top">
+        <div class="word-topic-bar">
+          <span class="word-topic-text"></span>
         </div>
       </header>
 
-      <div class="progress-bar">
-        <div class="progress-fill"></div>
-      </div>
-
-      <div class="quiz-legend-bar">
-        <span id="quiz-mode-pill" class="quiz-mode-pill">Tryb</span>
-        <span class="question-progress" aria-live="polite">1 / 32</span>
-        <span class="learn-stats" aria-live="polite"></span>
-        <div class="quiz-points-legend" aria-label="Punktacja pytań">
-          <span class="quiz-points-label">pkt:</span>
-          <span class="quiz-points-badge">3</span>
-          <span class="quiz-points-badge">2</span>
-          <span class="quiz-points-badge">1</span>
+      <div class="word-main">
+        <div class="word-meta exam-top-fields" hidden>
+          <span class="word-meta-item">
+            <span class="word-meta-label" data-i18n="examPointsLabel">Wartość punktowa</span>
+            <b class="word-meta-box exam-points-value">3</b>
+          </span>
+          <span class="word-meta-item">
+            <span class="word-meta-label" data-i18n="examCategoryCurrentLabel">Aktualna kategoria</span>
+            <b class="word-meta-box exam-category-value">B</b>
+          </span>
+          <span class="word-meta-item timer-display-total">
+            <span class="word-meta-label" data-i18n="examRemainingLabel">Czas do końca egzaminu</span>
+            <b class="word-meta-box total-timer" aria-label="Czas egzaminu">25:00</b>
+          </span>
         </div>
+        <div class="learn-top" hidden>
+          <div class="learn-top-fields">
+            <span class="word-meta-item">
+              <span class="word-meta-label" data-i18n="examQuestionNumLabel">Numer pytania</span>
+              <b class="word-meta-box learn-qnum">
+                <input class="learn-qnum-input" type="text" inputmode="numeric" enterkeyhint="go" autocomplete="off" spellcheck="false" aria-label="Numer pytania">
+                <span class="learn-qnum-suffix"> / 1</span>
+              </b>
+            </span>
+            <span class="word-meta-item">
+              <span class="word-meta-label" data-i18n="examCategoryNowLabel">Wybrana kategoria</span>
+              <b class="word-meta-box learn-category-value">B</b>
+            </span>
+            <span class="learn-stats" aria-live="polite"></span>
+          </div>
+        </div>
+        <article class="question-card" aria-label="Pytanie egzaminacyjne">
+          <div class="media-fit">
+            <div class="media-slot">
+              <div class="media-area"></div>
+            </div>
+          </div>
+        </article>
       </div>
 
-      <article class="question-card" aria-label="Pytanie egzaminacyjne">
-        <div class="media-area"></div>
+      <aside class="word-side">
+        <div class="word-top-right">
+          <button class="btn btn-danger btn-end-exam" data-i18n="endExam">Zakończ egzamin</button>
+          <button class="btn btn-back quiz-back" data-navigate="categories" data-i18n="back">&#8592; Powrót</button>
+        </div>
+        <div class="word-side-body">
+        <p class="pwpw-learn-flag" data-i18n="pwpwLearnMode">TRYB NAUKI</p>
+        <div class="exam-counters" hidden>
+          <div class="exam-counter" data-part="basic">
+            <span class="exam-counter-label"><span data-i18n="examBasicLine1">Pytania</span><span data-i18n="examBasicLine2">podstawowe</span></span>
+            <span class="exam-counter-value exam-counter-basic">0 z 20</span>
+          </div>
+          <div class="exam-counter" data-part="specialist">
+            <span class="exam-counter-label"><span data-i18n="examSpecLine1">Pytania</span><span data-i18n="examSpecLine2">specjalistyczne</span></span>
+            <span class="exam-counter-value exam-counter-specialist">0 z 12</span>
+          </div>
+        </div>
+        <span class="exam-practice-banner" hidden>EGZAMIN PRÓBNY</span>
+
+        <div class="exam-toolbar">
+          <div class="timer-display timer-display-question">
+            <span class="exam-phase-caption">Czas na zapoznanie się z pytaniem</span>
+            <div class="exam-time-row">
+              <button type="button" class="exam-film-start" hidden>START</button>
+              <div class="exam-time-meter">
+                <div class="exam-time-track" aria-hidden="true">
+                  <div class="exam-time-fill"></div>
+                </div>
+                <span class="question-timer">20 s</span>
+              </div>
+            </div>
+            <span class="timer-label" data-i18n="questionTimer" hidden>Pytanie</span>
+          </div>
+        </div>
+
+        <button class="btn btn-primary btn-exam-next" type="button" data-i18n="examNextQuestion">Następne Pytanie</button>
+
+        <div class="quiz-legend-bar">
+          <span id="quiz-mode-pill" class="quiz-mode-pill">Tryb</span>
+          <span id="quiz-category-pill" class="quiz-category-pill" hidden></span>
+          <span class="question-progress" aria-live="polite">1 / 32</span>
+        </div>
+
+        <div class="progress-bar">
+          <div class="progress-fill"></div>
+        </div>
+
+        <div class="quiz-actions">
+          <div class="learn-nav">
+            <button class="btn btn-secondary btn-prev" data-i18n="learnPrevQuestion">Poprzednie Pytanie</button>
+            <button class="btn btn-secondary btn-next" data-i18n="examNextQuestion">Następne Pytanie</button>
+          </div>
+        </div>
+        </div>
+      </aside>
+
+      <div class="quiz-dock">
         <p class="question-text" aria-live="polite"></p>
-      </article>
-
-      <div class="answers" role="group" aria-label="Answers" aria-live="polite"></div>
-
-      <div class="quiz-actions">
-        <div class="learn-nav">
-          <button class="btn btn-secondary btn-prev" data-i18n="prev">Poprzednie</button>
-          <button class="btn btn-secondary btn-next" data-i18n="next">Następne</button>
-        </div>
-        <button class="btn btn-danger btn-end-exam" data-i18n="endExam">Zakończ egzamin</button>
+        <div class="answers" role="group" aria-label="Answers" aria-live="polite"></div>
+      </div>
+      </div>
       </div>
     </section>
 
@@ -316,30 +410,30 @@
           <tr>
             <td data-i18n="basicQuestions">Pytania podstawowe</td>
             <td class="basic-score">0</td>
-            <td>46</td>
+            <td class="basic-max">46</td>
           </tr>
           <tr>
             <td data-i18n="specialistQuestions">Pytania specjalistyczne</td>
             <td class="specialist-score">0</td>
-            <td>28</td>
+            <td class="specialist-max">28</td>
           </tr>
           <tr class="total-row">
             <td><strong data-i18n="total">Razem</strong></td>
             <td class="total-score"><strong>0</strong></td>
-            <td><strong>74</strong></td>
+            <td><strong class="total-max">74</strong></td>
           </tr>
         </tbody>
       </table>
-
-      <div class="incorrect-list">
-        <h3 data-i18n="incorrectAnswers">Błędne odpowiedzi</h3>
-      </div>
 
       <nav class="results-nav">
         <button class="btn btn-primary btn-retry" data-i18n="retry">Spróbuj ponownie</button>
         <button class="btn btn-secondary" data-navigate="categories" data-i18n="backToCategories">Powrót do kategorii</button>
         <button class="btn btn-secondary" data-navigate="history" data-i18n="examHistory">Historia egzaminów</button>
       </nav>
+
+      <div class="incorrect-list review-list">
+        <h3 data-i18n="questionReview">Przegląd pytań</h3>
+      </div>
     </section>
 
     <!-- ===== 5. HISTORY SCREEN ===== -->
@@ -349,12 +443,32 @@
         <h2 data-i18n="examHistory">Historia egzaminów</h2>
       </header>
       <div class="history-content container">
+        <p class="history-intro" data-i18n="historyIntro">Każdy ukończony egzamin tego profilu: kategoria, data, wynik punktowy i czy zdany. Najwyżej 50 ostatnich, najnowsze na górze.</p>
         <div class="history-list"></div>
         <div class="history-empty" style="display:none">
           <p data-i18n="noHistory">Brak wyników egzaminów. Rozwiąż swój pierwszy egzamin!</p>
         </div>
         <div class="history-actions">
           <button class="btn btn-secondary btn-clear-history" data-i18n="clearHistory" style="display:none">Wyczyść historię</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 5b. LEARN PROGRESS SCREEN ===== -->
+    <section id="learn-progress" class="screen">
+      <header class="screen-header">
+        <button class="btn btn-back" data-navigate="categories" data-i18n="backToCategories">&#8592; Powrót do kategorii</button>
+        <h2 data-i18n="learnProgress">Postęp nauki</h2>
+      </header>
+      <div class="history-content container">
+        <p class="learn-progress-intro" data-i18n="learnProgressIntro">Stan wiedzy w tym profilu: umiem (2 razy dobrze z rzędu), błędne, w toku i nowe. Tylko kategorie, w których już coś było.</p>
+        <div class="learn-progress-summary" hidden></div>
+        <div class="learn-progress-list"></div>
+        <div class="learn-progress-empty" style="display:none">
+          <p data-i18n="noLearnProgress">Brak postępu nauki. Zacznij od kategorii w trybie Nauka.</p>
+        </div>
+        <div class="history-actions">
+          <button class="btn btn-secondary btn-clear-learn" data-i18n="clearLearnProgress" style="display:none">Wyczyść postęp nauki</button>
         </div>
       </div>
     </section>
@@ -375,6 +489,8 @@
           </a>
         </p>
 
+        <p data-i18n="dataSourceAsOf">Katalog Ministerstwa Infrastruktury: lipiec 2026 (plik KATALOG_dla_kandydatów_na_kierowców_072026.xlsx).</p>
+
         <div class="license-section">
           <h3 data-i18n="licenseQuestions">Treść pytań egzaminacyjnych</h3>
           <p data-i18n="licenseQuestionsDesc">Udostępnione na licencji Creative Commons Uznanie autorstwa - Na tych samych warunkach 4.0 Międzynarodowe.</p>
@@ -391,7 +507,9 @@
       </div>
     </section>
 
-    <!-- ===== 6. CONFIRM EXIT MODAL ===== -->
+  </main>
+
+    <!-- ===== CONFIRM EXIT MODAL ===== -->
     <div id="confirm-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-title">
       <div class="modal-content">
         <h3 id="modal-title">Czy na pewno chcesz zakończyć?</h3>
@@ -402,8 +520,9 @@
         </div>
       </div>
     </div>
-
-  </main>
+  </div>
+  </div>
+  </div>
 
   <script type="module" src="js/app.js"></script>
 </body>

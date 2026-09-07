@@ -28,43 +28,51 @@ test.describe('Warm & Soft Theme', () => {
     );
     expect(primary).toBe('#4f46e5');
 
-    // Check border-radius is 20px
     const radius = await page.evaluate(() =>
       getComputedStyle(document.documentElement).getPropertyValue('--radius').trim()
     );
     expect(radius).toBe('20px');
   });
 
-  test('hero has indigo-to-violet gradient', async ({ page }) => {
+  test('Station skin uses flattened examiner chrome on home', async ({ page }) => {
     await page.goto('/');
+    await page.waitForSelector('.skin-btn');
+    await page.click('.skin-btn');
+    await expect(page.locator('.skin-btn')).toHaveText('Stacja');
     await page.waitForSelector('.hero');
 
-    const heroBg = await page.evaluate(() =>
-      getComputedStyle(document.querySelector('.hero')).backgroundImage
-    );
-    // Should contain the indigo and violet colors
-    expect(heroBg).toContain('gradient');
+    const hero = await page.evaluate(() => {
+      const el = document.querySelector('.hero');
+      const cs = getComputedStyle(el);
+      return { bg: cs.backgroundImage, color: cs.backgroundColor };
+    });
+    expect(hero.bg === 'none' || !hero.bg.includes('gradient')).toBeTruthy();
   });
 
-  test('feature cards have warm soft shadows', async ({ page }) => {
+  test('feature cards have no drop shadow in Station examiner chrome', async ({ page }) => {
     await page.goto('/');
+    await page.waitForSelector('.skin-btn');
+    await page.click('.skin-btn');
+    await expect(page.locator('.skin-btn')).toHaveText('Stacja');
     await page.waitForSelector('.feature-card');
 
     const shadow = await page.evaluate(() =>
       getComputedStyle(document.querySelector('.feature-card')).boxShadow
     );
-    // Should have a shadow (not 'none')
-    expect(shadow).not.toBe('none');
+    expect(shadow).toBe('none');
   });
 
-  test('feature cards have 20px border-radius', async ({ page }) => {
+  test('feature cards have 6px border-radius in Station examiner chrome', async ({ page }) => {
     await page.goto('/');
+    await page.waitForSelector('.skin-btn');
+    await page.click('.skin-btn');
+    await expect(page.locator('.skin-btn')).toHaveText('Stacja');
     await page.waitForSelector('.feature-card');
 
     const radius = await page.evaluate(() =>
       getComputedStyle(document.querySelector('.feature-card')).borderRadius
     );
-    expect(radius).toBe('14px');
+    expect(radius).toBe('6px');
   });
 
   test('dark mode switches to warm dark palette', async ({ page }) => {
@@ -108,13 +116,13 @@ test.describe('Warm & Soft Theme', () => {
     await expect(page.locator('.mode-toggle')).toBeVisible();
   });
 
-  test('grain texture overlay exists', async ({ page }) => {
+  test('grain texture overlay exists in Panel chrome', async ({ page }) => {
     await page.goto('/');
+    await expect(page.locator('.skin-btn')).toHaveText('Panel');
 
-    // Check body::before pseudo-element has the grain filter
     const hasGrain = await page.evaluate(() => {
       const before = getComputedStyle(document.body, '::before');
-      return before.filter.includes('url');
+      return before.filter.includes('url') && before.display !== 'none';
     });
     expect(hasGrain).toBe(true);
   });
@@ -151,5 +159,40 @@ test.describe('Warm & Soft Theme', () => {
     await page.goto('/');
     const themeColor = await page.getAttribute('meta[name="theme-color"]', 'content');
     expect(themeColor).toBe('#6366f1');
+  });
+
+  test('Panel skin is on by default and keeps the branded home', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    const panel = await page.evaluate(() => ({
+      skin: document.documentElement.getAttribute('data-exam-skin'),
+      radius: getComputedStyle(document.documentElement).getPropertyValue('--radius').trim(),
+      featureRadius: getComputedStyle(document.querySelector('.feature-card')).borderRadius,
+      heroImage: getComputedStyle(document.querySelector('.hero')).backgroundImage,
+    }));
+    expect(panel.skin).toBe('panel');
+    expect(panel.radius).toBe('20px');
+    expect(panel.featureRadius).toBe('14px');
+    expect(panel.heroImage).toContain('gradient');
+    await expect(page.locator('.skin-btn')).toHaveText('Panel');
+    await expect(page.locator('.skin-btn')).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  test('Station skin flattens home to examiner chrome', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    await page.click('.skin-btn');
+    await expect(page.locator('.skin-btn')).toHaveText('Stacja');
+    await expect(page.locator('.skin-btn')).toHaveAttribute('aria-pressed', 'false');
+    const after = await page.evaluate(() => ({
+      skin: document.documentElement.getAttribute('data-exam-skin'),
+      radius: getComputedStyle(document.documentElement).getPropertyValue('--radius').trim(),
+      featureRadius: getComputedStyle(document.querySelector('.feature-card')).borderRadius,
+      heroImage: getComputedStyle(document.querySelector('.hero')).backgroundImage,
+    }));
+    expect(after.skin).toBe('station');
+    expect(after.radius).toBe('6px');
+    expect(after.featureRadius).toBe('6px');
+    expect(after.heroImage === 'none' || !after.heroImage.includes('gradient')).toBeTruthy();
   });
 });
