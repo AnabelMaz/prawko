@@ -4,6 +4,9 @@ Thumbs.db
 
 # Source data (not deployed)
 *.xlsx
+.baza_pytan.hash
+gov-data/
+# leftover Mac unpack dir; new packs go to gov-data/raw/
 Pytania egzaminacyjne na prawo jazdy 2025/
 
 # Python
@@ -14,6 +17,14 @@ venv/
 # IDE
 .vscode/
 .idea/
+.cursor/
+
+# OneDrive/editor conflict copies
+*-NODE-Oczkowscy.*
+
+# Backblaze keys (never commit)
+.b2env
+scripts/.b2env
 
 # Media (hosted on Backblaze B2, not in git)
 src/media/img/
