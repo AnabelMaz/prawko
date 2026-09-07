@@ -2,7 +2,7 @@
 
 Aplikacja PWA do nauki i symulacji egzaminu teoretycznego na prawo jazdy w Polsce.
 
-To **fork** projektu [szkocot/prawko](https://github.com/szkocot/prawko) (demo źródła: https://szkocot.github.io/prawko/). Ta kopia trzyma układ stacji WORD, skórki Panel/Stacja, profile lokalne i przebudowany tryb nauki. Małe, samodzielne łatki mogą iść do repozytorium źródłowego; tutaj zostaje pełna wersja na **Windows**, **macOS** i **Linux**.
+To **fork** projektu [szkocot/prawko](https://github.com/szkocot/prawko) (demo źródła: https://szkocot.github.io/prawko/). Ta kopia: repozytorium [AnabelMaz/prawko](https://github.com/AnabelMaz/prawko), podgląd w przeglądarce [anabelmaz.github.io/prawko](https://anabelmaz.github.io/prawko/). Trzyma układ stacji WORD, skórki Panel/Stacja, profile lokalne i przebudowany tryb nauki. Małe, samodzielne łatki mogą iść do repozytorium źródłowego; tutaj zostaje pełna wersja na **Windows**, **macOS** i **Linux**.
 
 Baza w repozytorium to JSON z katalogu Ministerstwa Infrastruktury (**3518** unikalnych pytań). Zdjęcia i filmy nie są w gicie — domyślnie z publicznego CDN. Publiczny katalog na [gov.pl](https://www.gov.pl/web/infrastruktura/prawo-jazdy): **lipiec 2026** (`KATALOG_dla_kandydatów_na_kierowców_072026.xlsx`).
 
@@ -352,7 +352,7 @@ Czysty clone **nie wymaga** `-InstallGov`: JSON jest w `src/data`, a `MEDIA_CDN`
 
 W paczce MI brakuje pliku `!RS_Parking zastrzeżony.webp`. Parser **nie wycina** przez to pytania — nazwa z Excela zostaje, żeby zadziałał CDN albo późniejsze uzupełnienie.
 
-Push na `main` odpala testy Playwright i wgrywa `src/` na GitHub Pages (podgląd). Codzienna aplikacja to usługa na [http://localhost:5173](http://localhost:5173).
+Push na `main` odpala testy Playwright i wgrywa `src/` na GitHub Pages: [anabelmaz.github.io/prawko](https://anabelmaz.github.io/prawko/). Codzienna aplikacja to usługa na [http://localhost:5173](http://localhost:5173).
 
 ---
 
@@ -442,7 +442,7 @@ Kod aplikacji jest na [ISC](LICENSE) (tak jak w `package.json` źródła). Przy 
 
 A PWA for learning and simulating the Polish theoretical driving test.
 
-This is a **fork** of [szkocot/prawko](https://github.com/szkocot/prawko) (upstream demo: https://szkocot.github.io/prawko/). It keeps a WORD station layout, Panel/Station skins, local profiles, and a rebuilt learn mode. Small standalone fixes can still go upstream; this repository holds the full **Windows**, **macOS**, and **Linux** product.
+This is a **fork** of [szkocot/prawko](https://github.com/szkocot/prawko) (upstream demo: https://szkocot.github.io/prawko/). This copy: repository [AnabelMaz/prawko](https://github.com/AnabelMaz/prawko), browser preview [anabelmaz.github.io/prawko](https://anabelmaz.github.io/prawko/). It keeps a WORD station layout, Panel/Station skins, local profiles, and a rebuilt learn mode. Small standalone fixes can still go upstream; this repository holds the full **Windows**, **macOS**, and **Linux** product.
 
 The repo JSON has **3518** unique ministry questions. Photos and films are not in git — they come from a public CDN by default. The public catalogue on [gov.pl](https://www.gov.pl/web/infrastruktura/prawo-jazdy) is **July 2026** (`KATALOG_dla_kandydatów_na_kierowców_072026.xlsx`).
 
@@ -785,7 +785,7 @@ A clean clone does **not** need `-InstallGov`: JSON is in `src/data`, and `MEDIA
 
 The ministry pack is missing `!RS_Parking zastrzeżony.webp`. The parser does **not** drop that question — the Excel file name stays so the CDN or a later file can fill it.
 
-A push to `main` runs Playwright and publishes `src/` to GitHub Pages (preview). Day-to-day use is the service at [http://localhost:5173](http://localhost:5173).
+A push to `main` runs Playwright and publishes `src/` to GitHub Pages: [anabelmaz.github.io/prawko](https://anabelmaz.github.io/prawko/). Day-to-day use is the service at [http://localhost:5173](http://localhost:5173).
 
 ---
 
