@@ -1,88 +1,89 @@
 {
+  "uniqueQuestionCount": 3518,
   "categories": [
     {
       "id": "A",
       "name": "Kategoria A",
-      "questionCount": 1431,
-      "basicCount": 1250,
-      "specialistCount": 181
+      "questionCount": 1425,
+      "basicCount": 1254,
+      "specialistCount": 171
     },
     {
       "id": "A1",
       "name": "Kategoria A1",
-      "questionCount": 1416,
-      "basicCount": 1249,
-      "specialistCount": 167
+      "questionCount": 1411,
+      "basicCount": 1252,
+      "specialistCount": 159
     },
     {
       "id": "A2",
       "name": "Kategoria A2",
-      "questionCount": 1414,
-      "basicCount": 1247,
-      "specialistCount": 167
+      "questionCount": 1409,
+      "basicCount": 1250,
+      "specialistCount": 159
     },
     {
       "id": "AM",
       "name": "Kategoria AM",
-      "questionCount": 1501,
-      "basicCount": 1390,
-      "specialistCount": 111
+      "questionCount": 1513,
+      "basicCount": 1407,
+      "specialistCount": 106
     },
     {
       "id": "B",
       "name": "Kategoria B",
-      "questionCount": 2167,
-      "basicCount": 1772,
-      "specialistCount": 395
+      "questionCount": 2135,
+      "basicCount": 1748,
+      "specialistCount": 387
     },
     {
       "id": "B1",
       "name": "Kategoria B1",
-      "questionCount": 1434,
-      "basicCount": 1271,
-      "specialistCount": 163
+      "questionCount": 1421,
+      "basicCount": 1266,
+      "specialistCount": 155
     },
     {
       "id": "C",
       "name": "Kategoria C",
-      "questionCount": 1480,
-      "basicCount": 1285,
-      "specialistCount": 195
+      "questionCount": 1472,
+      "basicCount": 1286,
+      "specialistCount": 186
     },
     {
       "id": "C1",
       "name": "Kategoria C1",
-      "questionCount": 1447,
-      "basicCount": 1279,
-      "specialistCount": 168
+      "questionCount": 1439,
+      "basicCount": 1280,
+      "specialistCount": 159
     },
     {
       "id": "D",
       "name": "Kategoria D",
-      "questionCount": 1509,
-      "basicCount": 1291,
-      "specialistCount": 218
+      "questionCount": 1488,
+      "basicCount": 1281,
+      "specialistCount": 207
     },
     {
       "id": "D1",
       "name": "Kategoria D1",
-      "questionCount": 1496,
-      "basicCount": 1287,
-      "specialistCount": 209
+      "questionCount": 1475,
+      "basicCount": 1277,
+      "specialistCount": 198
     },
     {
       "id": "PT",
       "name": "Kategoria PT",
-      "questionCount": 446,
-      "basicCount": 276,
-      "specialistCount": 170
+      "questionCount": 438,
+      "basicCount": 267,
+      "specialistCount": 171
     },
     {
       "id": "T",
       "name": "Kategoria T",
-      "questionCount": 1307,
-      "basicCount": 1148,
-      "specialistCount": 159
+      "questionCount": 1305,
+      "basicCount": 1152,
+      "specialistCount": 153
     }
   ],
   "exam": {
