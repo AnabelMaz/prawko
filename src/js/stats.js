@@ -11,6 +11,9 @@ const LAST_RESULT_KEY = 'prawko_last_result';
 /** Two correct answers in a row — a miss resets the streak. */
 export const LEARN_KNOWN_STREAK = 2;
 
+/** Lifetime wrong answers in learn before a question counts as hard. */
+export const LEARN_HARD_MISSES = 2;
+
 export function saveLastResult(result) {
   try {
     profileSet(LAST_RESULT_KEY, JSON.stringify(result));
@@ -99,12 +102,16 @@ function normalizeLearnEntry(raw) {
       ? Math.floor(raw.streak)
       : 0;
     const dueAt = Number.isFinite(raw.dueAt) ? raw.dueAt : null;
-    return { answer, streak, dueAt };
+    const misses = Number.isFinite(raw.misses) && raw.misses > 0
+      ? Math.floor(raw.misses)
+      : 0;
+    return { answer, streak, dueAt, misses };
   }
   return {
     answer: typeof raw === 'string' ? raw : null,
     streak: 0,
     dueAt: null,
+    misses: 0,
   };
 }
 
@@ -127,6 +134,7 @@ export function saveLearnAnswer(category, questionId, answer, isCorrect = null) 
     answer: answer || null,
     streak: prevEntry.streak,
     dueAt: prevEntry.dueAt,
+    misses: prevEntry.misses,
   };
 
   if (isCorrect === true) {
@@ -135,6 +143,7 @@ export function saveLearnAnswer(category, questionId, answer, isCorrect = null) 
   } else if (isCorrect === false) {
     nextEntry.streak = 0;
     nextEntry.dueAt = Date.now();
+    nextEntry.misses = prevEntry.misses + 1;
   }
 
   data[category][questionId] = nextEntry;
@@ -197,7 +206,7 @@ export function getLearnTouchedCategories() {
 
 export function getLearnCategoryBreakdown(category, questions) {
   const list = Array.isArray(questions) ? questions : [];
-  const counts = { total: list.length, known: 0, wrong: 0, learning: 0, neu: 0, answered: 0 };
+  const counts = { total: list.length, known: 0, wrong: 0, hard: 0, learning: 0, neu: 0, answered: 0 };
   list.forEach((q) => {
     const status = getLearnQuestionStatus(category, q);
     if (status === 'known') counts.known += 1;
@@ -205,8 +214,39 @@ export function getLearnCategoryBreakdown(category, questions) {
     else if (status === 'learning') counts.learning += 1;
     else counts.neu += 1;
     if (status !== 'new') counts.answered += 1;
+    if (isLearnQuestionHard(category, q)) counts.hard += 1;
   });
   return counts;
+}
+
+/** Top summary chips: one count per question id across touched category banks. */
+export function getLearnUniqueFilterCounts(categoryBanks) {
+  const byId = new Map();
+  for (const bank of categoryBanks || []) {
+    const category = bank?.category;
+    const list = Array.isArray(bank?.questions) ? bank.questions : [];
+    for (const q of list) {
+      if (!q || q.id == null || !category) continue;
+      const id = String(q.id);
+      const known = getLearnQuestionStatus(category, q) === 'known';
+      const hard = isLearnQuestionHard(category, q);
+      const prev = byId.get(id);
+      if (!prev) {
+        byId.set(id, { known, hard });
+        continue;
+      }
+      if (known) prev.known = true;
+      if (hard) prev.hard = true;
+    }
+  }
+  let known = 0;
+  let hard = 0;
+  for (const entry of byId.values()) {
+    if (entry.known) known += 1;
+    else if (entry.hard) hard += 1;
+  }
+  const total = byId.size;
+  return { total, known, hard, unknown: total - known };
 }
 
 export function clearHistory() {
@@ -245,8 +285,10 @@ export function getLearnMetaForQuestion(category, questionId) {
   const catData = data[category];
   if (!catData || Array.isArray(catData)) return null;
   const entry = normalizeLearnEntry(catData[questionId]);
-  if (entry.answer === null && entry.streak === 0 && entry.dueAt === null) return null;
-  return { streak: entry.streak, dueAt: entry.dueAt };
+  if (entry.answer === null && entry.streak === 0 && entry.dueAt === null && entry.misses === 0) {
+    return null;
+  }
+  return { streak: entry.streak, dueAt: entry.dueAt, misses: entry.misses };
 }
 
 export function getLearnQuestionStatus(category, question, answerOverride) {
@@ -259,4 +301,10 @@ export function getLearnQuestionStatus(category, question, answerOverride) {
   if (answer === question.correct && streak >= LEARN_KNOWN_STREAK) return 'known';
   if (answer === null) return 'new';
   return 'learning';
+}
+
+export function isLearnQuestionHard(category, question, answerOverride) {
+  const misses = getLearnMetaForQuestion(category, question.id)?.misses || 0;
+  if (misses < LEARN_HARD_MISSES) return false;
+  return getLearnQuestionStatus(category, question, answerOverride) !== 'known';
 }

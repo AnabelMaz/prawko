@@ -9,6 +9,7 @@ import {
   saveLearnAnswer,
   getLearnKnownCount,
   getLearnQuestionStatus,
+  isLearnQuestionHard,
 } from './stats.js';
 import { getLang, t } from './i18n.js';
 import { profileGet, profileSet } from './profiles.js';
@@ -53,70 +54,25 @@ export async function loadLearnLocalFlags() {
   applyQuestionJumpUi();
 }
 
-// Inject toast styles once
-(function injectToastStyles() {
-  if (document.getElementById('learn-toast-styles')) return;
-  const style = document.createElement('style');
-  style.id = 'learn-toast-styles';
-  style.textContent = `
-    .learn-toast {
-      position: absolute;
-      bottom: 24px;
-      left: 50%;
-      transform: translateX(-50%) translateY(20px);
-      background: var(--bg-card);
-      color: var(--text);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      padding: 10px 20px;
-      font-size: 0.9rem;
-      font-weight: 500;
-      box-shadow: var(--shadow-lg);
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.3s ease, transform 0.3s ease;
-      z-index: 150;
-    }
-    .learn-toast.visible {
-      opacity: 1;
-      transform: translateX(-50%) translateY(0);
-    }
-    .learn-queue-toggle {
-      margin-left: 10px;
-      padding: 3px 10px;
-      border-radius: var(--radius-sm);
-      border: 1px solid var(--border);
-      background: transparent;
-      color: var(--text);
-      font-size: 0.75rem;
-      cursor: pointer;
-    }
-    .learn-queue-toggle.active {
-      border-color: var(--accent);
-      color: var(--accent);
-    }
-  `;
-  document.head.appendChild(style);
-})();
-
 function toastHost() {
-  return document.getElementById('ui-stage') || document.getElementById('app') || document.body;
+  return document.querySelector('#quiz .media-area');
 }
 
 function showToast(msg) {
-  const existing = document.querySelector('.learn-toast');
-  if (existing) existing.remove();
+  document.querySelectorAll('.learn-toast').forEach((el) => el.remove());
+  const host = toastHost();
+  if (!host) return;
 
   const toast = document.createElement('div');
   toast.className = 'learn-toast';
-  toast.textContent = msg;
   toast.setAttribute('role', 'status');
   toast.setAttribute('aria-live', 'polite');
-  toastHost().appendChild(toast);
-
-  requestAnimationFrame(() => {
-    toast.classList.add('visible');
-  });
+  const pill = document.createElement('div');
+  pill.className = 'learn-toast-msg';
+  pill.textContent = msg;
+  toast.appendChild(pill);
+  host.appendChild(toast);
+  requestAnimationFrame(() => toast.classList.add('visible'));
 
   setTimeout(() => {
     toast.classList.remove('visible');
@@ -132,11 +88,22 @@ function showResumeToast(currentIndex, total) {
 }
 
 function emptyFilterMessage(filter) {
-  if (filter === 'new') return t('learnFilterEmptyNew');
-  if (filter === 'wrong') return t('learnFilterEmptyWrong');
+  if (filter === 'hard') return t('learnFilterEmptyHard');
   if (filter === 'known') return t('learnFilterEmptyKnown');
   if (filter === 'unknown') return t('learnFilterEmptyUnknown');
-  return t('learnFilterEmptyWrong');
+  return t('learnFilterEmptyUnknown');
+}
+
+function filterLabel(filter) {
+  if (filter === 'unknown') return t('learnFilterUnknown');
+  if (filter === 'hard') return t('learnFilterHard');
+  if (filter === 'known') return t('learnFilterKnown');
+  return t('learnFilterAll');
+}
+
+function showQueueToast(filter, order) {
+  const orderLabel = order === 'random' ? t('learnOrderRandom') : t('learnOrderSeq');
+  showToast(`${filterLabel(filter)} · ${orderLabel}`);
 }
 
 function shuffleList(list) {
@@ -154,8 +121,7 @@ function questionMatchesFilter(q, filter, category) {
   const override = state?.sessionAnswers?.has(q.id) ? state.sessionAnswers.get(q.id) : undefined;
   const status = getLearnQuestionStatus(cat, q, override);
   if (filter === 'unknown') return status !== 'known';
-  if (filter === 'new') return status === 'new';
-  if (filter === 'wrong') return status === 'wrong';
+  if (filter === 'hard') return isLearnQuestionHard(cat, q, override);
   if (filter === 'known') return status === 'known';
   return true;
 }
@@ -297,11 +263,11 @@ function syncListView(previousId) {
   updateLearnStats();
 }
 
-const FILTERS = ['all', 'unknown', 'new', 'wrong', 'known'];
+const FILTERS = ['unknown', 'hard', 'known', 'all'];
 const QUEUE_PREF_DEFAULT = { filter: 'unknown', order: 'random' };
 
 function normalizeQueuePref(raw) {
-  if (raw === 'wrongOnly') return { filter: 'wrong', order: 'sequential' };
+  if (raw === 'wrongOnly') return { filter: 'unknown', order: 'sequential' };
   if (raw === 'adaptive') return { filter: 'all', order: 'sequential' };
   if (typeof raw === 'object' && raw !== null && !Array.isArray(raw)) {
     const filter = FILTERS.includes(raw.filter) ? raw.filter : 'unknown';
@@ -351,6 +317,7 @@ function setFilter(filter) {
     showToast(emptyFilterMessage(filter));
     return false;
   }
+  showQueueToast(filter, state.order);
   return true;
 }
 
@@ -364,6 +331,7 @@ function setOrder(order) {
   if (!adoptActiveList({ keepId: true })) return false;
   saveQueuePreference(state.category, { filter: state.filter, order });
   syncListView(previousId);
+  showQueueToast(state.filter, order);
   return true;
 }
 
@@ -478,11 +446,10 @@ function updateLearnStats() {
   if (!el || !state) return;
   const knownCount = getLearnKnownCount(state.category, state.baseQuestions);
   const filterOptions = [
-    ['all', t('learnFilterAll')],
     ['unknown', t('learnFilterUnknown')],
-    ['new', t('learnFilterNew')],
-    ['wrong', t('learnFilterWrong')],
+    ['hard', t('learnFilterHard')],
     ['known', t('learnFilterKnown')],
+    ['all', t('learnFilterAll')],
   ];
   const orderOptions = [
     ['sequential', t('learnOrderSeq')],
@@ -584,36 +551,55 @@ function syncQueueDropdown(root, options, value) {
   root.dataset.value = value;
 }
 
+function bindLearnAnswerButtons() {
+  document.querySelector('.answers')?.querySelectorAll('.answer-btn').forEach((btn) => {
+    btn.addEventListener('click', () => handleLearnAnswer(btn.dataset.answer));
+  });
+}
+
+function applyLearnAnswerFeedback(q, answer) {
+  const answersDiv = document.querySelector('.answers');
+  if (!answersDiv) return;
+  markSelectedAnswer(answersDiv, answer);
+  highlightAnswer(answersDiv, answer, q.correct);
+  showLearnMediaMark(answer === q.correct);
+}
+
+function restoreSessionAnswer(q) {
+  const sessionAnswer = state.sessionAnswers.get(q.id);
+  if (sessionAnswer === undefined) {
+    state.answered = false;
+    state.givenAnswer = null;
+    bindLearnAnswerButtons();
+    return;
+  }
+  state.answered = true;
+  state.givenAnswer = sessionAnswer;
+  applyLearnAnswerFeedback(q, sessionAnswer);
+}
+
 function showLearnQuestion() {
   if (!state) return;
   if (!state.questions.length) return;
   if (document.documentElement.getAttribute('data-ui-mode') !== 'fit') {
     window.scrollTo({ top: 0, behavior: 'auto' });
   }
-  state.answered = false;
-  state.givenAnswer = null;
   const q = getCurrentQuestion();
   if (!q) return;
 
   updateProgress();
   renderQuestion(q, document.querySelector('.question-card'));
-
-  // Answer handlers — stored progress never pre-locks; the filter only chooses the queue
-  document.querySelector('.answers').querySelectorAll('.answer-btn').forEach(btn => {
-    btn.addEventListener('click', () => handleLearnAnswer(btn.dataset.answer));
-  });
+  restoreSessionAnswer(q);
 }
 
 function handleLearnAnswer(answer) {
   if (!state || state.answered) return;
+  const q = getCurrentQuestion();
+  if (!q || state.sessionAnswers.has(q.id)) return;
   state.answered = true;
   state.givenAnswer = answer;
-  const q = getCurrentQuestion();
-  const answersDiv = document.querySelector('.answers');
-  markSelectedAnswer(answersDiv, answer);
-  highlightAnswer(answersDiv, answer, q.correct);
   const isCorrect = answer === q.correct;
-  showLearnMediaMark(isCorrect);
+  applyLearnAnswerFeedback(q, answer);
   saveLearnAnswer(state.category, q.id, answer, isCorrect);
   state.sessionAnswers.set(q.id, answer);
 
@@ -690,16 +676,7 @@ export function refreshLearnQuestion() {
   const q = getCurrentQuestion();
   if (!q) return;
   renderQuestion(q, document.querySelector('.question-card'));
-  if (state.answered && state.givenAnswer) {
-    const answersDiv = document.querySelector('.answers');
-    markSelectedAnswer(answersDiv, state.givenAnswer);
-    highlightAnswer(answersDiv, state.givenAnswer, q.correct);
-    showLearnMediaMark(state.givenAnswer === q.correct);
-  } else {
-    document.querySelector('.answers').querySelectorAll('.answer-btn').forEach(btn => {
-      btn.addEventListener('click', () => handleLearnAnswer(btn.dataset.answer));
-    });
-  }
+  restoreSessionAnswer(q);
   updateLearnStats();
 }
 

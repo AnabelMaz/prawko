@@ -1,7 +1,7 @@
 // ui.js — DOM rendering utilities
 
 import { t, getLang, translateQuestion } from './i18n.js';
-import { getCategoryStats, getLearnProgress, loadHistory, getLearnTouchedCategories, getLearnCategoryBreakdown } from './stats.js';
+import { getCategoryStats, getLearnProgress, loadHistory, getLearnTouchedCategories, getLearnCategoryBreakdown, getLearnUniqueFilterCounts } from './stats.js';
 import { getMediaUrls, fetchCategory, usesLocalMedia } from './data.js';
 import { getCategoryMediaAccess } from './offline.js';
 import { refitUiScale, layoutCategoryGrid } from './scale.js';
@@ -936,11 +936,14 @@ export async function renderLearnProgress(meta) {
   if (clearBtn) clearBtn.style.display = '';
 
   const rows = [];
+  const banks = [];
   for (const cat of cats) {
     try {
       const data = await fetchCategory(cat.id);
       if (token !== _learnProgressRender) return;
-      rows.push({ id: cat.id, ...getLearnCategoryBreakdown(cat.id, data.questions) });
+      const questions = data.questions;
+      banks.push({ category: cat.id, questions });
+      rows.push({ id: cat.id, ...getLearnCategoryBreakdown(cat.id, questions) });
     } catch {
       if (token !== _learnProgressRender) return;
     }
@@ -953,21 +956,15 @@ export async function renderLearnProgress(meta) {
     return;
   }
 
-  const totals = rows.reduce((acc, row) => ({
-    known: acc.known + row.known,
-    wrong: acc.wrong + row.wrong,
-    learning: acc.learning + row.learning,
-    neu: acc.neu + row.neu,
-    answered: acc.answered + row.answered,
-  }), { known: 0, wrong: 0, learning: 0, neu: 0, answered: 0 });
+  const totals = getLearnUniqueFilterCounts(banks);
 
   if (summaryEl) {
     summaryEl.hidden = false;
     summaryEl.append(
-      learnProgressChip(totals.known, t('learnProgressKnown')),
-      learnProgressChip(totals.wrong, t('learnProgressWrong')),
-      learnProgressChip(totals.learning, t('learnProgressLearning')),
-      learnProgressChip(totals.neu, t('learnProgressNew')),
+      learnProgressChip(totals.unknown, t('learnFilterUnknown')),
+      learnProgressChip(totals.hard, t('learnFilterHard')),
+      learnProgressChip(totals.known, t('learnFilterKnown')),
+      learnProgressChip(totals.total, t('learnFilterAll')),
     );
   }
 
@@ -985,7 +982,7 @@ export async function renderLearnProgress(meta) {
     head.append(catEl, knownEl);
     const line = document.createElement('p');
     line.className = 'learn-progress-item-line';
-    line.textContent = `${row.known} ${t('learnProgressKnown')} · ${row.wrong} ${t('learnProgressWrong')} · ${row.learning} ${t('learnProgressLearning')} · ${row.neu} ${t('learnProgressNew')} · ${row.answered} ${t('learnProgressAnswered')}`;
+    line.textContent = `${row.known} ${t('learnProgressKnown')} · ${row.wrong} ${t('learnProgressWrong')} · ${row.hard} ${t('learnProgressHard')} · ${row.learning} ${t('learnProgressLearning')} · ${row.neu} ${t('learnProgressNew')} · ${row.answered} ${t('learnProgressAnswered')}`;
     item.append(head, line);
     listEl.appendChild(item);
   });

@@ -272,13 +272,13 @@ test.describe('Language switch during quiz', () => {
 });
 
 test.describe('Learn queue filter', () => {
-  test('learn mode has all/unknown/new/wrong/known and sequential/random controls', async ({ page }) => {
+  test('learn mode has to-learn/hard/known/all and sequential/random controls', async ({ page }) => {
     await startLearnMode(page);
     const filter = page.locator('.learn-filter-select');
     const order = page.locator('.learn-order-select');
     await expect(filter).toBeVisible();
     await expect(order).toBeVisible();
-    await expect(filter.locator('[role="option"]')).toHaveCount(5);
+    await expect(filter.locator('[role="option"]')).toHaveCount(4);
     await expect(order.locator('[role="option"]')).toHaveCount(2);
     await expect(filter).toHaveAttribute('data-value', 'unknown');
     await expect(order).toHaveAttribute('data-value', 'random');
@@ -291,6 +291,18 @@ test.describe('Learn queue filter', () => {
       return qnum.right <= filter.left + 1 && filter.right <= summary.left + 1;
     });
     expect(headerOrder).toBe(true);
+  });
+
+  test('saved new or wrong queue prefs fall back to to-learn', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('prawko_p_p1_learn_queue_mode', JSON.stringify({
+        B: { filter: 'wrong', order: 'sequential' },
+      }));
+    });
+    await startLearnMode(page);
+    await expect(page.locator('.learn-filter-select')).toHaveAttribute('data-value', 'unknown');
+    await expect(page.locator('.learn-order-select')).toHaveAttribute('data-value', 'sequential');
+    await expect(page.locator('.learn-filter-select .learn-queue-select')).toHaveText('Do nauki');
   });
 
   test('learn queue menus stay square in both exam skins', async ({ page }) => {
@@ -307,19 +319,142 @@ test.describe('Learn queue filter', () => {
     expect(parseFloat(pwpw)).toBe(0);
   });
 
-  test('learn always shows unanswered buttons even after going back', async ({ page }) => {
+  test('learn locks the first answer in a session when going back', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('prawko_p_p1_learn_queue_mode', JSON.stringify({
+        B: { filter: 'all', order: 'sequential' },
+      }));
+    });
     await startLearnMode(page);
     const firstBtn = page.locator('.answer-btn').first();
     await expect(firstBtn).toBeEnabled();
     await firstBtn.click();
     await expect(page.locator('.answer-btn.correct')).toHaveCount(1);
+    const correctText = await page.locator('.learn-stats-correct').textContent();
+    const incorrectText = await page.locator('.learn-stats-incorrect').textContent();
     await page.click('.btn-next');
     await page.waitForSelector('.answer-btn');
     await page.click('.btn-prev');
+    await expect(page.locator('.answer-btn').first()).toBeDisabled();
+    await expect(page.locator('.answer-btn.correct')).toHaveCount(1);
+    await page.locator('.answer-btn').nth(1).click({ force: true });
+    await expect(page.locator('.learn-stats-correct')).toHaveText(correctText);
+    await expect(page.locator('.learn-stats-incorrect')).toHaveText(incorrectText);
+
+    await page.click('.quiz-back', { force: true });
+    await page.waitForSelector('#categories.active');
+    await page.click('.mode-btn[data-mode="learn"]');
+    await page.click('.category-grid .category-card[data-category="B"]');
+    await page.waitForSelector('#quiz.active');
     await expect(page.locator('.answer-btn').first()).toBeEnabled();
     await expect(page.locator('.answer-btn.correct, .answer-btn.incorrect')).toHaveCount(0);
   });
 
+  test('hard filter lists questions missed at least twice and not yet known', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('prawko_p_p1_learn', JSON.stringify({
+        B: {
+          99: { answer: 'N', streak: 0, dueAt: 1, misses: 2 },
+          100: { answer: 'T', streak: 2, dueAt: 1, misses: 5 },
+        },
+      }));
+      localStorage.setItem('prawko_p_p1_learn_queue_mode', JSON.stringify({
+        B: { filter: 'all', order: 'sequential' },
+      }));
+    });
+    await startLearnMode(page);
+    await setLearnQueue(page, 'filter', 'hard');
+    await expect(page.locator('.learn-filter-select')).toHaveAttribute('data-value', 'hard');
+    await expect(page.locator('.question-card')).toHaveAttribute('data-question-id', '99');
+    expect(await learnCatalogLabel(page)).toBe('1 / 1');
+  });
+
+  test('empty filter toast sits in the center of the media area', async ({ page }) => {
+    await startLearnMode(page);
+    await page.locator('.learn-filter-select .learn-queue-select').click();
+    await page.locator('.learn-filter-select [data-value="hard"]').click();
+    const pos = await page.evaluate(() => {
+      const overlay = document.querySelector('.learn-toast');
+      const pill = overlay?.querySelector('.learn-toast-msg') || overlay;
+      const media = document.querySelector('#quiz .media-area');
+      if (!overlay || !pill || !media) return { ok: false };
+      const t = pill.getBoundingClientRect();
+      const m = media.getBoundingClientRect();
+      return {
+        ok: true,
+        text: pill.textContent,
+        inMedia: media.contains(overlay),
+        dx: Math.abs((t.left + t.width / 2) - (m.left + m.width / 2)),
+        dy: Math.abs((t.top + t.height / 2) - (m.top + m.height / 2)),
+      };
+    });
+    expect(pos).toEqual(expect.objectContaining({ ok: true, text: 'Brak trudnych', inMedia: true }));
+    expect(pos.dx).toBeLessThan(40);
+    expect(pos.dy).toBeLessThan(40);
+  });
+
+  test('learn toast scales down in a small window', async ({ page }) => {
+    await page.setViewportSize({ width: 640, height: 450 });
+    await startLearnMode(page);
+    await page.locator('.learn-filter-select .learn-queue-select').click();
+    await page.locator('.learn-filter-select [data-value="hard"]').click();
+    const metrics = await page.evaluate(() => {
+      const pill = document.querySelector('.learn-toast-msg');
+      const media = document.querySelector('#quiz .media-area');
+      if (!pill || !media) return null;
+      const p = pill.getBoundingClientRect();
+      const m = media.getBoundingClientRect();
+      return {
+        pillH: p.height,
+        mediaH: m.height,
+        scale: Number(getComputedStyle(document.documentElement).getPropertyValue('--ui-scale')),
+      };
+    });
+    expect(metrics).toBeTruthy();
+    expect(metrics.scale).toBeGreaterThan(0.05);
+    expect(metrics.scale).toBeLessThan(0.9);
+    expect(metrics.pillH).toBeLessThan(metrics.mediaH * 0.35);
+  });
+
+  test('switching a non-empty filter toasts the new queue', async ({ page }) => {
+    await startLearnMode(page);
+    await setLearnQueue(page, 'filter', 'all');
+    const pos = await page.evaluate(() => {
+      const overlay = document.querySelector('.learn-toast');
+      const pill = overlay?.querySelector('.learn-toast-msg') || overlay;
+      return { text: pill?.textContent || null };
+    });
+    expect(pos.text).toBe('Wszystkie · Losowo');
+    await expect(page.locator('.learn-filter-select')).toHaveAttribute('data-value', 'all');
+  });
+});
+
+test.describe('Learn progress summary', () => {
+  test('top chips count unique question ids across categories', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('prawko_p_p1_learn', JSON.stringify({
+        B: { 1: { answer: 'T', streak: 2, dueAt: 1, misses: 0 } },
+        C: {
+          1: { answer: 'N', streak: 0, dueAt: 1, misses: 2 },
+          2: { answer: 'N', streak: 0, dueAt: 1, misses: 0 },
+        },
+      }));
+    });
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    const counts = await page.evaluate(async () => {
+      const { getLearnUniqueFilterCounts } = await import(new URL('./js/stats.js', location.href).href);
+      const q = (id) => ({ id, correct: 'T' });
+      return getLearnUniqueFilterCounts([
+        { category: 'B', questions: [q(1), q(2), q(3)] },
+        { category: 'C', questions: [q(1), q(2)] },
+      ]);
+    });
+    expect(counts).toEqual({ total: 3, known: 1, hard: 0, unknown: 2 });
+  });
+});
+
+test.describe('Learn catalog jump', () => {
   test('learn catalog number is not a jump field by default', async ({ page }) => {
     await startLearnMode(page);
     await expect(page.locator('#quiz')).not.toHaveClass(/learn-qnum-jump/);

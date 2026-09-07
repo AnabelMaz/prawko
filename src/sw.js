@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'prawko-v69';
+const CACHE_VERSION = 'prawko-v70';
 const APP_SHELL_CACHE = CACHE_VERSION + '-shell';
 const DATA_CACHE = CACHE_VERSION + '-data';
 const MEDIA_CACHE = CACHE_VERSION + '-media';
@@ -68,11 +68,15 @@ self.addEventListener('fetch', (event) => {
   if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
   if (url.pathname.endsWith('/sw.js')) return;
   if (url.pathname.endsWith('/local.json')) return;
+  // CDN media: serve the offline pack when present, otherwise let the
+  // browser talk to B2 itself so Range/CORS work on GitHub Pages.
   if (url.origin !== self.location.origin) {
     if (!/\.(mp4|webm|webp|jpg|jpeg|png|gif)(\?|$)/i.test(url.pathname)) return;
-    event.respondWith(
-      matchOfflineMedia(event.request).then((cached) => cached || fetch(event.request))
-    );
+    event.respondWith((async () => {
+      const cached = await matchOfflineMedia(event.request);
+      if (cached) return cached;
+      return fetch(event.request);
+    })());
     return;
   }
 

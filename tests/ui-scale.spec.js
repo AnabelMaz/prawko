@@ -607,6 +607,9 @@ test('Panel learn filters match header labels and open above the film', async ({
       hitInMenu: Boolean(hit?.closest('.learn-queue-menu')),
       labelSize: parseFloat(getComputedStyle(label).fontSize),
       filterSize: parseFloat(getComputedStyle(filterBtn).fontSize),
+      filterPadRight: parseFloat(getComputedStyle(filterBtn).paddingRight) || 0,
+      filterBorder: parseFloat(getComputedStyle(filterBtn).borderTopWidth) || 0,
+      filterCaret: getComputedStyle(filterBtn, '::after').content,
     };
   });
   expect(overlay.qWidth).toBeGreaterThan(overlay.mediaWidth + 24);
@@ -614,6 +617,39 @@ test('Panel learn filters match header labels and open above the film', async ({
   expect(overlay.menuTop).toBeLessThan(overlay.mediaTop + 8);
   expect(Math.abs(overlay.labelSize - overlay.filterSize)).toBeLessThan(0.6);
   expect(Math.abs(overlay.summaryRight - overlay.mediaRight)).toBeLessThan(2);
+  expect(overlay.filterPadRight).toBeGreaterThan(8);
+  expect(overlay.filterBorder).toBeGreaterThan(0);
+  expect(overlay.filterCaret).toMatch(/▾/);
+});
+
+test('landscape Station learn filters look like dropdowns', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/');
+  await page.waitForSelector('#home.active');
+  if ((await page.locator('html').getAttribute('data-exam-skin')) !== 'station') {
+    await cycleSkin(page);
+    await page.waitForFunction(() => document.documentElement.getAttribute('data-exam-skin') === 'station');
+  }
+  await page.click('[data-navigate="categories"]');
+  await page.waitForSelector('#categories.active');
+  await page.click('.mode-btn[data-mode="learn"]');
+  await page.click('.category-card[data-category="B"]');
+  await page.waitForSelector('#quiz.active.learn-active');
+  await page.waitForSelector('.question-text:not(:empty)');
+  await expect.poll(() => page.evaluate(() => document.documentElement.getAttribute('data-ui-orient'))).toBe('landscape');
+
+  const filter = await page.evaluate(() => {
+    const el = document.querySelector('.learn-filter-select .learn-queue-select');
+    const cs = el ? getComputedStyle(el) : null;
+    return {
+      padRight: cs ? parseFloat(cs.paddingRight) || 0 : 0,
+      border: cs ? parseFloat(cs.borderTopWidth) || 0 : 0,
+      caret: el ? getComputedStyle(el, '::after').content : '',
+    };
+  });
+  expect(filter.padRight).toBeGreaterThan(8);
+  expect(filter.border).toBeGreaterThan(0);
+  expect(filter.caret).toMatch(/▾/);
 });
 
 test('portrait Station learn media is 16:9 without extra letterbox; Panel question matches landscape proportion', async ({ page }) => {
@@ -688,6 +724,240 @@ test('portrait Station learn media is 16:9 without extra letterbox; Panel questi
   expect(panelPortrait.mediaTop).toBeLessThan(panelPortrait.navTop);
   expect(panelPortrait.qSize / panelPortrait.btnSize).toBeGreaterThan(1.15);
   expect(panelPortrait.qSize).toBeGreaterThanOrEqual(24);
+});
+
+test('portrait Panel learn wraps header labels and matches back to next height', async ({ page }) => {
+  await page.setViewportSize({ width: 420, height: 900 });
+  await page.goto('/');
+  await page.waitForSelector('#home.active');
+  if ((await page.locator('html').getAttribute('data-exam-skin')) !== 'panel') {
+    await cycleSkin(page);
+    await page.waitForFunction(() => document.documentElement.getAttribute('data-exam-skin') === 'panel');
+  }
+  await page.click('[data-navigate="categories"]');
+  await page.waitForSelector('#categories.active');
+  await page.click('.mode-btn[data-mode="learn"]');
+  await page.click('.category-grid .category-card[data-category="B"]');
+  await page.waitForSelector('#quiz.active.learn-active');
+  await page.waitForSelector('.question-text:not(:empty)');
+  await expect.poll(() => page.evaluate(() => document.documentElement.getAttribute('data-ui-orient'))).toBe('portrait');
+
+  const metrics = await page.evaluate(() => {
+    const back = document.querySelector('.quiz-back.visible')?.getBoundingClientRect();
+    const next = document.querySelector('.learn-nav .btn-next')?.getBoundingClientRect();
+    const qnum = document.querySelector('.learn-qnum')?.getBoundingClientRect();
+    const cat = document.querySelector('.learn-category-value')?.getBoundingClientRect();
+    const qLabel = document.querySelector('.learn-top-fields .word-meta-item:first-child .word-meta-label');
+    const cLabel = document.querySelector('.learn-top-fields .word-meta-item:nth-child(2) .word-meta-label');
+    const media = document.querySelector('.media-area')?.getBoundingClientRect();
+    const qCs = qLabel ? getComputedStyle(qLabel) : null;
+    return {
+      backH: back?.height ?? 0,
+      nextH: next?.height ?? 0,
+      qnumH: qnum?.height ?? 0,
+      catH: cat?.height ?? 0,
+      qLabelH: qLabel?.getBoundingClientRect().height ?? 0,
+      cLabelH: cLabel?.getBoundingClientRect().height ?? 0,
+      flexDir: qCs?.flexDirection ?? null,
+      qLines: qLabel?.children.length ?? 0,
+      headBottom: document.querySelector('.learn-top')?.getBoundingClientRect().bottom ?? 0,
+      mediaTop: media?.top ?? 0,
+    };
+  });
+  expect(metrics.flexDir).toBe('column');
+  expect(metrics.qLines).toBe(2);
+  expect(metrics.nextH).toBeGreaterThan(30);
+  expect(metrics.backH).toBeGreaterThan(20);
+  expect(metrics.backH).toBeLessThan(metrics.nextH - 4);
+  expect(Math.abs(metrics.qnumH - metrics.qLabelH)).toBeLessThan(3);
+  expect(Math.abs(metrics.catH - metrics.cLabelH)).toBeLessThan(3);
+  expect(metrics.headBottom).toBeLessThanOrEqual(metrics.mediaTop + 2);
+});
+
+test('portrait Panel keeps ABC and YN in a fixed dock; filters look like dropdowns', async ({ page }) => {
+  await page.setViewportSize({ width: 420, height: 900 });
+  await page.goto('/');
+  await page.waitForSelector('#home.active');
+  if ((await page.locator('html').getAttribute('data-exam-skin')) !== 'panel') {
+    await cycleSkin(page);
+    await page.waitForFunction(() => document.documentElement.getAttribute('data-exam-skin') === 'panel');
+  }
+
+  const jumpTo = async (n) => {
+    const input = page.locator('.learn-qnum-input');
+    await input.click();
+    await input.fill(String(n));
+    await input.press('Enter');
+    await page.waitForFunction((pos) => {
+      const el = document.querySelector('.learn-qnum-input');
+      return el && el.value === String(pos);
+    }, n);
+  };
+
+  const measureAnswers = () => page.evaluate(() => {
+    const answers = document.querySelector('.answers');
+    const dock = document.querySelector('.quiz-dock');
+    const q = document.querySelector('.question-text');
+    const rows = [...(answers?.querySelectorAll('.answer-btn') || [])].map((el) => el.getBoundingClientRect());
+    const a = answers?.getBoundingClientRect();
+    const d = dock?.getBoundingClientRect();
+    const filter = document.querySelector('.learn-filter-select .learn-queue-select');
+    const filterCs = filter ? getComputedStyle(filter) : null;
+    return {
+      kind: answers?.className || '',
+      answersTop: a?.top ?? 0,
+      answersH: a?.height ?? 0,
+      dockH: d?.height ?? 0,
+      qH: q?.getBoundingClientRect().height ?? 0,
+      rowH: rows.map((r) => r.height),
+      filterPadRight: filterCs ? parseFloat(filterCs.paddingRight) || 0 : 0,
+      filterBorder: filterCs ? parseFloat(filterCs.borderTopWidth) || 0 : 0,
+      filterMinH: filterCs ? parseFloat(filterCs.minHeight) || 0 : 0,
+      filterCaret: filter ? getComputedStyle(filter, '::after').content : '',
+    };
+  });
+
+  await page.click('[data-navigate="categories"]');
+  await page.waitForSelector('#categories.active');
+  await page.click('.mode-btn[data-mode="learn"]');
+  await page.click('.category-grid .category-card[data-category="C"]');
+  await page.waitForSelector('#quiz.active.learn-active');
+  await page.waitForSelector('.question-text:not(:empty)');
+  await expect.poll(() => page.evaluate(() => document.documentElement.getAttribute('data-ui-orient'))).toBe('portrait');
+
+  await page.click('.learn-filter-select .learn-queue-select');
+  await page.click('.learn-filter-select [data-value="all"]');
+  await page.click('.learn-order-select .learn-queue-select');
+  await page.click('.learn-order-select [data-value="sequential"]');
+
+  await jumpTo(1183);
+  await page.waitForSelector('.abc-answers .answer-btn');
+  const abcA = await measureAnswers();
+  await jumpTo(1184);
+  await page.waitForSelector('.abc-answers .answer-btn');
+  const abcB = await measureAnswers();
+  expect(abcA.kind).toContain('abc-answers');
+  expect(abcB.kind).toContain('abc-answers');
+  expect(abcA.rowH).toHaveLength(3);
+  expect(Math.abs(abcA.rowH[0] - abcA.rowH[1])).toBeLessThan(4);
+  expect(Math.abs(abcA.rowH[1] - abcA.rowH[2])).toBeLessThan(4);
+  expect(Math.abs(abcA.answersTop - abcB.answersTop)).toBeLessThan(4);
+  expect(Math.abs(abcA.rowH[0] - abcB.rowH[0])).toBeLessThan(4);
+  expect(abcA.filterPadRight).toBeGreaterThan(8);
+  expect(abcA.filterBorder).toBeGreaterThan(0);
+  expect(abcA.filterCaret).toMatch(/▾/);
+
+  await jumpTo(1201);
+  await page.waitForSelector('.yn-answers .answer-btn');
+  const ynA = await measureAnswers();
+  await jumpTo(1252);
+  await page.waitForSelector('.yn-answers .answer-btn');
+  const ynB = await measureAnswers();
+  expect(ynA.kind).toContain('yn-answers');
+  expect(ynB.kind).toContain('yn-answers');
+  expect(Math.abs(ynA.answersTop - ynB.answersTop)).toBeLessThan(4);
+  expect(Math.abs(ynA.qH - ynB.qH)).toBeLessThan(4);
+
+  await page.click('.quiz-back.visible');
+  await page.waitForSelector('#categories.active');
+  await page.click('.mode-btn[data-mode="exam"]');
+  await page.click('.category-grid .category-card[data-category="C"]');
+  await page.waitForSelector('.modal-overlay.active');
+  await page.click('.btn-confirm-end');
+  await page.waitForSelector('#quiz.active.exam-active');
+  await page.waitForSelector('.question-text:not(:empty)');
+  const examDock = await page.evaluate(() => {
+    const answers = document.querySelector('.answers')?.getBoundingClientRect();
+    const dock = document.querySelector('.quiz-dock')?.getBoundingClientRect();
+    return {
+      dockH: dock?.height ?? 0,
+      pin: (dock?.bottom ?? 0) - (answers?.bottom ?? 0),
+    };
+  });
+  expect(examDock.dockH).toBeGreaterThan(80);
+  expect(examDock.pin).toBeLessThan(24);
+});
+
+test('portrait Station keeps ABC and YN in a fixed dock; filters look like dropdowns', async ({ page }) => {
+  await page.setViewportSize({ width: 420, height: 900 });
+  await page.goto('/');
+  await page.waitForSelector('#home.active');
+  if ((await page.locator('html').getAttribute('data-exam-skin')) !== 'station') {
+    await cycleSkin(page);
+    await page.waitForFunction(() => document.documentElement.getAttribute('data-exam-skin') === 'station');
+  }
+
+  const jumpTo = async (n) => {
+    const input = page.locator('.learn-qnum-input');
+    await input.click();
+    await input.fill(String(n));
+    await input.press('Enter');
+    await page.waitForFunction((pos) => {
+      const el = document.querySelector('.learn-qnum-input');
+      return el && el.value === String(pos);
+    }, n);
+  };
+
+  const measureAnswers = () => page.evaluate(() => {
+    const answers = document.querySelector('.answers');
+    const rows = [...(answers?.querySelectorAll('.answer-btn') || [])].map((el) => el.getBoundingClientRect());
+    const a = answers?.getBoundingClientRect();
+    const q = document.querySelector('.question-text');
+    const media = document.querySelector('.media-area')?.getBoundingClientRect();
+    const filter = document.querySelector('.learn-filter-select .learn-queue-select');
+    const filterCs = filter ? getComputedStyle(filter) : null;
+    return {
+      kind: answers?.className || '',
+      answersTop: a?.top ?? 0,
+      qH: q?.getBoundingClientRect().height ?? 0,
+      rowH: rows.map((r) => r.height),
+      mediaRatio: media && media.width ? media.height / media.width : 0,
+      filterPadRight: filterCs ? parseFloat(filterCs.paddingRight) || 0 : 0,
+      filterBorder: filterCs ? parseFloat(filterCs.borderTopWidth) || 0 : 0,
+      filterCaret: filter ? getComputedStyle(filter, '::after').content : '',
+    };
+  });
+
+  await page.click('[data-navigate="categories"]');
+  await page.waitForSelector('#categories.active');
+  await page.click('.mode-btn[data-mode="learn"]');
+  await page.click('.category-grid .category-card[data-category="C"]');
+  await page.waitForSelector('#quiz.active.learn-active');
+  await page.waitForSelector('.question-text:not(:empty)');
+  await expect.poll(() => page.evaluate(() => document.documentElement.getAttribute('data-ui-orient'))).toBe('portrait');
+
+  await page.click('.learn-filter-select .learn-queue-select');
+  await page.click('.learn-filter-select [data-value="all"]');
+  await page.click('.learn-order-select .learn-queue-select');
+  await page.click('.learn-order-select [data-value="sequential"]');
+
+  await jumpTo(1183);
+  await page.waitForSelector('.abc-answers .answer-btn');
+  const abcA = await measureAnswers();
+  await jumpTo(1184);
+  await page.waitForSelector('.abc-answers .answer-btn');
+  const abcB = await measureAnswers();
+  expect(abcA.kind).toContain('abc-answers');
+  expect(abcB.kind).toContain('abc-answers');
+  expect(abcA.rowH).toHaveLength(3);
+  expect(Math.abs(abcA.rowH[0] - abcA.rowH[1])).toBeLessThan(4);
+  expect(Math.abs(abcA.rowH[1] - abcA.rowH[2])).toBeLessThan(4);
+  expect(Math.abs(abcA.answersTop - abcB.answersTop)).toBeLessThan(4);
+  expect(Math.abs(abcA.mediaRatio - 9 / 16)).toBeLessThan(0.04);
+  expect(abcA.filterPadRight).toBeGreaterThan(8);
+  expect(abcA.filterBorder).toBeGreaterThan(0);
+  expect(abcA.filterCaret).toMatch(/▾/);
+
+  await jumpTo(1201);
+  await page.waitForSelector('.yn-answers .answer-btn');
+  const ynA = await measureAnswers();
+  await jumpTo(1252);
+  await page.waitForSelector('.yn-answers .answer-btn');
+  const ynB = await measureAnswers();
+  expect(ynA.kind).toContain('yn-answers');
+  expect(ynB.kind).toContain('yn-answers');
+  expect(Math.abs(ynA.answersTop - ynB.answersTop)).toBeLessThan(4);
+  expect(Math.abs(ynA.qH - ynB.qH)).toBeLessThan(4);
 });
 
 test('portrait Panel exam header fits above the film; question matches learn size', async ({ page }) => {

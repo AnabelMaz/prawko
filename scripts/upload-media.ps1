@@ -1,4 +1,4 @@
-﻿# UTF-8 with BOM — Windows PowerShell 5.1 otherwise misreads Polish text and here-strings.
+# UTF-8 with BOM — Windows PowerShell 5.1 otherwise misreads Polish text and here-strings.
 # Upload src/media to a public Backblaze B2 bucket (Windows).
 # JSON questions stay in git; photos/films do not.
 #
@@ -9,6 +9,7 @@
 # 5. powershell -ExecutionPolicy Bypass -File scripts/upload-media.ps1
 #
 # After the first upload, set MEDIA_CDN in src/js/data.js to the URL this script prints.
+# CORS for GitHub Pages / localhost: scripts/b2-cors.json (applied at the end of this script).
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
@@ -85,6 +86,16 @@ if ($probe) {
     if ($info -match '^(https://f\d+\.backblazeb2\.com/file/[^/]+)/') {
         $publicUrl = $Matches[1]
     }
+}
+
+$corsFile = Join-Path $PSScriptRoot "b2-cors.json"
+if (Test-Path -LiteralPath $corsFile) {
+    Write-Host "Ustawiam CORS (filmy z GitHub Pages i localhost)..." -ForegroundColor Cyan
+    & b2 bucket update --cors-rules (Get-Content -LiteralPath $corsFile -Raw) $bucket allPublic
+    if ($LASTEXITCODE -ne 0) {
+        & b2 update-bucket --corsRules (Get-Content -LiteralPath $corsFile -Raw) $bucket allPublic
+    }
+    if ($LASTEXITCODE -ne 0) { throw "b2 CORS update failed ($LASTEXITCODE)" }
 }
 
 Write-Host ""
