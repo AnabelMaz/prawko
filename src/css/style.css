@@ -1799,6 +1799,10 @@ footer a {
 
 #quiz.learn-active .learn-qnum {
   min-width: 4.6em;
+  cursor: default;
+}
+
+#quiz.learn-active.learn-qnum-jump .learn-qnum {
   cursor: text;
 }
 
@@ -1820,6 +1824,10 @@ footer a {
   appearance: none;
   -webkit-appearance: none;
   border-radius: 0;
+}
+
+#quiz.learn-active:not(.learn-qnum-jump) .learn-qnum-input {
+  pointer-events: none;
 }
 
 #quiz.learn-active .learn-qnum-input:focus {

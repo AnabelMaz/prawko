@@ -37,3 +37,7 @@ playwright-report/
 
 # Codex local state
 .codex/
+
+# Local-only flags (never GitHub / Pages). On the live server: src/local.json
+# { "learnQuestionJump": true } — honored only on localhost.
+src/local.json

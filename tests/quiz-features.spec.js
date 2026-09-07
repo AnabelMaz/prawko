@@ -2,7 +2,18 @@ const { test, expect } = require('@playwright/test');
 const { cycleLanguage, cycleSkin, learnCatalogLabel } = require('./helpers');
 
 // Helper: navigate to categories and start learn mode for category B
-async function startLearnMode(page) {
+async function startLearnMode(page, { localJson } = {}) {
+  await page.route('**/local.json', async (route) => {
+    if (localJson) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(localJson),
+      });
+      return;
+    }
+    await route.fulfill({ status: 404, body: '' });
+  });
   await page.goto('/');
   await page.waitForSelector('#home.active');
   await page.click('[data-navigate="categories"]');
@@ -309,12 +320,33 @@ test.describe('Learn queue filter', () => {
     await expect(page.locator('.answer-btn.correct, .answer-btn.incorrect')).toHaveCount(0);
   });
 
-  test('random walks a list shuffled once; toggling order keeps the question and its new index', async ({ page }) => {
+  test('learn catalog number is not a jump field by default', async ({ page }) => {
     await startLearnMode(page);
+    await expect(page.locator('#quiz')).not.toHaveClass(/learn-qnum-jump/);
+    await expect(page.locator('.learn-qnum-input')).toHaveAttribute('readonly', '');
+  });
+
+  test('learn catalog jump works only with local.json on localhost', async ({ page }) => {
+    await startLearnMode(page, { localJson: { learnQuestionJump: true } });
     await setLearnQueue(page, 'filter', 'all');
     await setLearnQueue(page, 'order', 'sequential');
+    const catalog = await page.evaluate(async () => {
+      const data = await fetch('data/B.json').then((res) => res.json());
+      return data.questions.map((q) => String(q.id));
+    });
+    await expect(page.locator('.learn-qnum-input')).not.toHaveAttribute('readonly');
     await page.locator('.learn-qnum-input').fill('1');
     await page.locator('.learn-qnum-input').press('Enter');
+    await expect(page.locator('.question-card')).toHaveAttribute('data-question-id', catalog[0]);
+  });
+
+  test('random walks a list shuffled once; toggling order keeps the question and its new index', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('prawko_p_p1_learn_queue_mode', JSON.stringify({
+        B: { filter: 'all', order: 'sequential' },
+      }));
+    });
+    await startLearnMode(page);
     await expect(page.locator('.question-card')).toHaveAttribute('data-question-id', /./);
 
     const catalog = await page.evaluate(async () => {

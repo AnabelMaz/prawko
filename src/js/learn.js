@@ -15,7 +15,43 @@ import { profileGet, profileSet } from './profiles.js';
 
 let state = null;
 let keydownHandler = null;
+let questionJump = false;
 const QUEUE_MODE_KEY = 'prawko_learn_queue_mode';
+
+function isLocalDevHost() {
+  const host = location.hostname;
+  return host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
+}
+
+function applyQuestionJumpUi() {
+  const quiz = document.getElementById('quiz');
+  const input = qnumInput();
+  quiz?.classList.toggle('learn-qnum-jump', questionJump);
+  if (!input) return;
+  if (questionJump) {
+    input.removeAttribute('readonly');
+    input.removeAttribute('tabindex');
+  } else {
+    input.setAttribute('readonly', '');
+    input.tabIndex = -1;
+  }
+}
+
+export async function loadLearnLocalFlags() {
+  questionJump = false;
+  if (isLocalDevHost()) {
+    try {
+      const res = await fetch(new URL('local.json', document.baseURI), { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        questionJump = data?.learnQuestionJump === true;
+      }
+    } catch {
+      questionJump = false;
+    }
+  }
+  applyQuestionJumpUi();
+}
 
 // Inject toast styles once
 (function injectToastStyles() {
@@ -195,7 +231,7 @@ function paintQnum(pos, total, { force = false } = {}) {
     const digits = Math.max(1, String(total || pos || 1).length);
     input.maxLength = digits;
     input.style.width = `${digits}ch`;
-    input.setAttribute('aria-label', t('learnJumpAria'));
+    input.setAttribute('aria-label', t(questionJump ? 'learnJumpAria' : 'examQuestionNumLabel'));
   }
   if (suffix) suffix.textContent = ` / ${total}`;
 }
@@ -238,7 +274,7 @@ function jumpToCatalogPos(raw) {
 }
 
 function commitQnumJump(input) {
-  if (!input || !state) {
+  if (!questionJump || !input || !state) {
     restoreQnum();
     return;
   }
@@ -372,6 +408,7 @@ export function startLearn(categoryData) {
 
   // Show learn nav and back button, hide exam controls
   document.getElementById('quiz')?.classList.add('learn-active');
+  applyQuestionJumpUi();
   document.querySelector('.learn-top')?.removeAttribute('hidden');
   document.querySelector('.learn-nav').classList.add('visible');
   document.querySelector('.quiz-back').classList.add('visible');
@@ -609,8 +646,15 @@ export function setupLearnListeners() {
   const input = qnumInput();
   if (qnum && input) {
     let ignoreQnumBlur = false;
-    qnum.addEventListener('click', () => input.focus());
+    qnum.addEventListener('click', () => {
+      if (!questionJump) return;
+      input.focus();
+    });
     input.addEventListener('focus', () => {
+      if (!questionJump) {
+        input.blur();
+        return;
+      }
       input.select();
     });
     input.addEventListener('keydown', (e) => {

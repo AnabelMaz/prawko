@@ -2,7 +2,7 @@
 
 import { fetchMeta, fetchCategory, fetchUniqueQuestionCount } from './data.js';
 import { startExam, setupExamListeners, cleanupExam, getLastExamCategory, refreshExamQuestion } from './exam.js';
-import { startLearn, setupLearnListeners, cleanupLearn, refreshLearnQuestion } from './learn.js';
+import { startLearn, setupLearnListeners, cleanupLearn, refreshLearnQuestion, loadLearnLocalFlags } from './learn.js';
 import { showScreen, renderCategories, applyLanguage, renderHistory, renderLearnProgress, renderResults, showConfirmModal } from './ui.js';
 import { setLang, getLang, loadQuestionTranslations, nextLang, LANG_LABELS, t } from './i18n.js';
 import { downloadCategoryMedia, getDownloadedCategories, reconcileDownloadedCategories } from './offline.js';
@@ -585,6 +585,7 @@ async function applyAppUpdate(registration) {
 // ---- Init ----
 async function init() {
   setupUiFitScale();
+  await loadLearnLocalFlags();
   // Load metadata
   const spinner = document.getElementById('home-spinner');
   try {
