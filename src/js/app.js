@@ -260,6 +260,7 @@ async function launchSession(categoryId) {
     } else {
       startLearn(data);
     }
+    syncSessionChrome('quiz');
   } catch {
     window.location.hash = 'categories';
   }
@@ -836,7 +837,7 @@ async function init() {
 
   const offlineBanner = document.getElementById('offline-banner');
   function updateOnlineStatus() {
-    if (offlineBanner) offlineBanner.style.display = navigator.onLine ? 'none' : '';
+    if (offlineBanner) offlineBanner.hidden = navigator.onLine;
     if (meta) {
       renderCategories(meta, getDownloadedCategories());
       syncCategoryCardVisibility();

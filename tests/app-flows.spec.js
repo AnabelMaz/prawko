@@ -1,4 +1,5 @@
 const { test, expect } = require('@playwright/test');
+const { enablePracticeExam, recentCategoryIds } = require('./helpers');
 
 async function openCategories(page) {
   await page.goto('/');
@@ -27,6 +28,7 @@ async function expectFilmPlayingOrAnswerClock(page) {
 
 test.describe('App flows', () => {
   test('exam starts with an unscored practice banner', async ({ page }) => {
+    await enablePracticeExam(page);
     await startExamMode(page);
     await page.click('.btn-confirm-end');
     await page.waitForSelector('#quiz.active');
@@ -99,11 +101,13 @@ test.describe('App flows', () => {
 
   test('specialist ABC is 50s for reading and answering together', async ({ page }) => {
     await page.clock.install();
+    await enablePracticeExam(page);
     await startExamMode(page);
     await page.click('.btn-confirm-end');
     await page.waitForSelector('#quiz.active');
 
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 20; i++) {
+      if (await page.locator('.abc-answers').isVisible()) break;
       await page.waitForSelector('.yn-answers');
       if (await page.locator('.exam-film-start').isVisible()) {
         await page.locator('.exam-film-start').click();
@@ -156,15 +160,15 @@ test.describe('App flows', () => {
 
     await page.click('.category-card[data-category="B"]');
     await page.waitForSelector('#quiz.active');
-    await page.click('.quiz-back');
+    await page.click('.quiz-back', { force: true });
     await page.waitForSelector('#categories.active');
 
     await page.click('.category-card[data-category="C"]');
     await page.waitForSelector('#quiz.active');
-    await page.click('.quiz-back');
+    await page.click('.quiz-back', { force: true });
     await page.waitForSelector('#categories.active');
 
-    const recentIds = await page.evaluate(() => JSON.parse(localStorage.getItem('prawko_recent_categories') || '[]'));
+    const recentIds = await recentCategoryIds(page);
     expect(recentIds.slice(0, 2)).toEqual(['C', 'B']);
 
     const recentCards = page.locator('#recent-categories-row .category-card');

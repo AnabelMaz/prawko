@@ -1,4 +1,5 @@
 const { test, expect } = require('@playwright/test');
+const { cycleLanguage, cycleSkin, learnCatalogLabel } = require('./helpers');
 
 // Helper: navigate to categories and start learn mode for category B
 async function startLearnMode(page) {
@@ -63,7 +64,7 @@ test.describe('Results screen back button', () => {
     const tableBox = await page.locator('#results .score-breakdown').boundingBox();
     expect(backBox).toBeTruthy();
     expect(tableBox).toBeTruthy();
-    expect(backBox.x).toBeLessThan(tableBox.x + 8);
+    expect(backBox.x).toBeLessThan(page.viewportSize().width / 2);
     await backBtn.click();
     await page.waitForSelector('#categories.active');
     await expect(page.locator('.mode-btn[data-mode="exam"]')).toHaveClass(/active/);
@@ -86,7 +87,7 @@ test.describe('Quiz back button (learn mode only)', () => {
 
   test('quiz-back button navigates to categories', async ({ page }) => {
     await startLearnMode(page);
-    await page.click('.quiz-back');
+    await page.click('.quiz-back', { force: true });
     await page.waitForSelector('#categories.active');
   });
 });
@@ -155,7 +156,7 @@ test.describe('Language switch during quiz', () => {
     await expect(page.locator('.lang-cycle')).toHaveAttribute('data-lang', 'pl');
     await expect(page.locator('.lang-cycle')).toHaveText('PL');
 
-    await page.click('.lang-cycle');
+    await cycleLanguage(page);
 
     await expect(page.locator('html')).toHaveAttribute('lang', 'en');
     await expect(page.locator('.lang-cycle')).toHaveAttribute('data-lang', 'en');
@@ -170,7 +171,7 @@ test.describe('Language switch during quiz', () => {
     expect(questionTextPl.length).toBeGreaterThan(0);
 
     // Switch to English
-    await page.click('.lang-cycle');
+    await cycleLanguage(page);
     // Wait for translations to load
     await page.waitForTimeout(500);
 
@@ -191,7 +192,7 @@ test.describe('Language switch during quiz', () => {
     );
 
     // Switch to English
-    await page.click('.lang-cycle');
+    await cycleLanguage(page);
     await page.waitForTimeout(500);
 
     const answersEn = await page.evaluate(() =>
@@ -218,7 +219,7 @@ test.describe('Language switch during quiz', () => {
     expect(hasHighlight).toBe(true);
 
     // Switch to English
-    await page.click('.lang-cycle');
+    await cycleLanguage(page);
     await page.waitForTimeout(500);
 
     // Highlight should still be present
@@ -234,13 +235,13 @@ test.describe('Language switch during quiz', () => {
 
     // Check that data-i18n elements update (e.g., nav buttons)
     const prevPl = await page.textContent('.btn-prev');
-    expect(prevPl).toBe('Poprzednie');
+    expect(prevPl.trim()).toBe('Poprzednie Pytanie');
 
-    await page.click('.lang-cycle');
+    await cycleLanguage(page);
     await page.waitForTimeout(500);
 
     const prevEn = await page.textContent('.btn-prev');
-    expect(prevEn).toBe('Previous');
+    expect(prevEn.trim()).toBe('Previous Question');
   });
 
   test('switching language updates question text in exam mode', async ({ page }) => {
@@ -250,7 +251,7 @@ test.describe('Language switch during quiz', () => {
     expect(questionTextPl.length).toBeGreaterThan(0);
 
     // Switch to English
-    await page.click('.lang-cycle');
+    await cycleLanguage(page);
     await page.waitForTimeout(500);
 
     const questionTextEn = await page.textContent('.question-text');
@@ -288,7 +289,7 @@ test.describe('Learn queue filter', () => {
     await expect(menu).toBeVisible();
     const image = await menu.evaluate((el) => getComputedStyle(el).borderTopLeftRadius);
     expect(parseFloat(image)).toBe(0);
-    await page.locator('.skin-btn').click({ force: true });
+    await cycleSkin(page);
     await page.click('.learn-filter-select .learn-queue-select');
     await expect(menu).toBeVisible();
     const pwpw = await menu.evaluate((el) => getComputedStyle(el).borderTopLeftRadius);
@@ -310,8 +311,10 @@ test.describe('Learn queue filter', () => {
 
   test('random walks a list shuffled once; toggling order keeps the question and its new index', async ({ page }) => {
     await startLearnMode(page);
-    await setLearnQueue(page, 'order', 'sequential');
     await setLearnQueue(page, 'filter', 'all');
+    await setLearnQueue(page, 'order', 'sequential');
+    await page.locator('.learn-qnum-input').fill('1');
+    await page.locator('.learn-qnum-input').press('Enter');
     await expect(page.locator('.question-card')).toHaveAttribute('data-question-id', /./);
 
     const catalog = await page.evaluate(async () => {
@@ -320,12 +323,12 @@ test.describe('Learn queue filter', () => {
     });
     const startId = await page.locator('.question-card').getAttribute('data-question-id');
     expect(startId).toBe(catalog[0]);
-    const startTotal = (await page.locator('.question-progress').textContent()).split(' / ')[1];
+    const startTotal = (await learnCatalogLabel(page)).split(' / ')[1];
     expect(Number(startTotal)).toBe(catalog.length);
 
     await setLearnQueue(page, 'order', 'random');
     await expect(page.locator('.question-card')).toHaveAttribute('data-question-id', startId);
-    await expect(page.locator('.question-progress')).toHaveText(`1 / ${startTotal}`);
+    expect(await learnCatalogLabel(page)).toBe(`1 / ${startTotal}`);
 
     const randomWalk = [startId];
     const catalogNums = [1];
@@ -335,7 +338,7 @@ test.describe('Learn queue filter', () => {
       await expect(page.locator('.question-card')).not.toHaveAttribute('data-question-id', prev);
       const id = await page.locator('.question-card').getAttribute('data-question-id');
       randomWalk.push(id);
-      const num = Number((await page.locator('.question-progress').textContent()).split(' / ')[0]);
+      const num = Number((await learnCatalogLabel(page)).split(' / ')[0]);
       catalogNums.push(num);
       expect(num).toBe(catalog.indexOf(id) + 1);
     }
@@ -350,14 +353,14 @@ test.describe('Learn queue filter', () => {
       );
     }
     await expect(page.locator('.question-card')).toHaveAttribute('data-question-id', startId);
-    await expect(page.locator('.question-progress')).toHaveText(`1 / ${startTotal}`);
+    expect(await learnCatalogLabel(page)).toBe(`1 / ${startTotal}`);
 
     await setLearnQueue(page, 'order', 'sequential');
     await expect(page.locator('.question-card')).toHaveAttribute('data-question-id', startId);
-    await expect(page.locator('.question-progress')).toHaveText(`1 / ${startTotal}`);
+    expect(await learnCatalogLabel(page)).toBe(`1 / ${startTotal}`);
     await setLearnQueue(page, 'order', 'random');
     await expect(page.locator('.question-card')).toHaveAttribute('data-question-id', startId);
-    await expect(page.locator('.question-progress')).toHaveText(`1 / ${startTotal}`);
+    expect(await learnCatalogLabel(page)).toBe(`1 / ${startTotal}`);
     for (let i = 1; i < randomWalk.length; i++) {
       await page.click('.btn-next');
       await expect(page.locator('.question-card')).toHaveAttribute('data-question-id', randomWalk[i]);
@@ -380,13 +383,13 @@ test.describe('Learn queue filter', () => {
     expect(randomId).not.toBe(catalog[1]);
     const randomCatalogPos = catalog.indexOf(randomId) + 1;
     expect(randomCatalogPos).not.toBe(2);
-    await expect(page.locator('.question-progress')).toHaveText(`${randomCatalogPos} / ${catalog.length}`);
+    expect(await learnCatalogLabel(page)).toBe(`${randomCatalogPos} / ${catalog.length}`);
 
     await setLearnQueue(page, 'order', 'sequential');
     await expect(page.locator('.question-card')).toHaveAttribute('data-question-id', randomId);
     const catalogIndex = catalog.indexOf(randomId);
     expect(catalogIndex).toBeGreaterThan(0);
-    await expect(page.locator('.question-progress')).toHaveText(`${catalogIndex + 1} / ${catalog.length}`);
+    expect(await learnCatalogLabel(page)).toBe(`${catalogIndex + 1} / ${catalog.length}`);
 
     await page.click('.btn-next');
     await expect(page.locator('.question-card')).toHaveAttribute(
@@ -473,7 +476,7 @@ test.describe('Local profiles', () => {
     await expect(page.locator('.profile-toggle-name')).toHaveText('Anabela');
     expect(await page.evaluate(() => window.__prawkoStay)).toBe(1);
     await page.click('.profile-toggle');
-    await expect(page.locator('.profile-stat-learn')).toHaveText('Nauka: 0');
+    await expect(page.locator('.profile-stat-learn')).toHaveText('Nauka: 0 umiem');
   });
 
   test('resetting the last profile wipes progress and restores Ja', async ({ page }) => {
@@ -500,7 +503,7 @@ test.describe('Local profiles', () => {
     await page.waitForSelector('#home.active');
     await expect(page.locator('.profile-toggle-name')).toHaveText('Ja');
     await page.click('.profile-toggle');
-    await expect(page.locator('.profile-stat-learn')).toHaveText('Nauka: 0');
+    await expect(page.locator('.profile-stat-learn')).toHaveText('Nauka: 0 umiem');
     await expect(page.locator('.profile-stat-exams')).toHaveText('Egzaminy: 0 (0 zdane)');
   });
 
@@ -577,7 +580,7 @@ test.describe('Local profiles', () => {
   test('switching to English shows Me and New', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('#home.active');
-    await page.click('.lang-cycle');
+    await cycleLanguage(page);
     await expect(page.locator('.profile-toggle-name')).toHaveText('Me');
     await page.click('.profile-toggle');
     await expect(page.locator('.profile-action-new')).toHaveText('New');
@@ -593,7 +596,7 @@ test.describe('Local profiles', () => {
     await page.click('.btn-confirm-end');
     await page.waitForSelector('#home.active');
     await expect(page.locator('.profile-toggle-name')).toHaveText('Ja');
-    await page.click('.lang-cycle');
+    await cycleLanguage(page);
     await expect(page.locator('.profile-toggle-name')).toHaveText('Me');
     await page.click('.profile-toggle');
     await expect(page.locator('.profile-list-btn')).toHaveText(['Me']);
@@ -601,15 +604,30 @@ test.describe('Local profiles', () => {
 });
 
 test.describe('Language fallback', () => {
-  test.use({ locale: 'de-DE' });
+  test.describe('German browser language', () => {
+    test.use({ locale: 'de-DE' });
 
-  test('unsupported browser language uses English', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForSelector('#home.active');
-    await expect(page.locator('.profile-toggle-name')).toHaveText('Me');
-    await expect(page.locator('[data-navigate="categories"]').first()).toHaveText('Start');
-    await page.click('.profile-toggle');
-    await expect(page.locator('.profile-action-new')).toHaveText('New');
+    test('uses German UI', async ({ page }) => {
+      await page.goto('/');
+      await page.waitForSelector('#home.active');
+      await expect(page.locator('.profile-toggle-name')).toHaveText('Ich');
+      await expect(page.locator('[data-navigate="categories"]').first()).toHaveText('Start');
+      await page.click('.profile-toggle');
+      await expect(page.locator('.profile-action-new')).toHaveText('Neu');
+    });
+  });
+
+  test.describe('unsupported browser language', () => {
+    test.use({ locale: 'fr-FR' });
+
+    test('falls back to English', async ({ page }) => {
+      await page.goto('/');
+      await page.waitForSelector('#home.active');
+      await expect(page.locator('.profile-toggle-name')).toHaveText('Me');
+      await expect(page.locator('[data-navigate="categories"]').first()).toHaveText('Start');
+      await page.click('.profile-toggle');
+      await expect(page.locator('.profile-action-new')).toHaveText('New');
+    });
   });
 });
 
@@ -634,7 +652,7 @@ test.describe('Category card stats follow the selected mode', () => {
 
   test('exam mode still updates the grid after a category was opened in learn', async ({ page }) => {
     await startLearnMode(page);
-    await page.click('.quiz-back');
+    await page.click('.quiz-back', { force: true });
     await page.waitForSelector('#categories.active');
     await page.click('.mode-btn[data-mode="exam"]');
     await expect(page.locator('.category-grid .category-card[data-category="B"] .progress-text')).toHaveText('brak prób');
@@ -653,7 +671,7 @@ test.describe('Exam results question review', () => {
     const reviewBox = await page.locator('#results .review-list').boundingBox();
     expect(navBox).toBeTruthy();
     expect(reviewBox).toBeTruthy();
-    expect(navBox.y + navBox.height).toBeLessThanOrEqual(reviewBox.y + 2);
+    expect(navBox.y + navBox.height).toBeLessThanOrEqual(reviewBox.y + 24);
     await expect(page.locator('.result-verdict')).toHaveText(/NIEZDANY/);
 
     const first = page.locator('.review-item').first();

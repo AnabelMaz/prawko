@@ -54,7 +54,11 @@ test.describe('Warm & Soft Theme', () => {
     await page.waitForSelector('.skin-btn');
     await page.click('.skin-btn');
     await expect(page.locator('.skin-btn')).toHaveText('Stacja');
+    await expect(page.locator('html')).toHaveAttribute('data-exam-skin', 'station');
     await page.waitForSelector('.feature-card');
+    await page.waitForFunction(() =>
+      getComputedStyle(document.querySelector('.feature-card')).boxShadow === 'none'
+    );
 
     const shadow = await page.evaluate(() =>
       getComputedStyle(document.querySelector('.feature-card')).boxShadow

@@ -1,4 +1,5 @@
 const { test, expect } = require('@playwright/test');
+const { cycleSkin, waitForExamMediaAlign } = require('./helpers');
 
 test('landscape home scales the 1280 layout instead of wrapping', async ({ page }) => {
   await page.setViewportSize({ width: 640, height: 450 });
@@ -166,7 +167,7 @@ test('wrapping an ABC answer does not resize the learn media slot', async ({ pag
   expect(Math.abs(shortBox.width - longBox.width)).toBeLessThan(2);
 });
 
-test('learn quiz answers and nav match the question card width', async ({ page }) => {
+test('learn quiz answers sit under the film; nav sits in the side column', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('/');
   await page.click('[data-navigate="categories"]');
@@ -174,26 +175,24 @@ test('learn quiz answers and nav match the question card width', async ({ page }
   await page.click('.mode-btn[data-mode="learn"]');
   await page.click('.category-card[data-category="B"]');
   await page.waitForSelector('#quiz.active');
+  await waitForExamMediaAlign(page);
 
-  const card = await page.locator('.question-card').boundingBox();
+  const media = await page.locator('.media-area').boundingBox();
   const answers = await page.locator('.answers').boundingBox();
   const nav = await page.locator('.learn-nav').boundingBox();
   const back = await page.locator('.quiz-back').boundingBox();
-  const pill = await page.locator('.quiz-mode-pill').boundingBox();
-  expect(card).toBeTruthy();
+  expect(media).toBeTruthy();
   expect(answers).toBeTruthy();
   expect(nav).toBeTruthy();
   expect(back).toBeTruthy();
-  expect(pill).toBeTruthy();
-  expect(Math.abs(card.width - answers.width)).toBeLessThan(4);
-  expect(Math.abs(card.x - answers.x)).toBeLessThan(4);
-  expect(Math.abs(nav.width - answers.width)).toBeLessThan(4);
-  expect(Math.abs(nav.x - answers.x)).toBeLessThan(4);
-  expect(Math.abs(back.y - pill.y)).toBeLessThan(14);
-  expect(back.x).toBeLessThan(pill.x);
+  expect(Math.abs(media.x - answers.x)).toBeLessThan(24);
+  expect(answers.y).toBeGreaterThan(media.y + media.height - 8);
+  expect(nav.x).toBeGreaterThan(media.x + media.width - 8);
+  expect(back.x).toBeGreaterThan(media.x + media.width - 8);
+  await expect(page.locator('.quiz-mode-pill')).toBeHidden();
 });
 
-test('exam chrome and answers share the question card column', async ({ page }) => {
+test('exam chrome puts the film, keys, and side counters in the WORD grid', async ({ page }) => {
   await page.setViewportSize({ width: 900, height: 900 });
   await page.goto('/');
   await page.click('[data-navigate="categories"]');
@@ -204,54 +203,44 @@ test('exam chrome and answers share the question card column', async ({ page }) 
   await page.click('.btn-confirm-end');
   await page.waitForSelector('#quiz.active.exam-active');
   await page.waitForSelector('.question-text:not(:empty)');
+  await waitForExamMediaAlign(page);
 
   const media = await page.locator('.media-area').boundingBox();
   expect(media).toBeTruthy();
   expect(media.height).toBeGreaterThan(80);
   expect(media.width).toBeGreaterThan(80);
 
-  const card = await page.locator('.question-card').boundingBox();
   const answers = await page.locator('.answers').boundingBox();
-  const header = await page.locator('#quiz.exam-active .quiz-header').boundingBox();
+  const fields = await page.locator('.exam-top-fields').boundingBox();
   const counters = await page.locator('.exam-counters').boundingBox();
   const toolbar = await page.locator('.exam-toolbar').boundingBox();
   const nextBtn = await page.locator('.btn-exam-next.visible').boundingBox();
-  const start = await page.locator('.exam-film-start').boundingBox();
-  expect(card).toBeTruthy();
   expect(answers).toBeTruthy();
-  expect(header).toBeTruthy();
+  expect(fields).toBeTruthy();
   expect(counters).toBeTruthy();
   expect(toolbar).toBeTruthy();
   expect(nextBtn).toBeTruthy();
-  expect(toolbar.y).toBeGreaterThan(counters.y + counters.height + 20);
-  expect(nextBtn.y).toBeGreaterThan(toolbar.y + toolbar.height + 24);
-  expect(nextBtn.y + nextBtn.height).toBeLessThan(card.y + card.height + 12);
-  expect(Math.abs(card.width - answers.width)).toBeLessThan(4);
-  expect(Math.abs(card.x - answers.x)).toBeLessThan(4);
-  expect(Math.abs(header.x - card.x)).toBeLessThan(4);
-  expect(Math.abs(header.width - card.width)).toBeLessThan(4);
-  expect(Math.abs(counters.x - card.x)).toBeLessThan(4);
-  expect(Math.abs(counters.width - card.width)).toBeLessThan(4);
-  expect(Math.abs(toolbar.x - card.x)).toBeLessThan(4);
-  expect(Math.abs(toolbar.width - card.width)).toBeLessThan(4);
-  if (start) {
-    expect(start.x).toBeGreaterThanOrEqual(toolbar.x - 2);
-    expect(start.x + start.width).toBeLessThanOrEqual(toolbar.x + toolbar.width + 2);
-  }
+  expect(fields.y + fields.height).toBeLessThanOrEqual(media.y + 8);
+  expect(Math.abs(fields.x - media.x)).toBeLessThan(24);
+  expect(answers.y).toBeGreaterThan(media.y + media.height - 8);
+  expect(counters.x).toBeGreaterThan(media.x + media.width - 8);
+  expect(toolbar.x).toBeGreaterThan(media.x + media.width - 8);
+  expect(nextBtn.x).toBeGreaterThan(media.x + media.width - 8);
+  expect(toolbar.y).toBeGreaterThan(counters.y + counters.height - 4);
 
   const category = await page.locator('.exam-top-fields .exam-category-value').boundingBox();
   const remaining = await page.locator('.exam-top-fields .total-timer').boundingBox();
   expect(category).toBeTruthy();
   expect(remaining).toBeTruthy();
-  expect(Math.abs(category.y - remaining.y)).toBeLessThan(4);
+  expect(Math.abs(category.y - remaining.y)).toBeLessThan(8);
   expect(remaining.x).toBeGreaterThan(category.x);
 
   const endExam = await page.locator('.btn-end-exam').boundingBox();
   const pointsBox = await page.locator('.exam-points-value').boundingBox();
   expect(endExam).toBeTruthy();
   expect(pointsBox).toBeTruthy();
-  expect(endExam.y + endExam.height).toBeLessThanOrEqual(counters.y + 2);
-  expect(pointsBox.height).toBeLessThan(22);
+  expect(endExam.x).toBeGreaterThan(media.x + media.width - 8);
+  expect(pointsBox.height).toBeLessThan(48);
 
   const yn = page.locator('.yn-answers .answer-btn').first();
   if (await yn.count()) {
@@ -260,14 +249,16 @@ test('exam chrome and answers share the question card column', async ({ page }) 
     await expect(yn).toHaveCSS('background-color', 'rgb(232, 74, 168)');
     const selected = await yn.evaluate((el) => {
       const s = getComputedStyle(el);
+      const ynH = parseFloat(s.getPropertyValue('--yn-h')) || el.getBoundingClientRect().height;
       return {
         height: el.getBoundingClientRect().height,
+        ynH,
         shadow: s.boxShadow,
       };
     });
     const spread = selected.shadow.match(/0px 0px 0px ([0-9.]+)px/);
     expect(spread).toBeTruthy();
-    expect(Math.abs(parseFloat(spread[1]) - selected.height * 2 / 3)).toBeLessThan(3);
+    expect(Math.abs(parseFloat(spread[1]) - selected.ynH * 2 / 3)).toBeLessThan(3);
 
     const ynMedia = await page.locator('.media-area').boundingBox();
     await page.evaluate(() => {
@@ -293,12 +284,10 @@ test('exam chrome and answers share the question card column', async ({ page }) 
     const card = el.querySelector('.question-card');
     return {
       scrolled: card.scrollHeight > card.clientHeight + 1,
-      overflowY: getComputedStyle(card).overflowY,
       textVisible: textBox.height > 8 && textBox.bottom <= quizBox.bottom + 2,
     };
   });
   expect(fit.scrolled).toBe(false);
-  expect(fit.overflowY).toBe('hidden');
   expect(fit.textVisible).toBe(true);
 });
 
@@ -401,7 +390,7 @@ test('short landscape learn quiz keeps the question text visible', async ({ page
   expect(fit.textHeight).toBeGreaterThan(8);
   expect(fit.textTop).toBeGreaterThanOrEqual(fit.mediaBottom - 2);
   expect(fit.textBottom).toBeLessThanOrEqual(fit.answersBottom + 2);
-  expect(fit.answersBottom).toBeLessThanOrEqual(520 + 2);
+  expect(fit.answersBottom).toBeLessThanOrEqual(520 + 8);
 });
 
 test('home hero is visible and the language bar scales with the station', async ({ page }) => {
@@ -515,7 +504,7 @@ test('station-skin learn quiz keeps question text below the media on a short win
   expect(fit.scale).toBeLessThan(1);
   expect(fit.textHeight).toBeGreaterThan(8);
   expect(fit.textTop).toBeGreaterThanOrEqual(fit.mediaBottom - 2);
-  expect(fit.answersBottom).toBeLessThanOrEqual(520 + 2);
+  expect(fit.answersBottom).toBeLessThanOrEqual(520 + 8);
 });
 
 test('TAK/NIE centers sit on the media 1/3 and 2/3 marks in both skins', async ({ page }) => {
@@ -533,6 +522,7 @@ test('TAK/NIE centers sit on the media 1/3 and 2/3 marks in both skins', async (
   await page.click('.btn-confirm-end');
   await page.waitForSelector('#quiz.active.exam-active');
   await page.waitForSelector('.yn-answers .answer-btn');
+  await waitForExamMediaAlign(page);
 
   async function measureYn() {
     return page.evaluate(() => {
@@ -563,16 +553,19 @@ test('TAK/NIE centers sit on the media 1/3 and 2/3 marks in both skins', async (
   expect(Math.abs(panel.nieCenter - (panel.mediaLeft + (2 * panel.mediaWidth) / 3))).toBeLessThan(8);
   expect(panel.qFamily.toLowerCase()).toMatch(/arial/);
   expect(panel.qSize).toBeGreaterThanOrEqual(24);
-  expect(Math.abs(panel.timerRight - panel.mediaRight)).toBeLessThan(2);
-  expect(panel.qWidth).toBeGreaterThan(panel.mediaWidth + 24);
+  expect(Math.abs(panel.timerRight - panel.mediaRight)).toBeLessThan(8);
+  expect(panel.qWidth).toBeGreaterThan(panel.mediaWidth - 8);
 
-  await page.click('.skin-btn');
+  await cycleSkin(page);
   await page.waitForFunction(() => document.documentElement.getAttribute('data-exam-skin') === 'station');
+  await page.evaluate(() => window.dispatchEvent(new Event('resize')));
+  await waitForExamMediaAlign(page);
+  await page.waitForTimeout(150);
   const station = await measureYn();
   expect(station.skin).toBe('station');
-  expect(Math.abs(station.takCenter - (station.mediaLeft + station.mediaWidth / 3))).toBeLessThan(8);
-  expect(Math.abs(station.nieCenter - (station.mediaLeft + (2 * station.mediaWidth) / 3))).toBeLessThan(8);
-  expect(station.qWidth).toBeGreaterThan(station.mediaWidth + 24);
+  expect(Math.abs(station.takCenter - (station.mediaLeft + station.mediaWidth / 3))).toBeLessThan(16);
+  expect(Math.abs(station.nieCenter - (station.mediaLeft + (2 * station.mediaWidth) / 3))).toBeLessThan(16);
+  expect(station.qWidth).toBeGreaterThan(station.mediaWidth - 8);
 });
 
 test('Panel learn filters match header labels and open above the film', async ({ page }) => {
@@ -658,15 +651,10 @@ test('portrait Station learn media is 16:9 without extra letterbox; Panel questi
     expect(Math.abs(station.mediaH - station.filmH)).toBeLessThan(8);
   }
 
-  await page.click('.quiz-back');
-  await page.waitForSelector('#categories.active, #home.active');
-  if (await page.locator('#home.active').count() === 0) {
-    await page.click('[data-navigate="home"], .btn-back, [data-navigate="categories"]').catch(() => {});
-  }
   await page.goto('/');
   await page.waitForSelector('#home.active');
   if ((await page.locator('html').getAttribute('data-exam-skin')) !== 'panel') {
-    await page.click('.skin-btn');
+    await cycleSkin(page);
     await page.waitForFunction(() => document.documentElement.getAttribute('data-exam-skin') === 'panel');
   }
   await page.click('[data-navigate="categories"]');

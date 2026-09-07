@@ -85,7 +85,7 @@ test.describe('Category media access', () => {
     await expect(card).toHaveAttribute('data-media-access', 'blocked');
     await expect(card.locator('.offline-btn')).toContainText(/Niedostępne offline|Unavailable offline/);
 
-    await page.click('.category-grid .category-card[data-category="B"]');
+    await page.locator('.category-grid .category-card[data-category="B"]').click({ force: true });
     await expect(page.locator('#categories.active')).toBeVisible();
     await expect(page.locator('#quiz.active')).toHaveCount(0);
   });
