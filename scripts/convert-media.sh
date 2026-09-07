@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Convert ministry situational media: JPG→WebP, WMV→MP4 (macOS/Linux).
-# Same job as scripts/convert-media.ps1 / convert-videos.sh + optimize-images.sh.
+# Same job as scripts/convert-media.ps1.
 # Does not touch gov-data/pjm.
 #
 #   bash scripts/convert-media.sh

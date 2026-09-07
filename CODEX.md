@@ -47,7 +47,7 @@ powershell -File scripts/filter-no-media.ps1 # report only; -Remove to drop rows
 bash scripts/upload-media.sh                 # Upload media to Backblaze B2
 ```
 
-Older `convert-videos.sh` / `optimize-images.sh` still exist; new entry is `convert-media.ps1` / `convert-media.sh`.
+Media conversion entry points: `convert-media.ps1` (Windows) and `convert-media.sh` (macOS/Linux).
 
 ## Licensing
 - Questions: CC BY-SA 4.0

@@ -2,7 +2,6 @@
   "name": "prawko",
   "version": "1.0.0",
   "description": "Polish driving-license theory exam (WORD Panel/Station layout, local profiles). Windows, macOS, and Linux. UI in PL, EN, DE, UA",
-  "main": "index.js",
   "scripts": {
     "test": "npx playwright test"
   },

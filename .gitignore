@@ -35,7 +35,5 @@ node_modules/
 test-results/
 playwright-report/
 
-# Codex (keep skills tracked)
-.codex/*
-!.codex/skills/
-!.codex/skills/**
+# Codex local state
+.codex/

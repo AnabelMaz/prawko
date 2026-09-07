@@ -419,8 +419,6 @@ python3 scripts/parse-excel.py \
 bash scripts/convert-media.sh
 ```
 
-Starsze `convert-videos.sh` / `optimize-images.sh` zostają; nowy wejście to `convert-media.sh` (ścieżki źródła i wyjścia jak w PowerShellu).
-
 ---
 
 ## Źródło danych
