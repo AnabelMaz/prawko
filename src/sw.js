@@ -1,9 +1,8 @@
-const CACHE_VERSION = 'prawko-v83';
+const CACHE_VERSION = 'prawko-v89';
 const APP_SHELL_CACHE = CACHE_VERSION + '-shell';
 const DATA_CACHE = CACHE_VERSION + '-data';
 const MEDIA_CACHE = CACHE_VERSION + '-media';
 const OFFLINE_MEDIA_CACHE = 'prawko-offline-media-v1';
-const MEDIA_CACHE_LIMIT = 500;
 
 const APP_SHELL = [
   './',
@@ -26,7 +25,11 @@ const APP_SHELL = [
   './data/translations_en.json',
   './data/translations_de.json',
   './data/translations_uk.json',
-  './manifest.json'
+  './manifest.json',
+  './icons/cursor-black.png',
+  './icons/cursor-white.png',
+  './icons/cursor-pointer-black.png',
+  './icons/cursor-pointer-white.png'
 ];
 
 self.addEventListener('install', (event) => {
@@ -162,34 +165,19 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Local media files — cache-first, then the offline download pack
+  // Local /media/ — same as CDN: intercept only when the offline pack has
+  // this file. Wrapping a cache miss with fetch(event.request) shows up as
+  // two GETs in DevTools (page + sw.js) even though it is one origin hit.
   if (url.pathname.match(/\/media\//)) {
-    event.respondWith(
-      caches.open(MEDIA_CACHE).then((cache) =>
-        cache.match(event.request).then(async (cached) => {
-          if (cached) return cached;
-          const offlineHit = await matchOfflineMedia(event.request);
-          if (offlineHit) return offlineHit;
-          return fetch(event.request).then((response) => {
-            if (response.ok || response.type === 'opaque') {
-              safeCachePut(cache, event.request, response.clone()).then(() =>
-                cache.keys().then((keys) => {
-                  if (keys.length > MEDIA_CACHE_LIMIT) {
-                    const toDelete = keys.slice(0, keys.length - MEDIA_CACHE_LIMIT);
-                    toDelete.forEach((key) => cache.delete(key));
-                  }
-                })
-              );
-            }
-            return response;
-          }).catch(() =>
-            matchOfflineMedia(event.request).then((hit) =>
-              hit || new Response('', { status: 503, statusText: 'Offline' })
-            )
-          );
-        })
-      )
-    );
+    if (!remoteMediaCached(url.href)) return;
+    event.respondWith((async () => {
+      const cached = await matchOfflineMedia(event.request);
+      if (cached) return cached;
+      const mediaCache = await caches.open(MEDIA_CACHE);
+      const fromMedia = await mediaCache.match(event.request);
+      if (fromMedia) return fromMedia;
+      return fetch(event.request);
+    })());
     return;
   }
 
