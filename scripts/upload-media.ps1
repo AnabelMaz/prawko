@@ -1,4 +1,4 @@
-# UTF-8 with BOM — Windows PowerShell 5.1 otherwise misreads Polish text and here-strings.
+# UTF-8 with BOM — Windows PowerShell 5.1 otherwise misreads non-ASCII text and here-strings.
 # Upload src/media to a public Backblaze B2 bucket (Windows).
 # JSON questions stay in git; photos/films do not.
 #
@@ -42,11 +42,11 @@ if (-not $appKey) { $appKey = $env:B2_APP_KEY }
 $img = Join-Path $mediaDir "img"
 $vid = Join-Path $mediaDir "vid"
 if (-not (Test-Path -LiteralPath $img) -or -not (Test-Path -LiteralPath $vid)) {
-    throw "Brak $img albo $vid. Najpierw lokalna paczka z gov.pl."
+    throw "Missing $img or $vid. Convert a local pack from gov.pl first."
 }
 if (-not $keyId -or -not $appKey -or -not $bucket) {
     throw @"
-Brak danych B2. Utworz $envFile (wzor: scripts/b2env.example) albo ustaw:
+Missing B2 credentials. Create $envFile (template: scripts/b2env.example) or set:
   B2_APPLICATION_KEY_ID
   B2_APPLICATION_KEY
   B2_BUCKET
@@ -55,26 +55,26 @@ Brak danych B2. Utworz $envFile (wzor: scripts/b2env.example) albo ustaw:
 
 $b2 = Get-Command b2 -ErrorAction SilentlyContinue
 if (-not $b2) {
-    Write-Host "Instaluję b2 CLI (pip)..." -ForegroundColor Yellow
+    Write-Host "Installing b2 CLI (pip)..." -ForegroundColor Yellow
     python -m pip install --user b2
     $b2 = Get-Command b2 -ErrorAction SilentlyContinue
 }
 if (-not $b2) {
-    throw "Nie ma polecenia b2. Dopisz katalog Scripts Pythona do PATH i sprobuj ponownie."
+    throw "b2 command not found. Add Python's Scripts directory to PATH and try again."
 }
 
-Write-Host "Logowanie do B2..." -ForegroundColor Cyan
+Write-Host "Signing in to B2..." -ForegroundColor Cyan
 & b2 account authorize $keyId $appKey
 if ($LASTEXITCODE -ne 0) {
     & b2 authorize-account $keyId $appKey
-    if ($LASTEXITCODE -ne 0) { throw "b2 authorize nie powiodlo sie." }
+    if ($LASTEXITCODE -ne 0) { throw "b2 authorize failed." }
 }
 
-Write-Host "Wgrywam zdjecia -> b2://$bucket/img/ ..." -ForegroundColor Cyan
+Write-Host "Uploading images -> b2://$bucket/img/ ..." -ForegroundColor Cyan
 & b2 sync --allowEmptySource --skipNewer $img "b2://$bucket/img/"
 if ($LASTEXITCODE -ne 0) { throw "b2 sync img failed ($LASTEXITCODE)" }
 
-Write-Host "Wgrywam filmy -> b2://$bucket/vid/ (ok. 3 GB, moze potrwac)..." -ForegroundColor Cyan
+Write-Host "Uploading videos -> b2://$bucket/vid/ (~3 GB, may take a while)..." -ForegroundColor Cyan
 & b2 sync --allowEmptySource --skipNewer $vid "b2://$bucket/vid/"
 if ($LASTEXITCODE -ne 0) { throw "b2 sync vid failed ($LASTEXITCODE)" }
 
@@ -90,7 +90,7 @@ if ($probe) {
 
 $corsFile = Join-Path $PSScriptRoot "b2-cors.json"
 if (Test-Path -LiteralPath $corsFile) {
-    Write-Host "Ustawiam CORS (filmy z GitHub Pages i localhost)..." -ForegroundColor Cyan
+    Write-Host "Setting CORS (videos from GitHub Pages and localhost)..." -ForegroundColor Cyan
     & b2 bucket update --cors-rules (Get-Content -LiteralPath $corsFile -Raw) $bucket allPublic
     if ($LASTEXITCODE -ne 0) {
         & b2 update-bucket --corsRules (Get-Content -LiteralPath $corsFile -Raw) $bucket allPublic
@@ -99,11 +99,11 @@ if (Test-Path -LiteralPath $corsFile) {
 }
 
 Write-Host ""
-Write-Host "Gotowe. Publiczny prefix mediow (wstaw jako MEDIA_CDN w src/js/data.js):" -ForegroundColor Green
+Write-Host "Done. Public media prefix (set as MEDIA_CDN in src/js/data.js):" -ForegroundColor Green
 if ($publicUrl) {
     Write-Host "  $publicUrl"
 } else {
     Write-Host "  https://fXXX.backblazeb2.com/file/$bucket"
-    Write-Host "  (fXXX zobaczysz w URL pliku w panelu B2 -> Browse Files -> iOS/Android/Web URL)"
+    Write-Host "  (fXXX appears in the file URL in the B2 panel -> Browse Files -> iOS/Android/Web URL)"
 }
-Write-Host "Przyklad: $publicUrl/img/<nazwa.webp>"
+Write-Host "Example: $publicUrl/img/<name.webp>"

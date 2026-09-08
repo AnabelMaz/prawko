@@ -1,4 +1,4 @@
-﻿# UTF-8 with BOM — Windows PowerShell 5.1 otherwise misreads Polish text and here-strings.
+# UTF-8 with BOM — Windows PowerShell 5.1 otherwise misreads non-ASCII text and here-strings.
 # Report JSON questions that mention a photo/film but have media: null.
 # Does not drop ministry rows unless -Remove. Default parse-excel keeps Excel
 # media names for CDN, so this should normally match nothing.
@@ -24,6 +24,7 @@ if (-not [IO.Path]::IsPathRooted($DataDir)) { $DataDir = Join-Path $repoRoot $Da
 
 $Categories = @("A", "A1", "A2", "AM", "B", "B1", "C", "C1", "D", "D1", "PT", "T")
 
+# Match Polish exam wording that implies a photo/film (do not translate the patterns).
 $MediaReferencePatterns = @(
     '[Ww] tej sytuacji',
     '[Ww] przedstawionej sytuacji',

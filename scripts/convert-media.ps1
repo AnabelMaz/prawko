@@ -1,4 +1,4 @@
-﻿# UTF-8 with BOM — Windows PowerShell 5.1 otherwise misreads Polish text and here-strings.
+# UTF-8 with BOM — Windows PowerShell 5.1 otherwise misreads non-ASCII text and here-strings.
 # Convert ministry situational media: JPG→WebP, WMV→MP4 (Windows, no Python).
 # Same job as scripts/convert-media.sh.
 # Reads gov-data\raw only. Does not touch gov-data\pjm (sign-language source stays WMV).
@@ -39,7 +39,7 @@ if (-not [IO.Path]::IsPathRooted($VidOut)) { $VidOut = Join-Path $repoRoot $VidO
 
 function Resolve-ConvertFfmpegExe ([string]$explicit) {
     if ($explicit) {
-        if (-not (Test-Path -LiteralPath $explicit)) { throw "Brak ffmpeg: $explicit" }
+        if (-not (Test-Path -LiteralPath $explicit)) { throw "ffmpeg not found: $explicit" }
         return (Get-Item -LiteralPath $explicit).FullName
     }
     $cmd = Get-Command ffmpeg -ErrorAction SilentlyContinue
@@ -59,17 +59,17 @@ function Resolve-ConvertFfmpegExe ([string]$explicit) {
 }
 
 if (-not (Test-Path -LiteralPath $SourceDir)) {
-    throw "Brak katalogu źródłowego: $SourceDir (najpierw scripts/download-gov.ps1)."
+    throw "Source directory not found: $SourceDir (run scripts/download-gov.ps1 first)."
 }
 
 $ffmpeg = Resolve-ConvertFfmpegExe $FfmpegExe
 if (-not $ffmpeg) {
-    throw "FFmpeg nie jest dostępny. Zainstaluj ffmpeg albo odpal Install_Prawko.ps1 -InstallGov (kładzie wersję przenośną)."
+    throw "FFmpeg is not available. Install ffmpeg or run Install_Prawko.windows.ps1 -InstallGov (it drops a portable copy)."
 }
 Write-Host "[OK] FFmpeg: $ffmpeg" -ForegroundColor Green
-Write-Host "Źródło (sytuacyjne): $SourceDir" -ForegroundColor Gray
-Write-Host "Wyjście: $ImgOut  /  $VidOut" -ForegroundColor Gray
-Write-Host "gov-data\pjm nie jest konwertowane." -ForegroundColor Gray
+Write-Host "Source (situational): $SourceDir" -ForegroundColor Gray
+Write-Host "Output: $ImgOut  /  $VidOut" -ForegroundColor Gray
+Write-Host "gov-data\pjm is not converted." -ForegroundColor Gray
 
 New-Item -ItemType Directory -Path $ImgOut -Force | Out-Null
 New-Item -ItemType Directory -Path $VidOut -Force | Out-Null
@@ -79,7 +79,7 @@ $images = @(Get-ChildItem -Path $SourceDir -File -ErrorAction SilentlyContinue |
 $videos = @(Get-ChildItem -Path $SourceDir -File -ErrorAction SilentlyContinue |
         Where-Object { $_.Extension -match '^\.wmv$' -and $_.Name -notmatch '(?i)^pjm' })
 
-Write-Host "-> Konwersja obrazów JPG → WebP ($($images.Count) plików)..." -ForegroundColor Cyan
+Write-Host "-> Converting images JPG → WebP ($($images.Count) files)..." -ForegroundColor Cyan
 $i = 0
 foreach ($img in $images) {
     $i++
@@ -87,11 +87,11 @@ foreach ($img in $images) {
     if ((Test-Path $dest) -and ((Get-Item $dest).Length -gt 0)) { continue }
     & $ffmpeg -y -hide_banner -loglevel error -i $img.FullName -c:v libwebp -quality 80 $dest
     if ($i % 50 -eq 0) {
-        Write-Host "   obrazy $i / $($images.Count)" -ForegroundColor DarkGray
+        Write-Host "   images $i / $($images.Count)" -ForegroundColor DarkGray
     }
 }
 
-Write-Host "-> Konwersja filmów WMV → MP4 ($($videos.Count) plików, to może potrwać)..." -ForegroundColor Cyan
+Write-Host "-> Converting videos WMV → MP4 ($($videos.Count) files, this may take a while)..." -ForegroundColor Cyan
 $i = 0
 foreach ($vid in $videos) {
     $i++
@@ -102,10 +102,10 @@ foreach ($vid in $videos) {
         -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" `
         -movflags +faststart -an $dest
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "   pominięto (błąd ffmpeg): $($vid.Name)" -ForegroundColor DarkYellow
+        Write-Host "   skipped (ffmpeg error): $($vid.Name)" -ForegroundColor DarkYellow
     }
     if ($i % 10 -eq 0) {
-        Write-Host "   filmy $i / $($videos.Count)" -ForegroundColor DarkGray
+        Write-Host "   videos $i / $($videos.Count)" -ForegroundColor DarkGray
     }
 }
 
@@ -120,4 +120,4 @@ foreach ($ready in @(Get-ChildItem -Path $SourceDir -File -ErrorAction SilentlyC
 
 $webpCount = @(Get-ChildItem $ImgOut -Filter *.webp -ErrorAction SilentlyContinue).Count
 $mp4Count = @(Get-ChildItem $VidOut -Filter *.mp4 -ErrorAction SilentlyContinue).Count
-Write-Host "-> Gotowe multimedia dla aplikacji: $webpCount WebP, $mp4Count MP4" -ForegroundColor Green
+Write-Host "-> App media ready: $webpCount WebP, $mp4Count MP4" -ForegroundColor Green

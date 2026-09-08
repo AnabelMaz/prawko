@@ -18,6 +18,7 @@ import re
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src", "data")
 CATEGORIES = ["A", "A1", "A2", "AM", "B", "B1", "C", "C1", "D", "D1", "PT", "T"]
 
+# Match Polish exam wording that implies a photo/film (do not translate the patterns).
 MEDIA_REFERENCE_PATTERNS = [
     r"[Ww] tej sytuacji",
     r"[Ww] przedstawionej sytuacji",

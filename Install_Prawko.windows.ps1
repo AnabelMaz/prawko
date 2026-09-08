@@ -1,4 +1,4 @@
-﻿# UTF-8 with BOM — Windows PowerShell 5.1 otherwise misreads Polish text and here-strings.
+# UTF-8 with BOM — Windows PowerShell 5.1 otherwise misreads non-ASCII text and here-strings.
 param(
     [switch]$Help,
     [switch]$NonInteractive,
@@ -15,7 +15,7 @@ param(
 try {
     Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
 } catch {
-    # Proces bywa już odpalony z -ExecutionPolicy Bypass.
+    # Process may already have been started with -ExecutionPolicy Bypass.
 }
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
@@ -41,122 +41,120 @@ $script:devWorkRoot = $null
 
 if ($Help) {
     Write-Host @"
-Install_Prawko.ps1 — instalator Prawko (egzamin na prawo jazdy) na Windows.
+Install_Prawko.windows.ps1 — Prawko installer (driving-license exam) for Windows.
 
-SKŁADNIA
-  powershell -ExecutionPolicy Bypass -File Install_Prawko.ps1 [opcje]
-  Ściągnij ten plik z GitHuba i zapisz gdzie chcesz — nie musi leżeć w repo.
+SYNTAX
+  powershell -ExecutionPolicy Bypass -File Install_Prawko.windows.ps1 [options]
+  Download this file from GitHub and save it anywhere — it does not have to live in the repo.
 
-PRZEŁĄCZNIKI
-  (brak)            Tryb domyślny: ZIP z GitHub AnabelMaz/prawko (gałąź $repoBranch),
-                    usługa http://localhost:$listenPort. Bez Gita. Pytania z repo,
-                    media z CDN prawko-maz. Gdy serwer już stoi, nic nie nadpisuje.
-                    Lokalny contrib: -Patch. Pytania MI na dysk: -InstallGov.
-                    Od zera: -Uninstall.
+SWITCHES
+  (none)            Default mode: ZIP from GitHub AnabelMaz/prawko (branch $repoBranch),
+                    service at http://localhost:$listenPort. No Git. Questions from the repo,
+                    media from the prawko-maz CDN. If the server is already running, nothing is overwritten.
+                    Local contrib: -Patch. Ministry questions on disk: -InstallGov.
+                    Start over: -Uninstall.
 
-  -InstallGov       Excel + ZIP multimediów sytuacyjnych z gov.pl: staging w
-                    %LOCALAPPDATA%\prawko\gov-data (ZIP, surowe JPG/WMV).
-                    Konwersja (WebP/MP4) i JSON idą na serwer
-                    C:\ProgramData\prawko — jedna kopia do oglądania.
-                    Nie dubluje mediów w git/contrib. Mało miejsca na C:
-                    ZIP/raw mogą spaść na gov-data w checkoutcie (inny dysk).
-                    Tłumaczeń migowych (PJM) nie pobiera. Nie rusza src\data
-                    w gicie. Gdy serwer stoi, przełącza MEDIA_BASE na lokalne
-                    pliki. -Patch pomija data\ i media\. Po -Uninstall i
-                    instalacji bez tego przełącznika znowu AnabelMaz/prawko
-                    + CDN. Bez administratora, bez reinstalu usługi.
+  -InstallGov       Excel + situational media ZIP from gov.pl: staging in
+                    %LOCALAPPDATA%\prawko\gov-data (ZIP, raw JPG/WMV).
+                    Conversion (WebP/MP4) and JSON go to the server
+                    C:\ProgramData\prawko — one copy for viewing.
+                    Does not duplicate media in git/contrib. Little space on C:
+                    ZIP/raw may land in gov-data in the checkout (another drive).
+                    Does not download Polish Sign Language (PJM) translations. Does not touch src\data
+                    in git. When the server is running, writes mediaBase=media in
+                    src/local.json so the app uses local files. -Patch skips data\ and media\. After -Uninstall and
+                    an install without this switch, you get AnabelMaz/prawko
+                    + CDN again. No administrator, no service reinstall.
 
-  -DropMissingMedia Tylko z -InstallGov: parser wykreśla z JSON media, których
-                    pliku nie ma w lokalnym raw. Domyślnie NIE — nazwa z
-                    Excela zostaje (CDN / Pobierz offline).
+  -DropMissingMedia Only with -InstallGov: the parser strips from JSON media whose
+                    file is missing in the local raw folder. Default is NOT to — the name from
+                    Excel stays (CDN / Download offline).
 
-  -GovQuestions     Tylko katalog pytań z ministerstwa na żywy serwer.
-                    Excel → %LOCALAPPDATA%\prawko\gov-data, JSON na
-                    C:\ProgramData\prawko\src\data. Nie rusza src\data w gicie.
-                    Nie rusza src\media ani CDN. Offline: „Pobierz offline”.
-                    Bez administratora, bez reinstalu usługi.
+  -GovQuestions     Ministry question catalog only, onto the live server.
+                    Excel → %LOCALAPPDATA%\prawko\gov-data, JSON onto
+                    C:\ProgramData\prawko\src\data. Does not touch src\data in git.
+                    Does not touch src\media or the CDN. Offline: "Download offline".
+                    No administrator, no service reinstall.
 
-  -Patch            Nakłada kod z lokalnego checkoutu (-Dev, obok skryptu,
-                    ..\prawko-contrib, ..\contrib). Pomija data\ i media\.
-                    Bez contrib nic nie nakłada — serwer i tak ma AnabelMaz
-                    z instalacji. Na już stojącym serwerze: tylko overlay,
-                    bez admina, bez git checkout, bez reinstalu usługi.
-                    Przy pierwszej instalacji: ZIP AnabelMaz + usługa + overlay.
+  -Patch            Overlays code from the local checkout (-Dev, next to the script,
+                    ..\prawko-contrib, ..\contrib). Skips data\ and media\.
+                    Without contrib it overlays nothing — the server still has AnabelMaz
+                    from install. On an already running server: overlay only,
+                    no admin, no git checkout, no service reinstall.
+                    On first install: AnabelMaz ZIP + service + overlay.
 
-  -Export <ścieżka> Kopiuje paczkę do wskazanego katalogu (robocopy), bez
-                    instalacji i bez ruszania serwera:
-                      <ścieżka>\prawko\Install_Prawko.ps1
-                      <ścieżka>\prawko-contrib\
-                    Contrib szuka: obok skryptu, ..\prawko-contrib, ..\contrib.
-                    Z wyeksportowanej paczki działa instalacja, -Patch,
-                    -InstallGov i kolejne -Export na inny folder.
-                    Pomija node_modules i .git. Bez administratora.
+  -Export <path>    Copies a pack to the given directory (robocopy), without
+                    installing and without touching the server:
+                      <path>\prawko\Install_Prawko.windows.ps1
+                      <path>\prawko-contrib\
+                    Contrib is looked up: next to the script, ..\prawko-contrib, ..\contrib.
+                    From the exported pack you can install, -Patch,
+                    -InstallGov and another -Export to a different folder.
+                    Skips node_modules and .git. No administrator.
 
-  -Dev <ścieżka>    Tylko klon gita do prac (kod, commit, push). Folder pusty
-                    albo jeszcze nie istnieje. Nie ProgramData. Nie instaluje
-                    Node, NSSM ani usługi — nawet gdy serwer jeszcze nie stoi.
-                    Git doinstaluje się tylko tu. Żeby mieć localhost: najpierw
-                    instalator bez przełączników, potem -Dev.
-                    Nie klonuje do C:\ProgramData\prawko. Media nie są w gicie.
+  -Dev <path>       Git clone only, for work (code, commit, push). Folder empty
+                    or not yet existing. Not ProgramData. Does not install
+                    Node, NSSM or the service — even if the server is not running yet.
+                    Git is installed only here. To have localhost: first
+                    run the installer with no switches, then -Dev.
+                    Does not clone into C:\ProgramData\prawko. Media are not in git.
 
-  -Merge            Na już stojącym serwerze: dopisuje z Excel MI tylko braki.
-                    Nie stawia usługi, nie instaluje Node/Git. Brak serwera =
-                    najpierw instalacja bez przełączników.
+  -Merge            On an already running server: appends from the ministry Excel only the gaps.
+                    Does not start the service, does not install Node/Git. No server =
+                    install with no switches first.
 
-  -Uninstall        Usuwa usługę PrawkoWORDService i katalog
-                    C:\ProgramData\prawko (w tym FFmpeg ściągnięty tam
-                    przez -InstallGov). Git/Node/NSSM zostają w systemie.
+  -Uninstall        Removes the PrawkoWORDService service and the
+                    C:\ProgramData\prawko directory (including FFmpeg downloaded there
+                    by -InstallGov). Git/Node/NSSM stay on the system.
 
-  -NonInteractive   Bez pauzy Enter na końcu (skrypty, zadanie).
+  -NonInteractive   No Enter pause at the end (scripts, scheduled task).
 
-  -Help             Ta pomoc (nie wymaga administratora).
+  -Help             This help (does not require administrator).
 
-JEDEN PLIK / PACZKA
-  Z GitHuba wystarczy sam Install_Prawko.ps1. Odpalasz go z Pobrań, Pulpitu
-  albo dowolnego folderu: doinstaluje Node/NSSM, ściągnie ZIP AnabelMaz/prawko
-  do C:\ProgramData\prawko i stawia http://localhost:5173. Bez Gita.
-  Git tylko gdy podasz -Dev.
+ONE FILE / PACK
+  From GitHub, Install_Prawko.windows.ps1 alone is enough. Run it from Downloads, Desktop
+  or any folder: it will install Node/NSSM, download the AnabelMaz/prawko ZIP
+  into C:\ProgramData\prawko and start http://localhost:5173. No Git.
+  Git only when you pass -Dev.
 
-DWA TYPY UŻYTKOWNIKA
-  Zwykły: tylko instalator bez przełączników. ZIP + Node + usługa. Bez Gita.
-  Deweloper: tylko kod, bez serwera:
-    powershell -ExecutionPolicy Bypass -File Install_Prawko.ps1 -Dev D:\prawko
-  Oba (localhost + git): najpierw bez przełączników, potem -Dev.
+TWO USER TYPES
+  Regular: installer with no switches only. ZIP + Node + service. No Git.
+  Developer: code only, no server:
+    powershell -ExecutionPolicy Bypass -File Install_Prawko.windows.ps1 -Dev D:\prawko
+  Both (localhost + git): no switches first, then -Dev.
 
-  Każdy przełącznik doinstalowuje tylko to, czego używa:
-    (brak)           Node, NSSM, ZIP aplikacji, usługa
-    -Dev             Git + klon (bez Node, bez serwera)
-    -Patch           nic, gdy serwer stoi; bez serwera: Node + usługa + overlay
-    -InstallGov      FFmpeg gdy brak; Excel+ZIP z gov.pl
-    -GovQuestions    tylko Excel z gov.pl
-    -Merge           Excel z gov.pl, zapis do stojącego serwera
-    -Export          nic (kopia plików)
-    -Uninstall       nic nowego
+  Each switch installs only what it uses:
+    (none)           Node, NSSM, app ZIP, service
+    -Dev             Git + clone (no Node, no server)
+    -Patch           nothing when the server is running; without server: Node + service + overlay
+    -InstallGov      FFmpeg if missing; Excel+ZIP from gov.pl
+    -GovQuestions    Excel from gov.pl only
+    -Merge           Excel from gov.pl, write to the running server
+    -Export          nothing (file copy)
+    -Uninstall       nothing new
 
-CZEGO WYMAGA APLIKACJA
-  Serwer (bez przełączników): Node.js + usługa 'serve'. Git NIE. Python NIE.
-  -Dev: tylko Git. FFmpeg przy -InstallGov (JPG/WMV) i -Merge (klatki); gdy brak,
-  skrypt kładzie wersję przenośną do C:\ProgramData\prawko\tools (znika z -Uninstall).
-  ZIP-y rozpakowuje wbudowany tar Windows. Aplikacja oczekuje WebP/MP4, nie JPG/WMV.
+WHAT THE APP NEEDS
+  Server (no switches): Node.js + the 'serve' service. Git NO. Python NO.
+  -Dev: Git only. FFmpeg with -InstallGov (JPG/WMV) and -Merge (frames); if missing,
+  the script places a portable build in C:\ProgramData\prawko\tools (gone with -Uninstall).
+  ZIPs are unpacked with Windows built-in tar. The app expects WebP/MP4, not JPG/WMV.
 "@
     exit 0
 }
 
 function Set-LocalMediaBase ($root) {
-    $dataJs = Join-Path $root "src\js\data.js"
-    if (-not (Test-Path $dataJs)) { throw "Brak $dataJs" }
-    $content = [IO.File]::ReadAllText($dataJs)
-    $updated = [regex]::Replace(
-        $content,
-        "export const MEDIA_BASE = [^;\r\n]+",
-        "export const MEDIA_BASE = 'media'"
-    )
-    if ($updated -eq $content -and $content -notmatch "export const MEDIA_BASE = 'media'") {
-        throw "Nie udało się ustawić lokalnego MEDIA_BASE w data.js"
+    $path = Join-Path $root "src\local.json"
+    $obj = [pscustomobject]@{}
+    if (Test-Path -LiteralPath $path) {
+        try {
+            $parsed = ConvertFrom-Json ([IO.File]::ReadAllText($path))
+            if ($parsed -is [System.Management.Automation.PSCustomObject]) { $obj = $parsed }
+        } catch { $obj = [pscustomobject]@{} }
     }
+    $obj | Add-Member -NotePropertyName mediaBase -NotePropertyValue 'media' -Force
     $utf8 = New-Object System.Text.UTF8Encoding $false
-    [IO.File]::WriteAllText($dataJs, $updated, $utf8)
-    Write-Host "-> Aplikacja będzie brać multimedia z src\media (nie z CDN)." -ForegroundColor Green
+    [IO.File]::WriteAllText($path, (($obj | ConvertTo-Json -Compress) + "`n"), $utf8)
+    Write-Host "-> src/local.json mediaBase=media (local files, not the CDN)." -ForegroundColor Green
 }
 
 function Test-LooksLikePrawkoRepo ([string]$root) {
@@ -195,7 +193,7 @@ function Find-LocalContribRoot {
 function Get-ContribRoot {
     $found = Find-LocalContribRoot
     if (-not $found) {
-        throw "Brak lokalnego checkoutu do zmian. Odpal Install_Prawko.ps1 -Dev <ścieżka> albo trzymaj repo obok instalatora. Do zwykłej instalacji -Dev nie jest potrzebny."
+        throw "No local checkout for changes. Run Install_Prawko.windows.ps1 -Dev <path> or keep the repo next to the installer. For a regular install, -Dev is not needed."
     }
     return $found
 }
@@ -218,12 +216,10 @@ function Resolve-PrawkoPipelineScript {
 }
 
 function Import-PrawkoGovLibrary {
-    if (Get-Command Get-PrawkoRepoRoot -ErrorAction SilentlyContinue) { return }
-    $lib = Resolve-PrawkoPipelineScript "download-gov.ps1"
-    if (-not $lib) {
-        throw "Brak scripts\download-gov.ps1. Odpal Install_Prawko.ps1 bez przełączników (ściągnie aplikację ze skryptami do $targetDir) albo odpal instalator z katalogu głównego sklonowanego repo."
-    }
-    . $lib -LibraryOnly
+    # download-gov.ps1 -LibraryOnly must be dotted at *script* scope. Doing it
+    # inside this function hides Get-GovDataDir after return (Windows PowerShell 5.1).
+    if (Get-Command Get-GovDataDir -ErrorAction SilentlyContinue) { return }
+    throw "Missing Get-GovDataDir. First dot-source scripts\download-gov.ps1 -LibraryOnly at installer script scope."
 }
 
 function Invoke-PrawkoScript {
@@ -233,30 +229,47 @@ function Invoke-PrawkoScript {
     )
     $path = Resolve-PrawkoPipelineScript $Name
     if (-not $path) {
-        throw "Brak skryptu $Name (szukano w scripts\ obok instalatora, w contrib i w $targetDir\scripts)."
+        throw "Missing script $Name (looked in scripts\ next to the installer, in contrib, and in $targetDir\scripts)."
     }
     Write-Host "-> $Name $($ArgumentList -join ' ')" -ForegroundColor Cyan
-    & $path @ArgumentList
+    # Array splat (& $path @("-FfmpegExe", $x)) is positional in Windows PowerShell 5.1.
+    # convert-media.ps1 then binds SourceDir="-FfmpegExe". Named params need a hashtable.
+    $splat = @{}
+    for ($i = 0; $i -lt $ArgumentList.Count; $i++) {
+        $token = $ArgumentList[$i]
+        if ($token -notmatch '^-{1,2}(.+)$') {
+            throw "Invoke-PrawkoScript ${Name}: expected -Name, got: $token"
+        }
+        $key = $Matches[1]
+        $hasValue = ($i + 1) -lt $ArgumentList.Count -and $ArgumentList[$i + 1] -notmatch '^-'
+        if ($hasValue) {
+            $splat[$key] = $ArgumentList[$i + 1]
+            $i++
+        } else {
+            $splat[$key] = $true
+        }
+    }
+    & $path @splat
 }
 
 function Assert-GovDataParsed ([string]$govDir, [string]$excelPath) {
     $metaFile = Join-Path $govDir "meta.json"
-    if (-not (Test-Path -LiteralPath $metaFile)) { throw "Brak meta.json po parsowaniu Excela." }
+    if (-not (Test-Path -LiteralPath $metaFile)) { throw "Missing meta.json after parsing Excel." }
     $meta = Get-Content $metaFile -Raw -Encoding UTF8 | ConvertFrom-Json
     $qTotal = ($meta.categories | Measure-Object -Property questionCount -Sum).Sum
     if ($qTotal -lt 100) {
-        throw "Parser Excela zapisał za mało pytań ($qTotal). Sprawdź układ kolumn w $excelPath."
+        throw "Excel parser wrote too few questions ($qTotal). Check the column layout in $excelPath."
     }
-    Write-Host "-> W gov-data: $qTotal przypisań pytań. Oryginały w contrib\src\data zostają." -ForegroundColor Green
+    Write-Host "-> In gov-data: $qTotal question assignments. Originals in contrib\src\data are left as-is." -ForegroundColor Green
 }
 
 function Remove-LegacyServerRawMediaDir {
     $legacy = Join-Path $targetDir $rawMediaFolderName
     if (-not (Test-Path -LiteralPath $legacy)) { return }
-    Write-Host "Usuwam zbędny katalog surowych mediów z serwera: $legacy" -ForegroundColor Yellow
+    Write-Host "Removing leftover raw-media folder from the server: $legacy" -ForegroundColor Yellow
     Remove-Item -LiteralPath $legacy -Recurse -Force
     if (Test-Path -LiteralPath $legacy) {
-        throw "Nie udało się usunąć $legacy. Zamknij programy, które trzymają ten folder, i spróbuj ponownie."
+        throw "Could not remove $legacy. Close programs that have this folder open and try again."
     }
 }
 
@@ -299,7 +312,7 @@ function Invoke-SafeRobocopy {
     )
     & robocopy.exe $Source $Destination @ArgumentList | Out-Null
     if ($LASTEXITCODE -ge 8) {
-        throw "robocopy nie powiodło się (kod $LASTEXITCODE): $Source -> $Destination"
+        throw "robocopy failed (code $LASTEXITCODE): $Source -> $Destination"
     }
 }
 
@@ -310,13 +323,13 @@ function Set-ServerCacheVersion {
     )
     $swPath = Join-Path $Root "src\sw.js"
     if (-not (Test-Path -LiteralPath $swPath)) {
-        throw "Brak $swPath"
+        throw "Missing $swPath"
     }
     $swRaw = [IO.File]::ReadAllText($swPath)
     $stamp = Get-Date -Format "yyyyMMddHHmmss"
     $swNew = [regex]::Replace($swRaw, "const CACHE_VERSION = '[^']+';", "const CACHE_VERSION = '$Prefix-$stamp';", 1)
     if ($swNew -eq $swRaw) {
-        throw "Nie udało się ustawić CACHE_VERSION w $swPath"
+        throw "Could not set CACHE_VERSION in $swPath"
     }
     $utf8 = New-Object System.Text.UTF8Encoding $false
     [IO.File]::WriteAllText($swPath, $swNew, $utf8)
@@ -334,12 +347,12 @@ function Publish-AppSrcOverlay {
     $srcIndex = Join-Path $srcApp "index.html"
     $dstIndex = Join-Path $dstApp "index.html"
     if (-not (Test-Path -LiteralPath $srcIndex)) {
-        throw "Brak $srcIndex"
+        throw "Missing $srcIndex"
     }
     if (-not (Test-Path -LiteralPath $dstIndex)) {
-        throw "Serwer nie jest zainstalowany (brak $dstIndex). Najpierw Install_Prawko.ps1 bez przełączników (albo z -Patch)."
+        throw "Server is not installed (missing $dstIndex). Run Install_Prawko.windows.ps1 with no switches first (or with -Patch)."
     }
-    Write-Host "-> Nakładanie $srcApp -> $dstApp (pomijam data\ i media\)" -ForegroundColor Cyan
+    Write-Host "-> Overlaying $srcApp -> $dstApp (skipping data\ and media\)" -ForegroundColor Cyan
     Invoke-SafeRobocopy -Source $srcApp -Destination $dstApp -ArgumentList @("/E", "/XD", "data", "media", "/R:2", "/W:1", "/NFL", "/NDL", "/NJH", "/NJS", "/nc", "/ns", "/np")
     $trSrc = Join-Path $srcApp "data\translations_en.json"
     $trDstDir = Join-Path $dstApp "data"
@@ -353,21 +366,21 @@ function Publish-AppSrcOverlay {
 function Apply-PrawkoAppFixes ($root) {
     $localContrib = Find-LocalContribRoot
     if (-not $localContrib) {
-        Write-Host "-> Brak lokalnego contrib. Zostawiam kod z GitHub $repoUrl ($repoBranch)." -ForegroundColor Yellow
+        Write-Host "-> No local contrib. Leaving the GitHub $repoUrl ($repoBranch) code as-is." -ForegroundColor Yellow
         return
     }
     $patchSrc = Join-Path $localContrib "src"
-    Write-Host "-> Nakładanie kodu z lokalnego contrib: $localContrib" -ForegroundColor Yellow
+    Write-Host "-> Overlaying code from local contrib: $localContrib" -ForegroundColor Yellow
     if (-not (Test-Path (Join-Path $patchSrc "index.html"))) {
-        throw "Źródło poprawek nie zawiera src\index.html."
+        throw "Patch source does not contain src\index.html."
     }
     Publish-AppSrcOverlay -SourceSrc $patchSrc -DestRoot $root -CachePrefix "prawko-patch"
-    Write-Host "-> Nałożono kod z lokalnego contrib." -ForegroundColor Green
+    Write-Host "-> Overlaid code from local contrib." -ForegroundColor Green
 }
 
 function Export-PrawkoPack ([string]$Destination) {
     if ([string]::IsNullOrWhiteSpace($Destination)) {
-        throw "-Export wymaga ścieżki, np. -Export D:\kopia\prawko-pack"
+        throw "-Export requires a path, e.g. -Export D:\backup\prawko-pack"
     }
     $destRoot = $Destination
     if (-not [IO.Path]::IsPathRooted($destRoot)) {
@@ -375,29 +388,29 @@ function Export-PrawkoPack ([string]$Destination) {
     }
     $destRoot = [IO.Path]::GetFullPath($destRoot)
     if (Test-Path -LiteralPath $destRoot -PathType Leaf) {
-        throw "-Export: '$destRoot' to plik, podaj katalog."
+        throw "-Export: '$destRoot' is a file, pass a directory."
     }
     if (Test-PathIsInside $destRoot $targetDir) {
-        throw "-Export nie kopiuje do zainstalowanego serwera ($targetDir)."
+        throw "-Export does not copy into the installed server ($targetDir)."
     }
 
     $contribSrc = Get-ContribRoot
     if (Test-PathIsInside $destRoot $contribSrc) {
-        throw "-Export: katalog docelowy nie może leżeć wewnątrz contrib ($contribSrc)."
+        throw "-Export: destination directory cannot sit inside contrib ($contribSrc)."
     }
 
     $destInstall = Join-Path $destRoot "prawko"
     $destContrib = Join-Path $destRoot "prawko-contrib"
-    $scriptDst = Join-Path $destInstall "Install_Prawko.ps1"
+    $scriptDst = Join-Path $destInstall "Install_Prawko.windows.ps1"
 
     Write-Host "Export -> $destRoot" -ForegroundColor Cyan
     New-Item -ItemType Directory -Path $destInstall -Force | Out-Null
     $stub = @"
-# Launcher. Real installer: ..\prawko-contrib\Install_Prawko.ps1
+# Launcher. Real installer: ..\prawko-contrib\Install_Prawko.windows.ps1
 `$ErrorActionPreference = "Stop"
-`$real = Join-Path `$PSScriptRoot "..\prawko-contrib\Install_Prawko.ps1"
+`$real = Join-Path `$PSScriptRoot "..\prawko-contrib\Install_Prawko.windows.ps1"
 if (-not (Test-Path -LiteralPath `$real)) {
-    throw "Nie znaleziono `$real"
+    throw "Not found: `$real"
 }
 & `$real @args
 exit `$LASTEXITCODE
@@ -409,25 +422,25 @@ exit `$LASTEXITCODE
     $contribFull = [IO.Path]::GetFullPath($contribSrc)
     $destContribFull = [IO.Path]::GetFullPath($destContrib)
     if (Test-SamePath $contribFull $destContribFull) {
-        Write-Host "-> Contrib już jest w $destContrib (pomijam kopię)." -ForegroundColor Gray
+        Write-Host "-> Contrib is already at $destContrib (skipping copy)." -ForegroundColor Gray
     } else {
         New-Item -ItemType Directory -Path $destContrib -Force | Out-Null
-        Write-Host "-> robocopy contrib: $contribSrc -> $destContrib (bez node_modules/.git, bez /MIR)" -ForegroundColor Cyan
-        Write-Host "   Duże src\media mogą chwilę zająć. Istniejące pliki w celu są aktualizowane, nic nie kasuję." -ForegroundColor Gray
+        Write-Host "-> robocopy contrib: $contribSrc -> $destContrib (no node_modules/.git, no /MIR)" -ForegroundColor Cyan
+        Write-Host "   Large src\media may take a while. Existing files at the destination are updated; nothing is deleted." -ForegroundColor Gray
         Invoke-SafeRobocopy -Source $contribSrc -Destination $destContrib -ArgumentList @(
             "/E", "/XD", "node_modules", ".git", "test-results", "playwright-report", "blob-report", "coverage", ".cursor",
             "/R:2", "/W:1", "/NFL", "/NDL", "/NJH", "/NJS", "/nc", "/ns", "/np"
         )
         $idx = Join-Path $destContrib "src\index.html"
         if (-not (Test-Path -LiteralPath $idx)) {
-            throw "Po eksporcie brak $idx"
+            throw "After export, missing $idx"
         }
         Write-Host "-> Contrib: $destContrib" -ForegroundColor Green
     }
 
-    Write-Host "Gotowe. Z paczki:" -ForegroundColor Green
+    Write-Host "Done. From the pack:" -ForegroundColor Green
     Write-Host "  powershell -ExecutionPolicy Bypass -File `"$scriptDst`""
-    Write-Host "  ... -Patch  /  -InstallGov  /  -Export <inny folder>"
+    Write-Host "  ... -Patch  /  -InstallGov  /  -Export <another folder>"
 }
 
 if ($PSBoundParameters.ContainsKey("Export")) {
@@ -438,18 +451,18 @@ if ($PSBoundParameters.ContainsKey("Export")) {
 if ($Patch -and -not $Merge -and -not $Uninstall -and -not $PSBoundParameters.ContainsKey("Dev") -and (Test-PrawkoServerInstalled)) {
     Remove-LegacyServerRawMediaDir
     Apply-PrawkoAppFixes -root $targetDir
-    Write-Host "Gotowe. W otwartej aplikacji baner: Dostępna aktualizacja / Odśwież." -ForegroundColor Green
+    Write-Host "Done. In the open app, banner: Update available / Refresh." -ForegroundColor Green
     exit 0
 }
 
 if (-not $Uninstall -and -not $Merge -and -not $GovQuestions -and -not $InstallGov -and -not $Patch -and -not $PSBoundParameters.ContainsKey("Dev") -and (Test-PrawkoServerInstalled)) {
     Remove-LegacyServerRawMediaDir
-    Write-Host "Serwer już stoi w $targetDir — nie nadpisuję plików (żadnego git checkout / pull)." -ForegroundColor Yellow
-    Write-Host "  Kod z lokalnego contrib: Install_Prawko.ps1 -Patch" -ForegroundColor Gray
-    Write-Host "  Pytania MI:        Install_Prawko.ps1 -InstallGov   albo   -GovQuestions" -ForegroundColor Gray
-    Write-Host "  Git do zmian:      Install_Prawko.ps1 -Dev D:\prawko" -ForegroundColor Gray
-    Write-Host "  Paczka na USB:     Install_Prawko.ps1 -Export D:\kopia" -ForegroundColor Gray
-    Write-Host "  Instalacja od zera: Install_Prawko.ps1 -Uninstall   potem bez przełączników" -ForegroundColor Gray
+    Write-Host "Server already running in $targetDir — not overwriting files (no git checkout / pull)." -ForegroundColor Yellow
+    Write-Host "  Code from local contrib: Install_Prawko.windows.ps1 -Patch" -ForegroundColor Gray
+    Write-Host "  Ministry questions: Install_Prawko.windows.ps1 -InstallGov   or   -GovQuestions" -ForegroundColor Gray
+    Write-Host "  Git for changes:    Install_Prawko.windows.ps1 -Dev D:\prawko" -ForegroundColor Gray
+    Write-Host "  Pack to USB:        Install_Prawko.windows.ps1 -Export D:\backup" -ForegroundColor Gray
+    Write-Host "  Install from scratch: Install_Prawko.windows.ps1 -Uninstall   then no switches" -ForegroundColor Gray
     exit 0
 }
 
@@ -458,11 +471,11 @@ function Test-IsAdmin {
     return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
-# Admin tylko: pierwsza instalacja serwera albo -Uninstall.
-# -Dev / -Patch / -Merge / -InstallGov / -GovQuestions / -Export: bez elewacji.
+# Admin only: first server install or -Uninstall.
+# -Dev / -Patch / -Merge / -InstallGov / -GovQuestions / -Export: no elevation.
 $installingServer = -not $Uninstall -and -not $Merge -and -not $GovQuestions -and -not $InstallGov -and -not $PSBoundParameters.ContainsKey("Dev") -and -not $PSBoundParameters.ContainsKey("Export") -and -not (Test-PrawkoServerInstalled)
 if (($Uninstall -or $installingServer) -and -not (Test-IsAdmin)) {
-    Write-Host "Wymagane uprawnienia administratora. Ponawiam z elewacją..." -ForegroundColor Yellow
+    Write-Host "Administrator rights required. Retrying with elevation..." -ForegroundColor Yellow
     $argList = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$PSCommandPath`"")
     if ($NonInteractive) { $argList += "-NonInteractive" }
     if ($Uninstall) { $argList += "-Uninstall" }
@@ -517,7 +530,7 @@ function Invoke-GitCommand {
                 if ($null -ne $rawError) { $diagnostic += $rawError.Trim() }
             }
             if ($normalOutput) { $diagnostic += $normalOutput }
-            throw "Git $($Arguments -join ' ') nie powiodło się (kod $exitCode). $($diagnostic -join ' ')"
+            throw "Git $($Arguments -join ' ') failed (code $exitCode). $($diagnostic -join ' ')"
         }
     } finally {
         foreach ($log in @($errorLog, $outputLog)) {
@@ -529,7 +542,7 @@ function Invoke-GitCommand {
 function Install-DevWorkClone {
     param([string]$Destination)
     if ([string]::IsNullOrWhiteSpace($Destination)) {
-        throw "-Dev wymaga ścieżki, np. -Dev D:\prawko"
+        throw "-Dev requires a path, e.g. -Dev D:\prawko"
     }
     $dest = $Destination
     if (-not [IO.Path]::IsPathRooted($dest)) {
@@ -537,23 +550,23 @@ function Install-DevWorkClone {
     }
     $dest = [IO.Path]::GetFullPath($dest)
     if (Test-SamePath $dest $targetDir) {
-        throw "-Dev nie klonuje do serwera ($targetDir). Podaj osobny folder na kod i git."
+        throw "-Dev does not clone into the server ($targetDir). Pass a separate folder for code and git."
     }
     if (Test-PathIsInside $dest $targetDir) {
-        throw "-Dev: folder nie może leżeć wewnątrz $targetDir."
+        throw "-Dev: folder cannot sit inside $targetDir."
     }
     if (Test-LooksLikePrawkoRepo $dest) {
-        Write-Host "-> Git do zmian już jest: $dest (pomijam clone)." -ForegroundColor Yellow
+        Write-Host "-> Git for changes is already at $dest (skipping clone)." -ForegroundColor Yellow
         $script:devWorkRoot = $dest
         return
     }
     if (Test-Path -LiteralPath $dest) {
         $leftovers = @(Get-ChildItem -LiteralPath $dest -Force)
         if ($leftovers.Count -gt 0) {
-            throw "Katalog $dest już istnieje i nie jest checkoutem Prawko. Podaj pusty folder albo inną ścieżkę."
+            throw "Directory $dest already exists and is not a Prawko checkout. Pass an empty folder or another path."
         }
     }
-    Write-Host "Klonowanie $repoUrl ($repoBranch) → $dest (kod, bez folderu mediów w gicie)..." -ForegroundColor Yellow
+    Write-Host "Cloning $repoUrl ($repoBranch) → $dest (code, no media folder in git)..." -ForegroundColor Yellow
     $prevLfs = $env:GIT_LFS_SKIP_SMUDGE
     $env:GIT_LFS_SKIP_SMUDGE = "1"
     try {
@@ -566,11 +579,11 @@ function Install-DevWorkClone {
         }
     }
     if (-not (Test-Path -LiteralPath (Join-Path $dest "src\index.html"))) {
-        throw "Po -Dev brak src\index.html w $dest"
+        throw "After -Dev, missing src\index.html in $dest"
     }
     $script:devWorkRoot = $dest
-    Write-Host "Git do zmian: $dest" -ForegroundColor Green
-    Write-Host "Podgląd zostaje w $targetDir. Tu commitujesz i pushujesz. Na serwer: Install_Prawko.ps1 -Patch (albo -Dev ta-sama-ścieżka -Patch)." -ForegroundColor Gray
+    Write-Host "Git for changes: $dest" -ForegroundColor Green
+    Write-Host "Preview stays in $targetDir. You commit and push here. Onto the server: Install_Prawko.windows.ps1 -Patch (or -Dev same-path -Patch)." -ForegroundColor Gray
 }
 
 function Split-PathEntries ([string]$value) {
@@ -586,9 +599,9 @@ function Get-PathEntryKey ([string]$entry) {
     return $entry.TrimEnd('\').ToLowerInvariant()
 }
 
-# Tylko bieżąca sesja ($env:Path). Nie zapisuje Machine/User PATH.
-# Po winget instalator dopisuje katalogi do PATH w rejestrze — tu wczytujemy
-# aktualny Machine+User i dopisujemy na końcu sesji to, czego jeszcze nie ma.
+# Current session only ($env:Path). Does not write Machine/User PATH.
+# After winget, the installer adds directories to PATH in the registry — here we read
+# the current Machine+User values and append to the session whatever is not there yet.
 function Update-SessionPath {
     $sessionEntries = @(Split-PathEntries $env:Path)
     $systemEntries = @(Split-PathEntries ([Environment]::GetEnvironmentVariable("Path", "Machine")))
@@ -623,7 +636,7 @@ function Install-WingetPackage ($id, $Override) {
     }
     & winget @wingetArgs
     if ($LASTEXITCODE -notin 0, -1978335189, -1978335135) {
-        throw "winget install $id zakończył się kodem $LASTEXITCODE"
+        throw "winget install $id exited with code $LASTEXITCODE"
     }
     Update-SessionPath
 }
@@ -638,7 +651,7 @@ function Get-UrlFingerprint ($url) {
     }
 }
 
-# Hash pierwszego 1 MB zdalnego pliku — tak jak w oryginale.
+# Hash of the first 1 MB of the remote file — same as the original.
 function Get-RemotePrefixHash ($url) {
     try {
         $req = [Net.HttpWebRequest]::Create($url)
@@ -671,12 +684,12 @@ function Get-RemotePrefixHash ($url) {
             $resp.Close()
         }
     } catch {
-        Write-Host "-> Nie udało się pobrać 1 MB do hasha ($($_.Exception.Message))." -ForegroundColor DarkYellow
+        Write-Host "-> Could not download 1 MB for the hash ($($_.Exception.Message))." -ForegroundColor DarkYellow
         return $null
     }
 }
 
-# true = trzeba ściągnąć całość. Hash 1 MB porównujemy z poprzednim pobraniem.
+# true = need to download the whole file. Compare the 1 MB hash with the previous download.
 function Test-RemoteFileNeedsDownload ($url, $hashFilePath, $localFilePath) {
     $currentHash = Get-RemotePrefixHash -url $url
     $savedHash = $null
@@ -690,7 +703,7 @@ function Test-RemoteFileNeedsDownload ($url, $hashFilePath, $localFilePath) {
     }
 
     if (-not $currentHash -and (Test-Path $localFilePath) -and $savedHash) {
-        Write-Host "-> Nie sprawdzę serwera; zostawiam lokalny plik." -ForegroundColor Gray
+        Write-Host "-> Cannot check the server; keeping the local file." -ForegroundColor Gray
         return $false
     }
 
@@ -724,20 +737,20 @@ function Invoke-CurlDownload ($url, $outFile) {
     $expected = Get-RemoteContentLength $url
     if ($expected) {
         $sizeMb = [math]::Round($expected / 1MB, 1)
-        Write-Host "-> Rozmiar: $sizeMb MB" -ForegroundColor DarkCyan
+        Write-Host "-> Size: $sizeMb MB" -ForegroundColor DarkCyan
     }
 
     & curl.exe -L -C - --retry 5 --retry-all-errors -A $ua -e $mainUrl --output $outFile $url
     if ($LASTEXITCODE -eq 33) {
-        Write-Host "-> Serwer nie obsługuje wznawiania, pobieram od zera..." -ForegroundColor DarkYellow
+        Write-Host "-> Server does not support resume; downloading from scratch..." -ForegroundColor DarkYellow
         Remove-Item $outFile -Force -ErrorAction SilentlyContinue
         & curl.exe -L --retry 5 --retry-all-errors -A $ua -e $mainUrl --output $outFile $url
     }
     if ($LASTEXITCODE -ne 0) {
-        throw "Pobieranie nie powiodło się (curl exit $LASTEXITCODE): $url"
+        throw "Download failed (curl exit $LASTEXITCODE): $url"
     }
     if ($expected -and (Test-Path $outFile) -and ((Get-Item $outFile).Length -lt $expected)) {
-        throw "Niekompletne pobieranie $($outFile): $((Get-Item $outFile).Length) / $expected bajtów"
+        throw "Incomplete download $($outFile): $((Get-Item $outFile).Length) / $expected bytes"
     }
 }
 
@@ -748,7 +761,7 @@ function Expand-ZipToDirectory ($zipPath, $destination) {
     if (Test-CommandExists "tar") {
         & tar.exe -xf $zipPath -C $destination
         if ($LASTEXITCODE -eq 0) { return }
-        Write-Host "-> tar nie rozpakował archiwum, próbuję Expand-Archive..." -ForegroundColor DarkYellow
+        Write-Host "-> tar did not unpack the archive, trying Expand-Archive..." -ForegroundColor DarkYellow
     }
     Expand-Archive -Path $zipPath -DestinationPath $destination -Force
 }
@@ -759,26 +772,26 @@ function Install-PrawkoFromGithubArchive ([string]$Destination) {
     $zipPath = Join-Path $stageRoot "prawko.zip"
     New-Item -ItemType Directory -Path $stageRoot -Force | Out-Null
     try {
-        Write-Host "Pobieram AnabelMaz/prawko ($repoBranch) jako ZIP — bez Gita..." -ForegroundColor Yellow
+        Write-Host "Downloading AnabelMaz/prawko ($repoBranch) as ZIP — no Git..." -ForegroundColor Yellow
         Invoke-CurlDownload -url $zipUrl -outFile $zipPath
         $unpack = Join-Path $stageRoot "unpack"
         Expand-ZipToDirectory -zipPath $zipPath -destination $unpack
         $inner = Get-ChildItem -LiteralPath $unpack -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
         if (-not $inner) {
-            throw "ZIP z GitHuba nie zawiera katalogu (oczekiwano prawko-$repoBranch)."
+            throw "GitHub ZIP does not contain a directory (expected prawko-$repoBranch)."
         }
         $index = Join-Path $inner.FullName "src\index.html"
         if (-not (Test-Path -LiteralPath $index)) {
-            throw "ZIP z GitHuba nie wygląda na Prawko (brak src\index.html w $($inner.FullName))."
+            throw "GitHub ZIP does not look like Prawko (missing src\index.html in $($inner.FullName))."
         }
         New-Item -ItemType Directory -Path $Destination -Force | Out-Null
         Invoke-SafeRobocopy -Source $inner.FullName -Destination $Destination -ArgumentList @(
             "/E", "/R:2", "/W:1", "/NFL", "/NDL", "/NJH", "/NJS", "/nc", "/ns", "/np"
         )
         if (-not (Test-Path -LiteralPath (Join-Path $Destination "src\index.html"))) {
-            throw "Po rozpakowaniu brak src\index.html w $Destination"
+            throw "After unpacking, missing src\index.html in $Destination"
         }
-        Write-Host "Aplikacja z ZIP: $Destination" -ForegroundColor Green
+        Write-Host "App from ZIP: $Destination" -ForegroundColor Green
     } finally {
         if (Test-Path -LiteralPath $stageRoot) {
             Remove-Item -LiteralPath $stageRoot -Recurse -Force -ErrorAction SilentlyContinue
@@ -788,7 +801,7 @@ function Install-PrawkoFromGithubArchive ([string]$Destination) {
 
 function Flatten-MediaDirectory ($directory) {
     if (-not (Test-Path $directory)) { return }
-    Write-Host "-> Spłaszczanie podfolderów w $directory..." -ForegroundColor Yellow
+    Write-Host "-> Flattening subfolders in $directory..." -ForegroundColor Yellow
     $subDirs = Get-ChildItem -Path $directory -Directory -ErrorAction SilentlyContinue
     foreach ($dir in $subDirs) {
         Get-ChildItem -Path $dir.FullName -Recurse -File | ForEach-Object {
@@ -850,13 +863,13 @@ function Install-PortableFfmpeg {
     New-Item -ItemType Directory -Path $ffmpegRoot -Force | Out-Null
     New-Item -ItemType Directory -Path $cacheDir -Force | Out-Null
     $zipPath = Join-Path $cacheDir "ffmpeg-essentials.zip"
-    Write-Host "-> Pobieram FFmpeg (przenośny) do $ffmpegRoot ..." -ForegroundColor Yellow
+    Write-Host "-> Downloading FFmpeg (portable) to $ffmpegRoot ..." -ForegroundColor Yellow
     Invoke-CurlDownload -url "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -outFile $zipPath
     Expand-ZipToDirectory -zipPath $zipPath -destination $ffmpegRoot
     $exe = Get-ChildItem $ffmpegRoot -Filter "ffmpeg.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-    if (-not $exe) { throw "Po rozpakowaniu nie ma ffmpeg.exe w $ffmpegRoot" }
+    if (-not $exe) { throw "After unpacking, ffmpeg.exe is not in $ffmpegRoot" }
     Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
-    Write-Host "-> FFmpeg lokalny: $($exe.FullName) (zniknie z -Uninstall)." -ForegroundColor Green
+    Write-Host "-> Local FFmpeg: $($exe.FullName) (gone with -Uninstall)." -ForegroundColor Green
 }
 
 function Resolve-ServeEntry ($root) {
@@ -893,7 +906,7 @@ function Set-FileSnippet ($path, [string]$find, [string]$replace, [string]$alrea
     $findLf = ConvertTo-UnixNewlines $find
     $replaceLf = ConvertTo-UnixNewlines $replace
     if (-not $lf.Contains($findLf)) {
-        throw "Nie udało się zaaplikować poprawki w $path"
+        throw "Could not apply patch in $path"
     }
     Set-TextFileLf $path ($lf.Replace($findLf, $replaceLf)) $nl
     return $true
@@ -904,7 +917,7 @@ function Apply-LegacyPrawkoAppFixes ($root) {
     $offlineJs = Join-Path $root "src\js\offline.js"
     $swJs = Join-Path $root "src\sw.js"
     foreach ($f in @($learnJs, $offlineJs, $swJs)) {
-        if (-not (Test-Path $f)) { throw "Brak $f" }
+        if (-not (Test-Path $f)) { throw "Missing $f" }
     }
 
     $learnChanged = Set-FileSnippet $learnJs @'
@@ -1147,9 +1160,9 @@ async function matchOfflineMedia(request) {
     }
 
     if ($learnChanged -or $offlineChanged -or $swChanged) {
-        Write-Host "-> Nałożono poprawki: nauka (ponowna odpowiedź) i media offline." -ForegroundColor Green
+        Write-Host "-> Applied patches: learn (retry wrong answers) and offline media." -ForegroundColor Green
     } else {
-        Write-Host "-> Poprawki nauki i offline już są nałożone." -ForegroundColor Gray
+        Write-Host "-> Learn and offline patches already applied." -ForegroundColor Gray
     }
 }
 
@@ -1178,7 +1191,7 @@ function Find-ExcelHeaderIndex ($header, [string]$label, [string[]]$exact, [stri
         }
         if ($regex -and $h -match $regex) { return $i }
     }
-    throw "Brak kolumny $label w Excelu. Naglowki: $($header -join ' | ')"
+    throw "Missing column $label in Excel. Headers: $($header -join ' | ')"
 }
 
 function Read-XlsxSheetRows ([string]$xlsxPath) {
@@ -1214,7 +1227,7 @@ function Read-XlsxSheetRows ([string]$xlsxPath) {
         }
 
         $sheetEntry = $zip.GetEntry("xl/worksheets/sheet1.xml")
-        if (-not $sheetEntry) { throw "Brak xl/worksheets/sheet1.xml w $xlsxPath" }
+        if (-not $sheetEntry) { throw "Missing xl/worksheets/sheet1.xml in $xlsxPath" }
         $sheetStream = $sheetEntry.Open()
         try {
             $sheetXml = New-Object Xml.XmlDocument
@@ -1446,7 +1459,7 @@ function Test-GovPjmAsset ($item) {
 }
 
 function Get-GovPlAssetLinks {
-    Write-Host "-> Parsuję $mainUrl ..." -ForegroundColor Cyan
+    Write-Host "-> Parsing $mainUrl ..." -ForegroundColor Cyan
     $response = Invoke-WebRequest -Uri $mainUrl -UserAgent $ua -UseBasicParsing
     $html = $response.Content
 
@@ -1482,23 +1495,23 @@ function Get-GovPlAssetLinks {
         } | Sort-Object { if (Test-GovExcelAsset $_) { 0 } else { 1 } })
 
     if ($znalezione.Count -eq 0) {
-        throw "Parser strony gov.pl nie znalazł linków do bazy pytań ani multimediów."
+        throw "gov.pl page parser found no links to the question bank or media."
     }
-    Write-Host "Znalezione pliki rządowe: $($znalezione.Count)" -ForegroundColor Green
+    Write-Host "Found government files: $($znalezione.Count)" -ForegroundColor Green
     return $znalezione
 }
 
 function Import-GovExcelIfMissing ([string]$excelPath) {
     if (Test-Path $excelPath) {
-        Write-Host "-> Używam ściągniętego Excela MI: $excelPath" -ForegroundColor Gray
+        Write-Host "-> Using already downloaded ministry Excel: $excelPath" -ForegroundColor Gray
         return
     }
     New-Item -ItemType Directory -Path (Split-Path $excelPath -Parent) -Force | Out-Null
     $item = @(Get-GovPlAssetLinks | Where-Object { Test-GovExcelAsset $_ } | Select-Object -First 1)
     if ($item.Count -eq 0) {
-        throw "gov.pl nie ma linku do Excela z bazą pytań."
+        throw "gov.pl has no link to the question-bank Excel."
     }
-    Write-Host "-> Brak $excelPath — pobieram Excel z gov.pl (bez ZIP multimediów)..." -ForegroundColor Cyan
+    Write-Host "-> Missing $excelPath — downloading Excel from gov.pl (no media ZIP)..." -ForegroundColor Cyan
     $hashFile = Join-Path $targetDir ".baza_pytan.hash"
     Invoke-CurlDownload -url $item[0].Url -outFile $excelPath
     Save-PrefixHash -hashFilePath $hashFile -url $item[0].Url
@@ -1511,10 +1524,10 @@ function Get-GovExcelCategoryQuestions {
         [switch]$DropMissingMedia
     )
     $categories = Get-PrawkoCategoryIds
-    Write-Host "-> Parsuję Excel (xlsx/XML, bez Pythona): $excelPath" -ForegroundColor Cyan
+    Write-Host "-> Parsing Excel (xlsx/XML, no Python): $excelPath" -ForegroundColor Cyan
     $sheet = Read-XlsxSheetRows $excelPath
     $rows = $sheet.Rows
-    if ($rows.Count -lt 2) { throw "Excel nie ma wierszy danych." }
+    if ($rows.Count -lt 2) { throw "Excel has no data rows." }
 
     $header = $rows[0]
     $colNum = Find-ExcelHeaderIndex $header "Numer pytania" -exact @("Numer pytania")
@@ -1639,15 +1652,15 @@ function Convert-GovExcelToDataFiles {
         specialistPoints      = @(3, 3, 3, 3, 3, 3, 2, 2, 2, 2, 1, 1)
     }
 
-    # KeepMediaRefs: nazwy plików z Excela zostają (CDN / Pobierz offline).
-    # DropMissingMedia tylko na życzenie — inaczej parser nie zeruje mediów.
+    # KeepMediaRefs: file names from Excel stay (CDN / Download offline).
+    # DropMissingMedia only on request — otherwise the parser does not clear media.
     $parsed = if ($DropMissingMedia) {
         Get-GovExcelCategoryQuestions -excelPath $excelPath -mediaDir $mediaDir -DropMissingMedia
     } else {
         Get-GovExcelCategoryQuestions -excelPath $excelPath
     }
     if ($parsed.MissingMedia) {
-        Write-Host "  WARNING: $($parsed.MissingMedia) pytań wskazuje na media, których nie ma w katalogu źródłowym." -ForegroundColor DarkYellow
+        Write-Host "  WARNING: $($parsed.MissingMedia) questions point to media that are not in the source folder." -ForegroundColor DarkYellow
     }
 
     if (-not (Test-Path $outDir)) {
@@ -1685,9 +1698,9 @@ function Convert-GovExcelToDataFiles {
 
     $meta = [ordered]@{ uniqueQuestionCount = $uniqueIds.Count; categories = $metaCategories; exam = $exam }
     [IO.File]::WriteAllText((Join-Path $outDir "meta.json"), (ConvertTo-Json -InputObject $meta -Depth 8), $utf8)
-    Write-Host "-> Zapisano meta.json ($($uniqueIds.Count) unikalnych pytań, $total przypisań do kategorii)." -ForegroundColor Green
+    Write-Host "-> Wrote meta.json ($($uniqueIds.Count) unique questions, $total category assignments)." -ForegroundColor Green
     if ($KeepMediaRefs) {
-        Write-Host "-> $mediaRefs odwołań do mediów zostawionych w JSON (CDN / Pobierz offline)." -ForegroundColor Green
+        Write-Host "-> $mediaRefs media references left in JSON (CDN / Download offline)." -ForegroundColor Green
     }
 }
 
@@ -1698,14 +1711,14 @@ function Sync-GovExcelFile ([string]$excelPath, [string]$hashFile) {
     }
     $item = @(Get-GovPlAssetLinks | Where-Object { Test-GovExcelAsset $_ } | Select-Object -First 1)
     if ($item.Count -eq 0) {
-        throw "gov.pl nie ma linku do Excela z bazą pytań."
+        throw "gov.pl has no link to the question-bank Excel."
     }
-    Write-Host "-> Hash 1 MB Excela z serwera (ponowne pobranie, gdy zmienił się od ostatniego razu)..." -ForegroundColor Cyan
+    Write-Host "-> 1 MB hash of the Excel from the server (re-download if it changed since last time)..." -ForegroundColor Cyan
     if (-not (Test-RemoteFileNeedsDownload -url $item[0].Url -hashFilePath $hashFile -localFilePath $excelPath)) {
-        Write-Host "-> Excel bez zmian. Parsuję lokalny plik: $excelPath" -ForegroundColor Gray
+        Write-Host "-> Excel unchanged. Parsing local file: $excelPath" -ForegroundColor Gray
         return
     }
-    Write-Host "-> Pobieram Excel z gov.pl (bez ZIP multimediów) do $excelPath..." -ForegroundColor Cyan
+    Write-Host "-> Downloading Excel from gov.pl (no media ZIP) to $excelPath..." -ForegroundColor Cyan
     Invoke-CurlDownload -url $item[0].Url -outFile $excelPath
     Save-PrefixHash -hashFilePath $hashFile -url $item[0].Url
 }
@@ -1749,8 +1762,8 @@ function Publish-GovQuestions {
     $govDir = Get-GovDataDir
     $excelPath = Join-Path $govDir "baza_pytan.xlsx"
 
-    Write-Host "GovQuestions: Excel z gov.pl → $govDir (contrib\src\data nietknięty)" -ForegroundColor Cyan
-    Write-Host "Bez ZIP multimediów, bez src\media, bez zmiany CDN." -ForegroundColor Gray
+    Write-Host "GovQuestions: Excel from gov.pl → $govDir (contrib\src\data left untouched)" -ForegroundColor Cyan
+    Write-Host "No media ZIP, no src\media, no CDN change." -ForegroundColor Gray
     Invoke-PrawkoScript "download-gov.ps1" @("-ExcelOnly")
     Invoke-PrawkoScript "parse-excel.ps1" @("-Excel", $excelPath, "-OutDir", $govDir)
     Assert-GovDataParsed -govDir $govDir -excelPath $excelPath
@@ -1759,15 +1772,15 @@ function Publish-GovQuestions {
 
     try {
         if (Copy-GovJsonToServer -govDir $govDir -swPrefix "prawko-govq") {
-            Write-Host "Done. Serwer czyta JSON z ministerstwa. -Patch tego nie cofnie (pomija data\)." -ForegroundColor Green
-            Write-Host "Oryginały nadal w contrib\src\data. Filmy z CDN. Offline: Pobierz offline przy kategorii." -ForegroundColor Gray
+            Write-Host "Done. Server reads JSON from the ministry. -Patch will not undo this (it skips data\)." -ForegroundColor Green
+            Write-Host "Originals remain in contrib\src\data. Videos from CDN. Offline: Download offline on the category." -ForegroundColor Gray
         } else {
-            Write-Host "Serwer nie zainstalowany — JSON ministerstwa tylko w gov-data. Po instalacji odpal -GovQuestions jeszcze raz." -ForegroundColor DarkYellow
-            Write-Host "Done. Oryginały w contrib\src\data; na serwer trafią dopiero po -GovQuestions." -ForegroundColor Green
+            Write-Host "Server is not installed — ministry JSON only in gov-data. After install, run -GovQuestions again." -ForegroundColor DarkYellow
+            Write-Host "Done. Originals in contrib\src\data; they reach the server only after -GovQuestions." -ForegroundColor Green
         }
     } catch {
-        Write-Host "JSON ministerstwa jest w gov-data, ale nie udało się zapisać na serwer: $($_.Exception.Message)" -ForegroundColor DarkYellow
-        Write-Host "contrib\src\data nietknięty. Odpal jako administrator albo skopiuj gov-data ręcznie." -ForegroundColor DarkYellow
+        Write-Host "Ministry JSON is in gov-data, but could not write it to the server: $($_.Exception.Message)" -ForegroundColor DarkYellow
+        Write-Host "contrib\src\data left untouched. Run as administrator or copy gov-data by hand." -ForegroundColor DarkYellow
     }
 }
 
@@ -1780,38 +1793,39 @@ function Publish-GovInstall {
     $imgOut = Join-Path $mediaRoot $(if ($serverReady) { "src\media\img" } else { "media\img" })
     $vidOut = Join-Path $mediaRoot $(if ($serverReady) { "src\media\vid" } else { "media\vid" })
 
-    Write-Host "InstallGov: Excel + ZIP multimediów sytuacyjnych z gov.pl → $govDir (nie ProgramData, nie git)." -ForegroundColor Cyan
+    Write-Host "InstallGov: Excel + situational media ZIP from gov.pl → $govDir (not ProgramData, not git)." -ForegroundColor Cyan
     Write-Host "download-gov → raw; convert-media → src\media; parse-excel → JSON." -ForegroundColor Gray
-    Write-Host "Tłumaczeń migowych (PJM) nie pobieram. Czysta instalacja bez tego przełącznika = AnabelMaz/prawko + CDN." -ForegroundColor Gray
+    Write-Host "Not downloading Polish Sign Language (PJM) translations. A clean install without this switch = AnabelMaz/prawko + CDN." -ForegroundColor Gray
 
     Update-SessionPath
     if (-not (Resolve-FfmpegExe)) {
         New-Item -ItemType Directory -Path $toolsDir -Force | Out-Null
         New-Item -ItemType Directory -Path $cacheDir -Force | Out-Null
-        Write-Host "[Brak FFmpeg] Pobieram wersję przenośną do $toolsDir ..." -ForegroundColor Yellow
+        Write-Host "[No FFmpeg] Downloading a portable build to $toolsDir ..." -ForegroundColor Yellow
         Install-PortableFfmpeg
     }
     $ffmpegExe = Resolve-FfmpegExe
-    if (-not $ffmpegExe) { throw "FFmpeg nie jest dostępny (ani w systemie, ani w $toolsDir)." }
+    if (-not $ffmpegExe) { throw "FFmpeg is not available (neither on the system nor in $toolsDir)." }
     Write-Host "[OK] FFmpeg: $ffmpegExe" -ForegroundColor Green
 
     Invoke-PrawkoScript "download-gov.ps1"
     if (-not (Test-Path -LiteralPath $excelPath)) {
-        throw "Brak $excelPath — baza pytań z gov.pl nie została pobrana."
+        throw "Missing $excelPath — the question bank from gov.pl was not downloaded."
     }
 
-    Write-Host "`n=== Konwersja mediów sytuacyjnych (JPG→WebP, WMV→MP4) ===" -ForegroundColor Cyan
+    Write-Host "`n=== Converting situational media (JPG→WebP, WMV→MP4) ===" -ForegroundColor Cyan
     Invoke-PrawkoScript "convert-media.ps1" @(
+        "-SourceDir", (Get-ContribRawMediaDir),
         "-FfmpegExe", $ffmpegExe,
         "-ImgOut", $imgOut,
         "-VidOut", $vidOut
     )
 
-    Write-Host "`n=== JSON z Excela → gov-data ===" -ForegroundColor Cyan
+    Write-Host "`n=== JSON from Excel → gov-data ===" -ForegroundColor Cyan
     $parseArgs = @("-Excel", $excelPath, "-OutDir", $govDir)
     if ($DropMissingMedia) {
         $parseArgs += @("-MediaDir", (Get-ContribRawMediaDir), "-DropMissingMedia")
-        Write-Host "DropMissingMedia: pytania bez lokalnego pliku w raw tracą odwołanie do mediów." -ForegroundColor DarkYellow
+        Write-Host "DropMissingMedia: questions without a local file in raw lose their media reference." -ForegroundColor DarkYellow
     }
     Invoke-PrawkoScript "parse-excel.ps1" $parseArgs
     Assert-GovDataParsed -govDir $govDir -excelPath $excelPath
@@ -1820,23 +1834,23 @@ function Publish-GovInstall {
 
     $dstIndex = Join-Path $targetDir "src\index.html"
     if (-not (Test-Path -LiteralPath $dstIndex)) {
-        Write-Host "Serwer nie zainstalowany — Excel/JSON/media w $govDir i $mediaRoot. Po instalacji odpal -InstallGov jeszcze raz." -ForegroundColor DarkYellow
-        Write-Host "Done. Czysta instalacja bez -InstallGov = AnabelMaz/prawko + CDN." -ForegroundColor Green
+        Write-Host "Server is not installed — Excel/JSON/media in $govDir and $mediaRoot. After install, run -InstallGov again." -ForegroundColor DarkYellow
+        Write-Host "Done. A clean install without -InstallGov = AnabelMaz/prawko + CDN." -ForegroundColor Green
         return
     }
 
     try {
-        Write-Host "Kopiuję JSON MI na serwer (git/ contrib\src\data nietknięty)..." -ForegroundColor Cyan
+        Write-Host "Copying ministry JSON to the server (git / contrib\src\data left untouched)..." -ForegroundColor Cyan
         if (-not (Copy-GovJsonToServer -govDir $govDir -swPrefix "prawko-govmedia")) {
-            throw "Brak src\data na serwerze."
+            throw "Missing src\data on the server."
         }
         $dstMedia = Join-Path $targetDir "src\media"
         $dstImg = Join-Path $dstMedia "img"
         $dstVid = Join-Path $dstMedia "vid"
         if (Test-SamePath $imgOut $dstImg) {
-            Write-Host "WebP/MP4 już w $dstMedia (konwersja na serwer)." -ForegroundColor Gray
+            Write-Host "WebP/MP4 already in $dstMedia (conversion on the server)." -ForegroundColor Gray
         } else {
-            Write-Host "Kopiuję WebP/MP4: $imgOut + $vidOut → $dstMedia" -ForegroundColor Cyan
+            Write-Host "Copying WebP/MP4: $imgOut + $vidOut → $dstMedia" -ForegroundColor Cyan
             New-Item -ItemType Directory -Path $dstImg -Force | Out-Null
             New-Item -ItemType Directory -Path $dstVid -Force | Out-Null
             & robocopy.exe $imgOut $dstImg /E /R:2 /W:1 /NFL /NDL /NJH /NJS /nc /ns /np | Out-Null
@@ -1845,11 +1859,11 @@ function Publish-GovInstall {
             if ($LASTEXITCODE -ge 8) { throw "robocopy vid failed (exit $LASTEXITCODE)" }
         }
         Set-LocalMediaBase -root $targetDir
-        Write-Host "Done. Serwer: JSON + media z gov.pl. -Patch nie nadpisze data\ ani media\." -ForegroundColor Green
-        Write-Host "Po -Uninstall i instalacji bez -InstallGov znowu AnabelMaz/prawko + CDN. ZIP/raw zostają w %LOCALAPPDATA%\prawko\gov-data." -ForegroundColor Gray
+        Write-Host "Done. Server: JSON + media from gov.pl. -Patch will not overwrite data\ or media\." -ForegroundColor Green
+        Write-Host "After -Uninstall and an install without -InstallGov you get AnabelMaz/prawko + CDN again. ZIP/raw stay in %LOCALAPPDATA%\prawko\gov-data." -ForegroundColor Gray
     } catch {
-        Write-Host "JSON/media są w staging, ale nie udało się zapisać na serwer: $($_.Exception.Message)" -ForegroundColor DarkYellow
-        Write-Host "Sprawdź uprawnienia do $targetDir." -ForegroundColor DarkYellow
+        Write-Host "JSON/media are in staging, but could not write them to the server: $($_.Exception.Message)" -ForegroundColor DarkYellow
+        Write-Host "Check permissions on $targetDir." -ForegroundColor DarkYellow
     }
 }
 
@@ -1859,7 +1873,7 @@ function Merge-GovExcelIntoDataFiles ([string]$govDir, [string]$outDir) {
     foreach ($cat in $categories) {
         $src = Join-Path $govDir "$cat.json"
         if (-not (Test-Path -LiteralPath $src)) {
-            throw "Brak $src — najpierw scripts/parse-excel.ps1."
+            throw "Missing $src — run scripts/parse-excel.ps1 first."
         }
         $payload = Get-Content -LiteralPath $src -Raw -Encoding UTF8 | ConvertFrom-Json
         $parsedCategories[$cat] = @($payload.questions)
@@ -1882,18 +1896,18 @@ function Merge-GovExcelIntoDataFiles ([string]$govDir, [string]$outDir) {
     } catch {}
     $mediaIndex = New-MediaStemIndex $indexDirs.ToArray()
     if (-not $ffmpegExe) {
-        Write-Host "-> Brak FFmpeg — merge bez porównania klatek (tylko nazwa pliku mediów)." -ForegroundColor DarkYellow
+        Write-Host "-> No FFmpeg — merge without frame comparison (media file name only)." -ForegroundColor DarkYellow
     } elseif ($mediaIndex.Count -eq 0) {
-        Write-Host "-> Brak lokalnych mediów — merge bez porównania klatek (tylko nazwa pliku)." -ForegroundColor DarkYellow
+        Write-Host "-> No local media — merge without frame comparison (file name only)." -ForegroundColor DarkYellow
         $ffmpegExe = $null
     } else {
-        Write-Host "-> Porównanie wizualne mediów (FFmpeg $($script:MediaVisualSize)×$($script:MediaVisualSize), próg $([int]($script:MediaVisualThreshold * 100))%, filmy: 1./środkowa/ostatnia klatka)." -ForegroundColor Cyan
+        Write-Host "-> Visual media comparison (FFmpeg $($script:MediaVisualSize)×$($script:MediaVisualSize), threshold $([int]($script:MediaVisualThreshold * 100))%, videos: 1st/middle/last frame)." -ForegroundColor Cyan
     }
 
     foreach ($cat in $categories) {
         $path = Join-Path $outDir "$cat.json"
         if (-not (Test-Path $path)) {
-            throw "Brak $path — merge wymaga bazy z repozytorium."
+            throw "Missing $path — merge needs the question bank from the repository."
         }
         $data = Get-Content $path -Raw -Encoding UTF8 | ConvertFrom-Json
         $existingIds = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
@@ -1959,11 +1973,11 @@ function Merge-GovExcelIntoDataFiles ([string]$govDir, [string]$outDir) {
         }
         $addedTotal += $added
         $skipBits = @()
-        if ($skippedSame) { $skipBits += "ta sama treść+media: $skippedSame" }
-        if ($skippedVisual) { $skipBits += "ta sama treść+klatki ≥95%: $skippedVisual" }
-        if ($idRewritten) { $skipBits += "nowe id (numer zajęty): $idRewritten" }
-        $skipNote = if ($skipBits.Count) { ", pominięto $($skipBits -join ', ')" } else { "" }
-        Write-Host ("  {0,3}: +{1,4} z MI (razem {2}{3})" -f $cat, $added, $questions.Length, $skipNote)
+        if ($skippedSame) { $skipBits += "same text+media: $skippedSame" }
+        if ($skippedVisual) { $skipBits += "same text+frames ≥95%: $skippedVisual" }
+        if ($idRewritten) { $skipBits += "new id (number taken): $idRewritten" }
+        $skipNote = if ($skipBits.Count) { ", skipped $($skipBits -join ', ')" } else { "" }
+        Write-Host ("  {0,3}: +{1,4} from ministry (total {2}{3})" -f $cat, $added, $questions.Length, $skipNote)
     }
 
     $metaPath = Join-Path $outDir "meta.json"
@@ -1995,7 +2009,7 @@ function Merge-GovExcelIntoDataFiles ([string]$govDir, [string]$outDir) {
     }
     $meta = [ordered]@{ categories = $metaCategories; exam = $exam }
     [IO.File]::WriteAllText($metaPath, (ConvertTo-Json -InputObject $meta -Depth 8), $utf8)
-    Write-Host "-> Merge: dopisano $addedTotal pytań z bazy MI, których nie było w repo." -ForegroundColor Green
+    Write-Host "-> Merge: appended $addedTotal questions from the ministry bank that were not in the repo." -ForegroundColor Green
 }
 
 function Convert-GovMedia ($ffmpegExe, $sourceDir, $imgOut, $vidOut) {
@@ -2007,7 +2021,7 @@ function Convert-GovMedia ($ffmpegExe, $sourceDir, $imgOut, $vidOut) {
     $videos = @(Get-ChildItem -Path $sourceDir -File -ErrorAction SilentlyContinue |
             Where-Object { $_.Extension -match '^\.wmv$' -and $_.Name -notmatch '(?i)^pjm' })
 
-    Write-Host "-> Konwersja obrazów JPG → WebP ($($images.Count) plików)..." -ForegroundColor Cyan
+    Write-Host "-> Converting JPG images → WebP ($($images.Count) files)..." -ForegroundColor Cyan
     $i = 0
     foreach ($img in $images) {
         $i++
@@ -2015,11 +2029,11 @@ function Convert-GovMedia ($ffmpegExe, $sourceDir, $imgOut, $vidOut) {
         if ((Test-Path $dest) -and ((Get-Item $dest).Length -gt 0)) { continue }
         & $ffmpegExe -y -hide_banner -loglevel error -i $img.FullName -c:v libwebp -quality 80 $dest
         if ($i % 50 -eq 0) {
-            Write-Host "   obrazy $i / $($images.Count)" -ForegroundColor DarkGray
+            Write-Host "   images $i / $($images.Count)" -ForegroundColor DarkGray
         }
     }
 
-    Write-Host "-> Konwersja filmów WMV → MP4 ($($videos.Count) plików, to może potrwać)..." -ForegroundColor Cyan
+    Write-Host "-> Converting WMV videos → MP4 ($($videos.Count) files, this may take a while)..." -ForegroundColor Cyan
     $i = 0
     foreach ($vid in $videos) {
         $i++
@@ -2030,10 +2044,10 @@ function Convert-GovMedia ($ffmpegExe, $sourceDir, $imgOut, $vidOut) {
             -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" `
             -movflags +faststart -an $dest
         if ($LASTEXITCODE -ne 0) {
-            Write-Host "   pominięto (błąd ffmpeg): $($vid.Name)" -ForegroundColor DarkYellow
+            Write-Host "   skipped (ffmpeg error): $($vid.Name)" -ForegroundColor DarkYellow
         }
         if ($i % 10 -eq 0) {
-            Write-Host "   filmy $i / $($videos.Count)" -ForegroundColor DarkGray
+            Write-Host "   videos $i / $($videos.Count)" -ForegroundColor DarkGray
         }
     }
 
@@ -2049,7 +2063,7 @@ function Convert-GovMedia ($ffmpegExe, $sourceDir, $imgOut, $vidOut) {
     }
     $webpCount = @(Get-ChildItem $imgOut -Filter *.webp -ErrorAction SilentlyContinue).Count
     $mp4Count = @(Get-ChildItem $vidOut -Filter *.mp4 -ErrorAction SilentlyContinue).Count
-    Write-Host "-> Gotowe multimedia dla aplikacji: $webpCount WebP, $mp4Count MP4" -ForegroundColor Green
+    Write-Host "-> Media ready for the app: $webpCount WebP, $mp4Count MP4" -ForegroundColor Green
 }
 
 function Restore-InitialLocation {
@@ -2062,14 +2076,14 @@ function Complete-IfInteractive {
     if ($NonInteractive) { return }
     if (-not [Environment]::UserInteractive) { return }
     try { if ([Console]::IsInputRedirected) { return } } catch { }
-    Read-Host "Naciśnij Enter, aby zamknąć"
+    Read-Host "Press Enter to close"
 }
 
 function Invoke-Uninstall {
-    Write-Host "=== UNINSTALL: usuwanie usługi i katalogu Prawko ===" -ForegroundColor Cyan
+    Write-Host "=== UNINSTALL: removing the Prawko service and directory ===" -ForegroundColor Cyan
     $svc = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
     if ($svc) {
-        Write-Host "Zatrzymywanie usługi $serviceName..." -ForegroundColor Yellow
+        Write-Host "Stopping service $serviceName..." -ForegroundColor Yellow
         Stop-Service -Name $serviceName -Force -ErrorAction SilentlyContinue
     }
 
@@ -2085,45 +2099,56 @@ function Invoke-Uninstall {
     Start-Sleep -Seconds 2
 
     if (Test-Path $targetDir) {
-        Write-Host "Usuwam $targetDir ..." -ForegroundColor Yellow
+        Write-Host "Removing $targetDir ..." -ForegroundColor Yellow
         Remove-Item -LiteralPath $targetDir -Recurse -Force -ErrorAction SilentlyContinue
     }
     if (Test-Path $targetDir) {
         & cmd.exe /c "rmdir /s /q `"$targetDir`""
     }
     if (Test-Path $targetDir) {
-        throw "Nie udało się usunąć $targetDir. Zamknij Cursor/przeglądarkę jeśli ten folder jest otwarty i spróbuj ponownie."
+        throw "Could not remove $targetDir. Close Cursor/the browser if that folder is open and try again."
     }
 
-    Write-Host "Usunięto usługę $serviceName i katalog aplikacji." -ForegroundColor Green
-    Write-Host "Git, Node i NSSM zostają (były w systemie albo instalowane globalnie)." -ForegroundColor Gray
-    Write-Host "FFmpeg z tools\ w katalogu Prawko został usunięty razem z folderem." -ForegroundColor Gray
+    Write-Host "Removed service $serviceName and the application directory." -ForegroundColor Green
+    Write-Host "Git, Node and NSSM stay (they were on the system or installed globally)." -ForegroundColor Gray
+    Write-Host "FFmpeg from tools\ in the Prawko directory was removed with the folder." -ForegroundColor Gray
 }
 
 if ($PSBoundParameters.ContainsKey("Dev") -and -not $Uninstall) {
-    Write-Host "=== Git do zmian (-Dev) — bez Node, bez serwera ===" -ForegroundColor Cyan
+    Write-Host "=== Git for changes (-Dev) — no Node, no server ===" -ForegroundColor Cyan
     Update-SessionPath
     if (-not (Test-CommandExists "git")) {
-        Write-Host "[Brak Git] Instaluję Git (tylko -Dev)..." -ForegroundColor Yellow
+        Write-Host "[No Git] Installing Git (-Dev only)..." -ForegroundColor Yellow
         Install-WingetPackage -id "Git.Git"
         Update-SessionPath
     }
     if (-not (Test-CommandExists "git")) {
-        throw "Brak Git. -Dev potrzebuje Gita (nie Node i nie serwera). Zainstaluj Git albo odpal -Dev jako administrator (winget)."
+        throw "Git is missing. -Dev needs Git (not Node and not the server). Install Git or run -Dev as administrator (winget)."
     }
     Install-DevWorkClone -Destination $Dev
     if ($Patch) {
         if (Test-PrawkoServerInstalled) {
             Apply-PrawkoAppFixes -root $targetDir
-            Write-Host "Gotowe. W otwartej aplikacji baner: Dostępna aktualizacja / Odśwież." -ForegroundColor Green
+            Write-Host "Done. In the open app, banner: Update available / Refresh." -ForegroundColor Green
         } else {
-            Write-Host "Serwer nie stoi — -Patch pominięty. Najpierw Install_Prawko.ps1 bez przełączników, potem -Patch." -ForegroundColor DarkYellow
+            Write-Host "Server is not running — -Patch skipped. First Install_Prawko.windows.ps1 with no switches, then -Patch." -ForegroundColor DarkYellow
         }
     } else {
-        Write-Host "To nie stawia localhost. Aplikacja: Install_Prawko.ps1 bez przełączników." -ForegroundColor Gray
+        Write-Host "This does not start localhost. App: Install_Prawko.windows.ps1 with no switches." -ForegroundColor Gray
     }
     Complete-IfInteractive
     exit 0
+}
+
+if ($GovQuestions -or $InstallGov -or $Merge) {
+    $prawkoGovLib = Resolve-PrawkoPipelineScript "download-gov.ps1"
+    if (-not $prawkoGovLib) {
+        throw "Missing scripts\download-gov.ps1. Run Install_Prawko.windows.ps1 with no switches (it will download the app with scripts into $targetDir) or run the installer from the root of a cloned repo."
+    }
+    . $prawkoGovLib -LibraryOnly
+    if (-not (Get-Command Get-GovDataDir -ErrorAction SilentlyContinue)) {
+        throw "Did not load Get-GovDataDir from $prawkoGovLib."
+    }
 }
 
 if ($GovQuestions) {
@@ -2140,16 +2165,16 @@ if ($InstallGov) {
 
 if ($Merge) {
     if (-not (Test-PrawkoServerInstalled)) {
-        throw "-Merge wymaga stojącego serwera. Najpierw Install_Prawko.ps1 bez przełączników."
+        throw "-Merge needs a running server. First Install_Prawko.windows.ps1 with no switches."
     }
-    Write-Host "=== MERGE: braki z Excel MI (bez reinstalu usługi) ===" -ForegroundColor Cyan
+    Write-Host "=== MERGE: gaps from ministry Excel (no service reinstall) ===" -ForegroundColor Cyan
     Remove-LegacyServerRawMediaDir
     Import-PrawkoGovLibrary
     Invoke-PrawkoScript "download-gov.ps1" @("-ExcelOnly")
     $govDir = Get-GovDataDir
     $excelPath = Join-Path $govDir "baza_pytan.xlsx"
     if (-not (Test-Path -LiteralPath $excelPath)) {
-        throw "Brak $excelPath — nie ma ściągniętej bazy ministerstwa do merge."
+        throw "Missing $excelPath — no downloaded ministry question bank to merge."
     }
     Invoke-PrawkoScript "parse-excel.ps1" @("-Excel", $excelPath, "-OutDir", $govDir)
     Merge-GovExcelIntoDataFiles -govDir $govDir -outDir (Join-Path $targetDir "src\data")
@@ -2165,52 +2190,52 @@ if ($Uninstall) {
     exit 0
 }
 
-Write-Host "=== 1. SPRAWDZANIE I INSTALACJA NARZĘDZI ===" -ForegroundColor Cyan
+Write-Host "=== 1. CHECKING AND INSTALLING TOOLS ===" -ForegroundColor Cyan
 Update-SessionPath
 
 if (-not (Resolve-NodeExe)) {
-    Write-Host "[Brak Node.js] Instaluję Node.js..." -ForegroundColor Yellow
+    Write-Host "[No Node.js] Installing Node.js..." -ForegroundColor Yellow
     Install-WingetPackage -id "OpenJS.NodeJS.LTS"
-    if (-not (Resolve-NodeExe)) { throw "Node.js nie jest dostępny po instalacji." }
+    if (-not (Resolve-NodeExe)) { throw "Node.js is not available after install." }
 } else { Write-Host "[OK] Node.js" -ForegroundColor Green }
 
 if (-not (Resolve-NssmExe)) {
-    Write-Host "[Brak NSSM] Instaluję NSSM..." -ForegroundColor Yellow
+    Write-Host "[No NSSM] Installing NSSM..." -ForegroundColor Yellow
     Install-WingetPackage -id "NSSM.NSSM"
-    if (-not (Resolve-NssmExe)) { throw "NSSM nie jest dostępny po instalacji." }
+    if (-not (Resolve-NssmExe)) { throw "NSSM is not available after install." }
 } else { Write-Host "[OK] NSSM" -ForegroundColor Green }
 
-Write-Host "-> Git pominięty (serwer ze ZIP). Do kodu: -Dev." -ForegroundColor Gray
+Write-Host "-> Git skipped (server from ZIP). For code: -Dev." -ForegroundColor Gray
 
 $ffmpegExe = $null
-Write-Host "-> Tryb domyślny: ZIP AnabelMaz/prawko ($repoBranch) + CDN prawko-maz." -ForegroundColor Gray
+Write-Host "-> Default mode: ZIP AnabelMaz/prawko ($repoBranch) + prawko-maz CDN." -ForegroundColor Gray
 
 $nssmExe = Resolve-NssmExe
 $nodeExe = Resolve-NodeExe
 
 
-Write-Host "`n=== 2. ZATRZYMYWANIE USŁUGI WINDOWS (JEŚLI DZIAŁA) ===" -ForegroundColor Cyan
+Write-Host "`n=== 2. STOPPING THE WINDOWS SERVICE (IF RUNNING) ===" -ForegroundColor Cyan
 $existingService = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
 if ($existingService) {
-    Write-Host "Zatrzymywanie i usuwanie poprzedniej usługi $serviceName..." -ForegroundColor Yellow
+    Write-Host "Stopping and removing previous service $serviceName..." -ForegroundColor Yellow
     Stop-Service -Name $serviceName -Force -ErrorAction SilentlyContinue
     cmd.exe /c "`"$nssmExe`" stop $serviceName >nul 2>&1"
     cmd.exe /c "`"$nssmExe`" remove $serviceName confirm >nul 2>&1"
 }
 
 
-Write-Host "`n=== 3. PRZYGOTOWANIE KATALOGU APLIKACJI ===" -ForegroundColor Cyan
+Write-Host "`n=== 3. PREPARING THE APPLICATION DIRECTORY ===" -ForegroundColor Cyan
 $repoGit = Join-Path $targetDir ".git"
 if (Test-PrawkoServerInstalled) {
-    Write-Host "Serwer już ma src w $targetDir — pomijam pobieranie / clone." -ForegroundColor Yellow
-    Write-Host "src\data, src\media i nałożony kod zostają. Od zera: -Uninstall." -ForegroundColor Gray
+    Write-Host "Server already has src in $targetDir — skipping download / clone." -ForegroundColor Yellow
+    Write-Host "src\data, src\media and overlaid code stay. From scratch: -Uninstall." -ForegroundColor Gray
 } elseif (Test-Path $repoGit) {
-    throw "Katalog $targetDir ma .git, ale brak src\index.html. Użyj -Uninstall i zainstaluj ponownie."
+    throw "Directory $targetDir has .git but no src\index.html. Use -Uninstall and install again."
 } else {
     if (Test-Path $targetDir) {
         $leftovers = @(Get-ChildItem -Path $targetDir -Force)
         if ($leftovers.Count -gt 0) {
-            throw "Katalog $targetDir już istnieje i nie jest pusty. Usuń go albo opróżnij przed instalacją."
+            throw "Directory $targetDir already exists and is not empty. Remove or empty it before install."
         }
     } else {
         New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
@@ -2218,53 +2243,53 @@ if (Test-PrawkoServerInstalled) {
     Install-PrawkoFromGithubArchive -Destination $targetDir
 }
 
-Write-Host "Katalog aplikacji gotowy: $targetDir" -ForegroundColor Green
+Write-Host "Application directory ready: $targetDir" -ForegroundColor Green
 Remove-LegacyServerRawMediaDir
 
-Write-Host "`n=== 4–5. POMINIĘTE (baza z ZIP AnabelMaz/prawko) ===" -ForegroundColor Cyan
-Write-Host "-> Pytania: src\data z paczki. Media: CDN prawko-maz." -ForegroundColor Gray
-Write-Host "-> Excel+ZIP MI: Install_Prawko.ps1 -InstallGov" -ForegroundColor Gray
-Write-Host "-> Katalog pytań MI: Install_Prawko.ps1 -GovQuestions" -ForegroundColor Gray
-Write-Host "-> Braki z MI:    Install_Prawko.ps1 -Merge" -ForegroundColor Gray
-Write-Host "-> Lokalny contrib: Install_Prawko.ps1 -Patch" -ForegroundColor Gray
-Write-Host "-> Git do zmian:    Install_Prawko.ps1 -Dev D:\prawko (bez serwera)" -ForegroundColor Gray
+Write-Host "`n=== 4–5. SKIPPED (question bank from AnabelMaz/prawko ZIP) ===" -ForegroundColor Cyan
+Write-Host "-> Questions: src\data from the pack. Media: prawko-maz CDN." -ForegroundColor Gray
+Write-Host "-> Ministry Excel+ZIP: Install_Prawko.windows.ps1 -InstallGov" -ForegroundColor Gray
+Write-Host "-> Ministry question catalog: Install_Prawko.windows.ps1 -GovQuestions" -ForegroundColor Gray
+Write-Host "-> Gaps from ministry:    Install_Prawko.windows.ps1 -Merge" -ForegroundColor Gray
+Write-Host "-> Local contrib: Install_Prawko.windows.ps1 -Patch" -ForegroundColor Gray
+Write-Host "-> Git for changes:    Install_Prawko.windows.ps1 -Dev D:\prawko (no server)" -ForegroundColor Gray
 
 if ($Patch) {
-    Write-Host "`n=== 5b. KOD Z LOKALNEGO CONTRIB (-Patch) ===" -ForegroundColor Cyan
+    Write-Host "`n=== 5b. CODE FROM LOCAL CONTRIB (-Patch) ===" -ForegroundColor Cyan
     Apply-PrawkoAppFixes -root $targetDir
 } else {
-    Write-Host "`n=== 5b. POMINIĘTE (bez -Patch) ===" -ForegroundColor Cyan
-    Write-Host "-> Kod aplikacji zostaje jak w AnabelMaz/prawko. Lokalny contrib: Install_Prawko.ps1 -Patch" -ForegroundColor Gray
+    Write-Host "`n=== 5b. SKIPPED (no -Patch) ===" -ForegroundColor Cyan
+    Write-Host "-> App code stays as in AnabelMaz/prawko. Local contrib: Install_Prawko.windows.ps1 -Patch" -ForegroundColor Gray
 }
 
 
-Write-Host "`n=== 6. INSTALACJA NPM I REJESTRACJA USŁUGI WINDOWS ===" -ForegroundColor Cyan
+Write-Host "`n=== 6. NPM INSTALL AND WINDOWS SERVICE REGISTRATION ===" -ForegroundColor Cyan
 Set-Location $targetDir
 
 $npmCmd = Join-Path (Split-Path $nodeExe -Parent) "npm.cmd"
 if (-not (Test-Path $npmCmd)) { $npmCmd = "npm.cmd" }
 
 if (-not (Test-Path (Join-Path $targetDir "package.json"))) {
-    throw "Brak package.json w $targetDir — pobranie ZIP z GitHuba nie powiodło się."
+    throw "Missing package.json in $targetDir — GitHub ZIP download failed."
 }
 
-Write-Host "Instalacja 'serve'..." -ForegroundColor Yellow
+Write-Host "Installing 'serve'..." -ForegroundColor Yellow
 & $npmCmd install --omit=dev --no-fund --no-audit
-if ($LASTEXITCODE -ne 0) { throw "npm install --omit=dev nie powiodło się." }
+if ($LASTEXITCODE -ne 0) { throw "npm install --omit=dev failed." }
 & $npmCmd install serve --no-fund --no-audit
-if ($LASTEXITCODE -ne 0) { throw "npm install serve nie powiodło się." }
+if ($LASTEXITCODE -ne 0) { throw "npm install serve failed." }
 
 $serveEntry = Resolve-ServeEntry $targetDir
-if (-not $serveEntry) { throw "Nie znaleziono pakietu 'serve' w node_modules." }
+if (-not $serveEntry) { throw "Could not find the 'serve' package in node_modules." }
 
 $srcDir = Join-Path $targetDir "src"
 if (-not (Test-Path (Join-Path $srcDir "index.html"))) {
-    throw "Brak src\index.html."
+    throw "Missing src\index.html."
 }
 
 icacls $targetDir /grant "*S-1-1-0:(OI)(CI)F" /T | Out-Null
 
-Write-Host "Rejestrowanie usługi $serviceName..." -ForegroundColor Yellow
+Write-Host "Registering service $serviceName..." -ForegroundColor Yellow
 & $nssmExe install $serviceName $nodeExe
 & $nssmExe set $serviceName AppParameters "`"$serveEntry`" -s . -l $listenPort"
 & $nssmExe set $serviceName AppDirectory $srcDir
@@ -2274,25 +2299,25 @@ Write-Host "Rejestrowanie usługi $serviceName..." -ForegroundColor Yellow
 & $nssmExe set $serviceName AppStderr (Join-Path $targetDir "service_error.log")
 & $nssmExe set $serviceName AppRotateFiles 1
 
-Write-Host "Uruchamianie usługi Windows..." -ForegroundColor Green
+Write-Host "Starting the Windows service..." -ForegroundColor Green
 & $nssmExe start $serviceName
 Start-Sleep -Seconds 4
 
 $svc = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
 if ($svc -and $svc.Status -eq "Running") {
     Write-Host "`n==================================================" -ForegroundColor Green
-    Write-Host " USŁUGA WYSTARTOWAŁA POPRAWNIE! " -ForegroundColor Green
-    Write-Host " Aplikacja: http://localhost:$listenPort " -ForegroundColor Yellow
-    Write-Host " Pytania:   baza z AnabelMaz/prawko (src\data) " -ForegroundColor Yellow
-        Write-Host " Media:     CDN prawko-maz (Backblaze) " -ForegroundColor Yellow
-        Write-Host " Excel+ZIP MI:   Install_Prawko.ps1 -InstallGov " -ForegroundColor DarkGray
-        Write-Host " Katalog pytań MI: Install_Prawko.ps1 -GovQuestions " -ForegroundColor DarkGray
-        Write-Host " Braki z MI:    Install_Prawko.ps1 -Merge " -ForegroundColor DarkGray
-        Write-Host " Lokalny contrib: Install_Prawko.ps1 -Patch " -ForegroundColor DarkGray
-        Write-Host " Git do zmian:    Install_Prawko.ps1 -Dev D:\prawko " -ForegroundColor DarkGray
+    Write-Host " SERVICE STARTED SUCCESSFULLY! " -ForegroundColor Green
+    Write-Host " Application: http://localhost:$listenPort " -ForegroundColor Yellow
+    Write-Host " Questions:   bank from AnabelMaz/prawko (src\data) " -ForegroundColor Yellow
+        Write-Host " Media:     prawko-maz CDN (Backblaze) " -ForegroundColor Yellow
+        Write-Host " Ministry Excel+ZIP:   Install_Prawko.windows.ps1 -InstallGov " -ForegroundColor DarkGray
+        Write-Host " Ministry question catalog: Install_Prawko.windows.ps1 -GovQuestions " -ForegroundColor DarkGray
+        Write-Host " Gaps from ministry:    Install_Prawko.windows.ps1 -Merge " -ForegroundColor DarkGray
+        Write-Host " Local contrib: Install_Prawko.windows.ps1 -Patch " -ForegroundColor DarkGray
+        Write-Host " Git for changes:    Install_Prawko.windows.ps1 -Dev D:\prawko " -ForegroundColor DarkGray
     Write-Host "==================================================" -ForegroundColor Green
 } else {
-    Write-Host "`n[BŁĄD] Usługa nie wystartowała." -ForegroundColor Red
+    Write-Host "`n[ERROR] Service did not start." -ForegroundColor Red
     $errLog = Join-Path $targetDir "service_error.log"
     if (Test-Path $errLog) { Get-Content $errLog -Tail 20 }
     Restore-InitialLocation

@@ -6,6 +6,8 @@
 #
 #   bash scripts/download-gov.sh
 #   bash scripts/download-gov.sh --excel-only
+# Helpers for installers / convert-media:
+#   PRAWKO_GOV_LIBRARY_ONLY=1 . scripts/download-gov.sh
 #
 # Paths (override with env):
 #   PRAWKO_GOV_DATA   staging dir (default: macOS Library/Application Support, Linux ~/.local/share)
@@ -19,22 +21,27 @@ LEGACY_RAW_NAME="Pytania egzaminacyjne na prawo jazdy 2025"
 
 EXCEL_ONLY=0
 SKIP_MEDIA=0
+if [ "${PRAWKO_GOV_LIBRARY_ONLY:-0}" != 1 ]; then
 for arg in "$@"; do
   case "$arg" in
     --excel-only|-ExcelOnly) EXCEL_ONLY=1 ;;
     --skip-media|-SkipMedia) SKIP_MEDIA=1 ;;
     --help|-h|-Help)
-      echo "download-gov.sh — Excel + ZIP multimediów sytuacyjnych z gov.pl"
-      echo "  --excel-only   tylko baza_pytan.xlsx"
-      echo "  --skip-media   Excel tak, ZIP nie"
+      echo "download-gov.sh — Excel + situational media ZIP from gov.pl"
+      echo "  --excel-only   Excel only (baza_pytan.xlsx)"
+      echo "  --skip-media   Excel yes, ZIP no"
       exit 0
       ;;
+    --library-only)
+      # Installers set PRAWKO_GOV_LIBRARY_ONLY instead; keep the flag for CLI.
+      ;;
     *)
-      echo "Nieznany argument: $arg" >&2
+      echo "Unknown argument: $arg" >&2
       exit 1
       ;;
   esac
 done
+fi
 
 say() { printf '%s\n' "$*"; }
 say_c() { printf '\033[36m%s\033[0m\n' "$*"; }
@@ -44,7 +51,7 @@ say_d() { printf '\033[90m%s\033[0m\n' "$*"; }
 
 die() { echo "$*" >&2; exit 1; }
 
-script_dir="$(cd "$(dirname "$0")" && pwd)"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 repo_root() {
   if [ -n "${PRAWKO_REPO_ROOT:-}" ]; then
@@ -57,7 +64,7 @@ repo_root() {
     printf '%s\n' "$root"
     return
   fi
-  die "Nie znaleziono katalogu repo (src/index.html) nad $script_dir."
+  die "Repo directory not found (src/index.html) above $script_dir."
 }
 
 sha256_hex() {
@@ -138,16 +145,16 @@ curl_download() {
   local expected=""
   expected="$(curl -sI -L -A "$UA" --max-time 20 "$url" 2>/dev/null | awk 'tolower($1)=="content-length:" {print $2}' | tr -d '\r' | tail -n 1)"
   if [ -n "$expected" ] && [ "$expected" -gt 0 ] 2>/dev/null; then
-    say_d "-> Rozmiar: $(awk -v n="$expected" 'BEGIN { printf "%.1f MB", n/1048576 }')"
+    say_d "-> Size: $(awk -v n="$expected" 'BEGIN { printf "%.1f MB", n/1048576 }')"
   fi
   if ! curl -L -C - --retry 5 -A "$UA" -e "$MAIN_URL" --output "$out" "$url"; then
     local rc=$?
     if [ "$rc" -eq 33 ]; then
-      say_y "-> Serwer nie obsługuje wznawiania, pobieram od zera..."
+      say_y "-> Server does not support resume; downloading from scratch..."
       rm -f "$out"
-      curl -L --retry 5 -A "$UA" -e "$MAIN_URL" --output "$out" "$url" || die "Pobieranie nie powiodło się: $url"
+      curl -L --retry 5 -A "$UA" -e "$MAIN_URL" --output "$out" "$url" || die "Download failed: $url"
     else
-      die "Pobieranie nie powiodło się (curl $rc): $url"
+      die "Download failed (curl $rc): $url"
     fi
   fi
 }
@@ -155,7 +162,7 @@ curl_download() {
 flatten_media_dir() {
   local directory="$1" dir f dest
   [ -d "$directory" ] || return 0
-  say_y "-> Spłaszczanie podfolderów w $directory..."
+  say_y "-> Flattening subfolders in $directory..."
   find "$directory" -mindepth 1 -type d -print0 2>/dev/null | while IFS= read -r -d '' dir; do
     :
   done
@@ -173,11 +180,11 @@ flatten_media_dir() {
 parse_gov_links() {
   local html node
   html="$(mktemp)"
-  curl -fsSL -A "$UA" "$MAIN_URL" -o "$html" || { rm -f "$html"; die "Nie udało się pobrać $MAIN_URL"; }
+  curl -fsSL -A "$UA" "$MAIN_URL" -o "$html" || { rm -f "$html"; die "Failed to download $MAIN_URL"; }
   node="$(command -v node || true)"
   if [ -z "$node" ]; then
     rm -f "$html"
-    die "Potrzebny Node.js do sparsowania gov.pl (brew install node)."
+    die "Node.js is required to parse gov.pl (brew install node)."
   fi
   "$node" - "$html" <<'NODE'
 const fs = require("fs");
@@ -215,7 +222,7 @@ rows.sort((a, b) => {
   return (excel(a) ? 0 : 1) - (excel(b) ? 0 : 1);
 });
 if (!rows.length) {
-  console.error("Parser strony gov.pl nie znalazł linków do bazy pytań ani multimediów.");
+  console.error("gov.pl page parser found no question-bank or multimedia links.");
   process.exit(1);
 }
 for (const row of rows) {
@@ -281,7 +288,7 @@ resolve_staging() {
   over_free="$(free_bytes "$overflow")"
   over_free="${over_free:-0}"
   if [ "$over_free" -ge "$min_free" ]; then
-    say_y "-> Mało miejsca na $what ($preferred). Używam $overflow"
+    say_y "-> Low disk space for $what ($preferred). Using $overflow"
     printf '%s\n' "$overflow"
     return
   fi
@@ -295,7 +302,7 @@ move_legacy_raw() {
   [ -d "$legacy" ] || return 0
   raw="$(gov_data_dir)/raw"
   mkdir -p "$raw"
-  say_y "Scalam stary folder surowych mediów do gov-data/raw..."
+  say_y "Merging legacy raw-media folder into gov-data/raw..."
   find "$legacy" -type f -exec sh -c 'dest="$1/$(basename "$2")"; [ -e "$dest" ] || mv "$2" "$dest"' _ "$raw" {} \;
   rm -rf "$legacy"
 }
@@ -303,23 +310,28 @@ move_legacy_raw() {
 sync_excel() {
   local excel_path="$1" hash_file="$2" opis url found=0
   mkdir -p "$(dirname "$excel_path")"
-  say_c "-> Parsuję $MAIN_URL ..."
+  say_c "-> Parsing $MAIN_URL ..."
   while IFS="$(printf '\t')" read -r opis url; do
     [ -n "$url" ] || continue
     if is_excel "$opis" "$url"; then
       found=1
       if needs_download "$url" "$hash_file" "$excel_path"; then
-        say_c "-> Pobieram Excel z gov.pl do $excel_path..."
+        say_c "-> Downloading Excel from gov.pl to $excel_path..."
         curl_download "$url" "$excel_path"
         save_prefix_hash "$hash_file" "$url"
       else
-        say_d "-> Excel bez zmian. Parsuję lokalny plik: $excel_path"
+        say_d "-> Excel unchanged. Parsing local file: $excel_path"
       fi
       break
     fi
   done < <(parse_gov_links)
-  [ "$found" -eq 1 ] || die "gov.pl nie ma linku do Excela z bazą pytań."
+  [ "$found" -eq 1 ] || die "gov.pl has no Excel link for the question bank."
 }
+
+if [ "${PRAWKO_GOV_LIBRARY_ONLY:-0}" = 1 ]; then
+  # Sourced: return to caller. Executed as a file: return is invalid, so exit.
+  return 0 2>/dev/null || exit 0
+fi
 
 GOV_DIR="$(gov_data_dir)"
 EXCEL_PATH="$GOV_DIR/baza_pytan.xlsx"
@@ -328,9 +340,9 @@ OVERFLOW="$(overflow_root)"
 mkdir -p "$GOV_DIR"
 
 if [ "$EXCEL_ONLY" -eq 1 ]; then
-  say_c "download-gov: tylko Excel → $EXCEL_PATH"
+  say_c "download-gov: Excel only → $EXCEL_PATH"
   sync_excel "$EXCEL_PATH" "$EXCEL_HASH"
-  [ -f "$EXCEL_PATH" ] || die "Brak $EXCEL_PATH — baza pytań z gov.pl nie została pobrana."
+  [ -f "$EXCEL_PATH" ] || die "Missing $EXCEL_PATH — question bank from gov.pl was not downloaded."
   say_g "Done. Excel: $EXCEL_PATH"
   exit 0
 fi
@@ -338,63 +350,63 @@ fi
 move_legacy_raw
 
 RAW_PREFERRED="$GOV_DIR/raw"
-RAW_DIR="$(resolve_staging "$RAW_PREFERRED" "$OVERFLOW/raw" $((8 * 1024 * 1024 * 1024)) "surowe JPG/WMV")"
+RAW_DIR="$(resolve_staging "$RAW_PREFERRED" "$OVERFLOW/raw" $((8 * 1024 * 1024 * 1024)) "raw JPG/WMV")"
 if [ "$RAW_DIR" != "$RAW_PREFERRED" ]; then
   mkdir -p "$RAW_DIR"
   ln -sfn "$RAW_DIR" "$RAW_PREFERRED"
 fi
 
 ZIP_PREFERRED="$GOV_DIR/cache"
-ZIP_CACHE="$(resolve_staging "$ZIP_PREFERRED" "$OVERFLOW/cache" $((12 * 1024 * 1024 * 1024)) "ZIP-y MI")"
+ZIP_CACHE="$(resolve_staging "$ZIP_PREFERRED" "$OVERFLOW/cache" $((12 * 1024 * 1024 * 1024)) "ministry ZIPs")"
 mkdir -p "$RAW_DIR" "$ZIP_CACHE"
 
-say_c "download-gov: Excel + ZIP multimediów sytuacyjnych z gov.pl → gov-data."
+say_c "download-gov: Excel + situational media ZIP from gov.pl → gov-data."
 say_d "ZIP: $ZIP_CACHE"
-say_d "Sytuacyjne JPG/WMV: $RAW_DIR"
+say_d "Situational JPG/WMV: $RAW_DIR"
 
-say_c "-> Parsuję $MAIN_URL ..."
+say_c "-> Parsing $MAIN_URL ..."
 parse_gov_links | while IFS="$(printf '\t')" read -r opis url; do
   [ -n "$url" ] || continue
-  say_g "OPIS: $opis"
+  say_g "DESC: $opis"
   say_d "LINK: $url"
   if is_excel "$opis" "$url"; then
     if needs_download "$url" "$EXCEL_HASH" "$EXCEL_PATH"; then
-      say_c "-> Pobieram Excel z gov.pl do $EXCEL_PATH..."
+      say_c "-> Downloading Excel from gov.pl to $EXCEL_PATH..."
       curl_download "$url" "$EXCEL_PATH"
       save_prefix_hash "$EXCEL_HASH" "$url"
     else
-      say_d "-> Excel bez zmian: $EXCEL_PATH"
+      say_d "-> Excel unchanged: $EXCEL_PATH"
     fi
   elif is_pjm "$opis" "$url"; then
-    say_d "-> Tłumaczenia migowe (PJM): znalezione, nie pobieram."
+    say_d "-> Sign-language (PJM) pack found; not downloading."
   elif is_media "$opis" "$url"; then
     if [ "$SKIP_MEDIA" -eq 1 ]; then
-      say_d "-> Pomijam multimedia sytuacyjne (--skip-media)."
+      say_d "-> Skipping situational media (--skip-media)."
     else
       url_hash="$(url_fingerprint "$url")"
       marker="$RAW_DIR/.downloaded_$url_hash"
       hash_file="$GOV_DIR/.media_$url_hash.hash"
       zip_path="$ZIP_CACHE/media_$url_hash.zip"
-      say_c "-> Hash 1 MB paczki multimediów..."
+      say_c "-> Hashing first 1 MB of the media pack..."
       if needs_download "$url" "$hash_file" "$marker"; then
-        say_y "-> Pobieram paczkę multimediów z gov.pl (wznawiane, jeśli przerwane)..."
+        say_y "-> Downloading media pack from gov.pl (resumable if interrupted)..."
         curl_download "$url" "$zip_path"
-        say_g "-> Rozpakowuję do $RAW_DIR..."
+        say_g "-> Unpacking to $RAW_DIR..."
         tar -xf "$zip_path" -C "$RAW_DIR" 2>/dev/null || unzip -qo "$zip_path" -d "$RAW_DIR"
         flatten_media_dir "$RAW_DIR"
         : > "$marker"
         save_prefix_hash "$hash_file" "$url"
         rm -f "$zip_path"
       else
-        say_d "-> Paczka multimediów bez zmian. Pomijam pobieranie."
+        say_d "-> Media pack unchanged. Skipping download."
       fi
     fi
   else
-    say_d "-> Pomijam (to nie Excel ani multimedia)."
+    say_d "-> Skipping (not Excel or media)."
   fi
   say "--------------------------------------------------"
 done
 
-[ -f "$EXCEL_PATH" ] || die "Brak $EXCEL_PATH — baza pytań z gov.pl nie została pobrana."
+[ -f "$EXCEL_PATH" ] || die "Missing $EXCEL_PATH — question bank from gov.pl was not downloaded."
 say_g "Done. Excel: $EXCEL_PATH"
-say_d "Sytuacyjne: $RAW_DIR"
+say_d "Situational: $RAW_DIR"

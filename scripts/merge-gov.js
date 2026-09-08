@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Merge ministry Excel JSON into an existing src/data bank.
- * Same rules as Install_Prawko.ps1 Merge-GovExcelIntoDataFiles:
+ * Same rules as Install_Prawko.windows.ps1 Merge-GovExcelIntoDataFiles:
  * match on question text; skip when media filename matches or (optional)
  * ffmpeg frames are ≥95% similar. New rows get id suffix -mi when taken.
  *
@@ -46,9 +46,9 @@ function parseArgs(argv) {
     else if (a === "--help" || a === "-h") {
       console.log("merge-gov.js --gov-dir DIR --out-dir DIR [--ffmpeg PATH] [--media-dir DIR]");
       process.exit(0);
-    } else die("Nieznany argument: " + a);
+    } else die("Unknown argument: " + a);
   }
-  if (!out.govDir || !out.outDir) die("Wymagane: --gov-dir i --out-dir");
+  if (!out.govDir || !out.outDir) die("Required: --gov-dir and --out-dir");
   return out;
 }
 
@@ -214,11 +214,11 @@ function main() {
   }
   const mediaIndex = indexMedia(args.mediaDirs);
   if (ffmpeg && !mediaIndex.size) {
-    console.log("-> Brak lokalnych mediów — merge bez porównania klatek (tylko nazwa pliku).");
+    console.log("-> No local media — merge without frame comparison (filename only).");
   } else if (ffmpeg) {
-    console.log(`-> Porównanie wizualne mediów (FFmpeg ${SIZE}×${SIZE}, próg ${Math.round(THRESHOLD * 100)}%).`);
+    console.log(`-> Visual media comparison (FFmpeg ${SIZE}×${SIZE}, threshold ${Math.round(THRESHOLD * 100)}%).`);
   } else {
-    console.log("-> Brak FFmpeg — merge bez porównania klatek (tylko nazwa pliku mediów).");
+    console.log("-> No FFmpeg — merge without frame comparison (media filename only).");
   }
 
   let addedTotal = 0;
@@ -228,8 +228,8 @@ function main() {
   for (const cat of CATEGORIES) {
     const src = path.join(args.govDir, `${cat}.json`);
     const dest = path.join(args.outDir, `${cat}.json`);
-    if (!fs.existsSync(src)) die(`Brak ${src} — najpierw parse-excel.`);
-    if (!fs.existsSync(dest)) die(`Brak ${dest} — merge wymaga bazy z repozytorium.`);
+    if (!fs.existsSync(src)) die(`Missing ${src} — run parse-excel first.`);
+    if (!fs.existsSync(dest)) die(`Missing ${dest} — merge needs the repo question bank.`);
     const incoming = readJson(src).questions || [];
     const data = readJson(dest);
     const existingIds = new Set();
@@ -288,11 +288,11 @@ function main() {
     });
     addedTotal += added;
     const skipBits = [];
-    if (skippedSame) skipBits.push(`ta sama treść+media: ${skippedSame}`);
-    if (skippedVisual) skipBits.push(`ta sama treść+klatki ≥95%: ${skippedVisual}`);
-    if (idRewritten) skipBits.push(`nowe id (numer zajęty): ${idRewritten}`);
-    const skipNote = skipBits.length ? `, pominięto ${skipBits.join(", ")}` : "";
-    console.log(`  ${String(cat).padStart(3)}: +${String(added).padStart(4)} z MI (razem ${list.length}${skipNote})`);
+    if (skippedSame) skipBits.push(`same text+media: ${skippedSame}`);
+    if (skippedVisual) skipBits.push(`same text+frames ≥95%: ${skippedVisual}`);
+    if (idRewritten) skipBits.push(`new id (number taken): ${idRewritten}`);
+    const skipNote = skipBits.length ? `, skipped ${skipBits.join(", ")}` : "";
+    console.log(`  ${String(cat).padStart(3)}: +${String(added).padStart(4)} from ministry (total ${list.length}${skipNote})`);
   }
 
   const metaPath = path.join(args.outDir, "meta.json");
@@ -306,7 +306,7 @@ function main() {
     }
   }
   writeJson(metaPath, { categories: metaCategories, exam });
-  console.log(`-> Merge: dopisano ${addedTotal} pytań z bazy MI, których nie było w repo.`);
+  console.log(`-> Merge: added ${addedTotal} ministry questions that were not in the repo.`);
 }
 
 main();

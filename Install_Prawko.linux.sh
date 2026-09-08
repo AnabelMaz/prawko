@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Install_Prawko.linux.sh — instalator Prawko na Linux (odpowiednik Install_Prawko.ps1 / .macos.sh).
-# Ściągnij ten jeden plik i odpal. Serwer: Node (paczka albo tarball) + ZIP + systemd.
-# --dev: tylko Git i klon (bez Node, bez serwera).
+# Install_Prawko.linux.sh — Prawko installer for Linux (counterpart of Install_Prawko.windows.ps1 / .macos.sh).
+# Download this one file and run it. Server: Node (distro package or tarball) + ZIP + systemd.
+# --dev: Git and clone only (no Node, no server).
 #
 #   curl -fsSL -o Install_Prawko.linux.sh https://raw.githubusercontent.com/AnabelMaz/prawko/main/Install_Prawko.linux.sh
 #   bash Install_Prawko.linux.sh
@@ -48,65 +48,65 @@ sed_inplace() {
 
 usage() {
   cat <<EOF
-Install_Prawko.linux.sh — instalator Prawko (egzamin na prawo jazdy) na Linux (systemd).
+Install_Prawko.linux.sh — Prawko installer (driving-licence exam) for Linux (systemd).
 
-SKŁADNIA
-  bash Install_Prawko.linux.sh [opcje]
-  Z GitHuba wystarczy ten jeden plik (Pobrane, Pulpit). Nie klonujesz repo ręcznie.
-  Serwer (bez przełączników): Node gdy brak (paczka albo tarball), ZIP, systemd. Bez Gita.
+SYNOPSIS
+  bash Install_Prawko.linux.sh [options]
+  One file from GitHub is enough (Downloads, Desktop). You do not clone the repo by hand.
+  Server (no flags): Node if missing (distro package or tarball), ZIP, systemd. No Git.
 
-PRZEŁĄCZNIKI (jak w Install_Prawko.ps1 na Windows)
-  (brak)                 Tryb domyślny: ZIP z GitHub AnabelMaz/prawko (gałąź ${REPO_BRANCH}),
-                         systemd http://localhost:${LISTEN_PORT}. Bez Gita. Pytania z repo, media
-                         z CDN prawko-maz. Gdy serwer już stoi, nic nie nadpisuje.
-  --install-gov          Excel + ZIP multimediów sytuacyjnych z gov.pl.
+FLAGS (same as Install_Prawko.windows.ps1 on Windows)
+  (none)                 Default mode: ZIP from GitHub AnabelMaz/prawko (branch ${REPO_BRANCH}),
+                         systemd http://localhost:${LISTEN_PORT}. No Git. Questions from the repo, media
+                         from the prawko-maz CDN. If the server is already running, nothing is overwritten.
+  --install-gov          Excel + situational-media ZIP from gov.pl.
                          Staging: ~/.local/share/prawko/gov-data
-                         Konwersja (WebP/MP4) i JSON: ${TARGET_DIR}
-                         PJM nie pobiera. --patch pomija data/ i media/.
-  --drop-missing-media   Tylko z --install-gov: parser wykreśla z JSON media,
-                         których pliku nie ma w lokalnym raw. Domyślnie NIE.
-  --gov-questions        Tylko katalog pytań z ministerstwa na żywy serwer.
-                         Nie rusza src/media ani CDN.
-  --patch                Nakłada kod z lokalnego checkoutu (--dev, obok skryptu,
-                         ../prawko-contrib). Pomija data/ i media/.
-                         Na już stojącym serwerze: tylko overlay, bez sudo,
-                         bez reinstalu systemd.
-                         Przy pierwszej instalacji: ZIP AnabelMaz + systemd + overlay.
-  --export <ścieżka>     Paczka: <ścieżka>/prawko/Install_Prawko.linux.sh
-                         oraz <ścieżka>/prawko-contrib/. Bez ruszania serwera.
-  --dev <ścieżka>        Tylko klon gita (kod, commit, push). Nie ${TARGET_DIR}.
-                         Nie instaluje Node ani systemd — nawet gdy serwer nie stoi.
-                         Git musi już być w PATH. Localhost: najpierw skrypt bez przełączników.
-                         Folder pusty albo jeszcze nie istnieje.
-  --merge                Na już stojącym serwerze: dopisuje braki z Excel MI.
-                         Nie stawia systemd. Brak serwera = najpierw bez przełączników.
-  --uninstall            Usuwa systemd i ${TARGET_DIR}. Git i Node z dystrybucji zostają. Tarball Node w tools/ znika z katalogiem.
-  --non-interactive      Bez pauzy Enter na końcu.
-  --help                 Ta pomoc.
+                         Conversion (WebP/MP4) and JSON: ${TARGET_DIR}
+                         Does not download PJM. --patch skips data/ and media/.
+  --drop-missing-media   Only with --install-gov: the parser strips from JSON any media
+                         whose file is missing from local raw. Default: NO.
+  --gov-questions        Ministry question catalogue onto a live server only.
+                         Does not touch src/media or the CDN.
+  --patch                Overlays code from a local checkout (--dev, next to the script,
+                         ../prawko-contrib). Skips data/ and media/.
+                         On an already running server: overlay only, no sudo,
+                         no systemd reinstall.
+                         On first install: AnabelMaz ZIP + systemd + overlay.
+  --export <path>        Pack: <path>/prawko/Install_Prawko.linux.sh
+                         and <path>/prawko-contrib/. Does not touch the server.
+  --dev <path>           Git clone only (code, commit, push). Not ${TARGET_DIR}.
+                         Does not install Node or systemd — even if the server is not running.
+                         Git must already be on PATH. Localhost: run the script with no flags first.
+                         Folder must be empty or not exist yet.
+  --merge                On an already running server: fills gaps from ministry Excel.
+                         Does not set up systemd. No server = run with no flags first.
+  --uninstall            Removes systemd and ${TARGET_DIR}. Distro Git and Node stay. Node tarball in tools/ is removed with the directory.
+  --non-interactive      No Enter pause at the end.
+  --help                 This help.
 
-DWA TYPY UŻYTKOWNIKA
-  Zwykły: skrypt bez przełączników. ZIP + Node + systemd. Bez Gita.
-  Deweloper: tylko kod, bez serwera:
+TWO USER TYPES
+  Regular: script with no flags. ZIP + Node + systemd. No Git.
+  Developer: code only, no server:
     bash Install_Prawko.linux.sh --dev ~/prawko
-  Oba (localhost + git): najpierw bez przełączników, potem --dev.
+  Both (localhost + git): no flags first, then --dev.
 
-  Każdy przełącznik doinstalowuje tylko to, czego używa:
-    (brak)           Node (paczka albo tarball), ZIP, systemd
-    --dev            Git + klon (bez Node, bez serwera, bez sudo)
-    --patch          nic, gdy serwer stoi; bez serwera: Node + systemd + overlay
-    --install-gov    FFmpeg gdy brak (paczka albo tarball); Excel+ZIP z gov.pl
-    --gov-questions  Python do parsera
-    --merge          Node + Python; zapis do stojącego serwera
-    --export         nic (kopia plików)
-    --uninstall      nic nowego
+  Each flag installs only what it uses:
+    (none)           Node (distro package or tarball), ZIP, systemd
+    --dev            Git + clone (no Node, no server, no sudo)
+    --patch          nothing when the server is up; without a server: Node + systemd + overlay
+    --install-gov    FFmpeg if missing (distro package or tarball); Excel+ZIP from gov.pl
+    --gov-questions  Python for the parser
+    --merge          Node + Python; writes to the running server
+    --export         nothing (file copy)
+    --uninstall      nothing new
 
-CZEGO WYMAGA
-  Serwer (bez przełączników): sudo, Node gdy brak, ZIP, systemd. Bez Gita. Wymaga systemd.
-  --dev: tylko Git + klon (bez Node, bez serwera, bez sudo). Brak gita: jako root
-         doinstaluje pakiet; bez sudo zainstaluj z dystrybucji (apt/dnf/pacman/zypper/apk).
-  --install-gov: FFmpeg (paczka albo przenośny tarball w tools/, jak na Windows);
-                 Python+openpyxl do parse-excel.py. Bez sudo.
-  --gov-questions: Python do parsera. --merge: Node + Python; wymaga serwera.
+REQUIREMENTS
+  Server (no flags): sudo, Node if missing, ZIP, systemd. No Git. Requires systemd.
+  --dev: Git + clone only (no Node, no server, no sudo). If git is missing: as root
+         installs the package; without sudo install from the distro (apt/dnf/pacman/zypper/apk).
+  --install-gov: FFmpeg (distro package or portable tarball in tools/, as on Windows);
+                 Python+openpyxl for parse-excel.py. No sudo.
+  --gov-questions: Python for the parser. --merge: Node + Python; requires a server.
 EOF
 }
 
@@ -121,17 +121,17 @@ while [ $# -gt 0 ]; do
     --patch|-Patch) PATCH=1; shift ;;
     --drop-missing-media|-DropMissingMedia) DROP_MISSING_MEDIA=1; shift ;;
     --export|-Export)
-      [ $# -ge 2 ] || die "--export wymaga ścieżki"
+      [ $# -ge 2 ] || die "--export requires a path"
       EXPORT="$2"
       shift 2
       ;;
     --dev|-Dev)
-      [ $# -ge 2 ] || die "--dev wymaga ścieżki"
+      [ $# -ge 2 ] || die "--dev requires a path"
       DEV="$2"
       DEV_SET=1
       shift 2
       ;;
-    *) die "Nieznany argument: $1 (zobacz --help)" ;;
+    *) die "Unknown argument: $1 (see --help)" ;;
   esac
 done
 
@@ -145,7 +145,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 INITIAL_PWD="$(pwd)"
 
 if [ "$(uname -s)" != "Linux" ]; then
-  die "Ten instalator jest na Linux. macOS: Install_Prawko.macos.sh  Windows: Install_Prawko.ps1"
+  die "This installer is for Linux. macOS: Install_Prawko.macos.sh  Windows: Install_Prawko.windows.ps1"
 fi
 
 REAL_USER="${SUDO_USER:-${USER:-$(id -un)}}"
@@ -156,14 +156,15 @@ else
   REAL_HOME="${REAL_HOME:-$HOME}"
 fi
 export PRAWKO_USER_HOME="$REAL_HOME"
-GOV_DATA="${PRAWKO_GOV_DATA:-$REAL_HOME/.local/share/prawko/gov-data}"
+_prawko_gov_data_preset="${PRAWKO_GOV_DATA:-}"
+GOV_DATA="${_prawko_gov_data_preset:-$REAL_HOME/.local/share/prawko/gov-data}"
 export PRAWKO_GOV_DATA="$GOV_DATA"
 DEV_WORK_ROOT=""
 
 is_root() { [ "$(id -u)" -eq 0 ]; }
 
 need_root_for_default() {
-  # sudo tylko: pierwsza instalacja serwera albo --uninstall.
+  # sudo only: first server install or --uninstall.
   [ "$UNINSTALL" -eq 1 ] && return 0
   [ -n "$EXPORT" ] && return 1
   [ "$GOV_QUESTIONS" -eq 1 ] && return 1
@@ -182,7 +183,7 @@ elevate_if_needed() {
   if ! need_root_for_default; then
     return 0
   fi
-  say_y "Wymagane uprawnienia administratora. Ponawiam z sudo..."
+  say_y "Administrator privileges required. Re-running with sudo..."
   exec sudo -E "$SCRIPT_PATH" "$@"
 }
 
@@ -239,7 +240,7 @@ find_contrib() {
 require_contrib() {
   local found
   found="$(find_contrib || true)"
-  [ -n "$found" ] || die "Brak lokalnego checkoutu do zmian. Odpal ./Install_Prawko.linux.sh --dev <ścieżka> albo trzymaj repo obok instalatora."
+  [ -n "$found" ] || die "No local checkout for changes. Run ./Install_Prawko.linux.sh --dev <path> or keep the repo next to the installer."
   printf '%s\n' "$found"
 }
 
@@ -260,7 +261,7 @@ run_pipeline() {
   local name="$1"
   shift
   local path
-  path="$(resolve_pipeline "$name")" || die "Brak skryptu $name (szukano obok instalatora, w contrib i w $TARGET_DIR/scripts)."
+  path="$(resolve_pipeline "$name")" || die "Missing script $name (looked next to the installer, in contrib, and in $TARGET_DIR/scripts)."
   say_c "-> $name $*"
   bash "$path" "$@"
 }
@@ -283,17 +284,28 @@ restore_media_base_if_needed() {
 }
 
 set_local_media_base() {
-  local datajs="$1/src/js/data.js"
-  [ -f "$datajs" ] || die "Brak $datajs"
-  sed_inplace "s/export const MEDIA_BASE = [^;[:space:]]+/export const MEDIA_BASE = 'media'/" "$datajs"
-  grep -q "export const MEDIA_BASE = 'media'" "$datajs" || die "Nie udało się ustawić lokalnego MEDIA_BASE w data.js"
-  say_g "-> Aplikacja będzie brać multimedia z src/media (nie z CDN)."
+  local json="$1/src/local.json"
+  python3 - "$json" <<'PY'
+import json, pathlib, sys
+p = pathlib.Path(sys.argv[1])
+data = {}
+if p.is_file():
+    try:
+        parsed = json.loads(p.read_text(encoding="utf-8") or "{}")
+        if isinstance(parsed, dict):
+            data = parsed
+    except json.JSONDecodeError:
+        data = {}
+data["mediaBase"] = "media"
+p.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+PY
+  say_g "-> src/local.json mediaBase=media (local files, not the CDN)."
 }
 
 stamp_cache() {
   local root="$1" prefix="$2" sw stamp
   sw="$root/src/sw.js"
-  [ -f "$sw" ] || die "Brak $sw"
+  [ -f "$sw" ] || die "Missing $sw"
   stamp="$(date +%Y%m%d%H%M%S)"
   sed_inplace "s/const CACHE_VERSION = '[^']+';/const CACHE_VERSION = '${prefix}-${stamp}';/" "$sw"
   grep -q "const CACHE_VERSION = '${prefix}-${stamp}'" "$sw" || die "Could not stamp CACHE_VERSION in $sw"
@@ -303,9 +315,9 @@ stamp_cache() {
 remove_legacy_server_raw() {
   local legacy="$TARGET_DIR/Pytania egzaminacyjne na prawo jazdy 2025"
   [ -e "$legacy" ] || return 0
-  say_y "Usuwam zbędny katalog surowych mediów z serwera: $legacy"
+  say_y "Removing leftover raw-media folder from the server: $legacy"
   rm -rf "$legacy"
-  [ ! -e "$legacy" ] || die "Nie udało się usunąć $legacy."
+  [ ! -e "$legacy" ] || die "Could not remove $legacy."
 }
 
 copy_gov_json_to_server() {
@@ -328,9 +340,9 @@ copy_gov_json_to_server() {
 
 overlay_src() {
   local src_app="$1" dest_root="$2" prefix="$3"
-  [ -f "$src_app/index.html" ] || die "Brak $src_app/index.html"
-  [ -f "$dest_root/src/index.html" ] || die "Serwer nie jest zainstalowany (brak $dest_root/src/index.html)."
-  say_c "-> Nakładanie $src_app -> $dest_root/src (pomijam data/ i media/)"
+  [ -f "$src_app/index.html" ] || die "Missing $src_app/index.html"
+  [ -f "$dest_root/src/index.html" ] || die "Server is not installed (missing $dest_root/src/index.html)."
+  say_c "-> Overlaying $src_app -> $dest_root/src (skipping data/ and media/)"
   rsync -a --exclude data --exclude media "$src_app/" "$dest_root/src/"
   if [ -f "$src_app/data/translations_en.json" ] && [ -d "$dest_root/src/data" ]; then
     cp "$src_app/data/translations_en.json" "$dest_root/src/data/translations_en.json"
@@ -343,12 +355,12 @@ apply_patch() {
   local contrib
   contrib="$(find_contrib || true)"
   if [ -z "$contrib" ]; then
-    say_y "-> Brak lokalnego contrib. Zostawiam kod z GitHub $REPO_URL ($REPO_BRANCH)."
+    say_y "-> No local contrib. Leaving code from GitHub $REPO_URL ($REPO_BRANCH)."
     return 0
   fi
-  say_y "-> Nakładanie kodu z lokalnego contrib: $contrib"
+  say_y "-> Overlaying code from local contrib: $contrib"
   overlay_src "$contrib/src" "$TARGET_DIR" "prawko-patch"
-  say_g "-> Nałożono kod z lokalnego contrib."
+  say_g "-> Overlayed code from local contrib."
 }
 
 load_tool_env() {
@@ -397,26 +409,26 @@ node_major() {
 
 install_node_tarball() {
   local na url stage inner dest
-  [ ! -f /etc/alpine-release ] || die "Alpine: tarball Node z nodejs.org jest pod glibc. Zainstaluj: apk add nodejs npm"
+  [ ! -f /etc/alpine-release ] || die "Alpine: the Node tarball from nodejs.org is glibc-based. Install: apk add nodejs npm"
   case "$(uname -m)" in
     x86_64) na=x64 ;;
     aarch64|arm64) na=arm64 ;;
-    *) die "Architektura $(uname -m): zainstaluj Node 18+ z dystrybucji i ponów." ;;
+    *) die "Architecture $(uname -m): install Node 18+ from the distro and retry." ;;
   esac
   dest="${TARGET_DIR}/tools/node"
   url="https://nodejs.org/dist/${NODE_DIST_VER}/node-${NODE_DIST_VER}-linux-${na}.tar.gz"
-  say_y "[Brak Node 18+] Pobieram oficjalny tarball ${NODE_DIST_VER} (${na})..."
+  say_y "[Node 18+ missing] Downloading official tarball ${NODE_DIST_VER} (${na})..."
   mkdir -p "${TARGET_DIR}/tools"
   stage="$(mktemp -d "${TMPDIR:-/tmp}/prawko-node.XXXXXX")"
-  curl -fsSL --retry 5 -o "$stage/node.tar.gz" "$url" || die "Nie udało się pobrać Node z nodejs.org."
+  curl -fsSL --retry 5 -o "$stage/node.tar.gz" "$url" || die "Could not download Node from nodejs.org."
   tar -xzf "$stage/node.tar.gz" -C "$stage"
   inner="$(find "$stage" -mindepth 1 -maxdepth 1 -type d -name 'node-*' | head -n 1)"
-  [ -n "$inner" ] || die "Tarball Node nie zawiera katalogu."
+  [ -n "$inner" ] || die "Node tarball contains no directory."
   rm -rf "$dest"
   mv "$inner" "$dest"
   rm -rf "$stage"
   load_tool_env
-  [ -x "$dest/bin/node" ] || die "Node z tarballa nie działa."
+  [ -x "$dest/bin/node" ] || die "Node from the tarball does not work."
   say_g "[OK] Node (tarball) $dest"
 }
 
@@ -429,21 +441,21 @@ ensure_cmd() {
     return 0
   fi
   if ! is_root; then
-    die "Brak $cmd. Zainstaluj z dystrybucji albo odpal instalator serwera z sudo."
+    die "Missing $cmd. Install it from the distro or run the server installer with sudo."
   fi
-  say_y "[Brak $cmd] Instaluję: $*"
-  pkg_install "$@" || die "Nie udało się zainstalować: $*"
+  say_y "[Missing $cmd] Installing: $*"
+  pkg_install "$@" || die "Could not install: $*"
   load_tool_env
   if command -v "$cmd" >/dev/null 2>&1 && "$cmd" --version >/dev/null 2>&1; then
     say_g "[OK] $cmd"
     return 0
   fi
-  die "$cmd nie jest dostępny po instalacji pakietu."
+  die "$cmd is not available after package install."
 }
 
 ensure_node() {
   local maj
-  say_c "=== Narzędzia (Node — paczka dystrybucji albo tarball) ==="
+  say_c "=== Tools (Node — distro package or tarball) ==="
   load_tool_env
   if command -v node >/dev/null 2>&1; then
     maj="$(node_major || true)"
@@ -451,7 +463,7 @@ ensure_node() {
       say_g "[OK] node $(node --version 2>/dev/null || true)"
       return 0
     fi
-    say_y "Node w PATH jest za stary (${maj:-?}). Szukam 18+."
+    say_y "Node on PATH is too old (${maj:-?}). Looking for 18+."
   fi
   if is_root; then
     pkg_install nodejs npm 2>/dev/null || pkg_install nodejs 2>/dev/null || true
@@ -466,7 +478,7 @@ ensure_node() {
     install_node_tarball
     return 0
   fi
-  die "Brak Node 18+. Zainstaluj nodejs z dystrybucji albo odpal instalator serwera z sudo (tarball glibc x64/arm64)."
+  die "Node 18+ is missing. Install nodejs from the distro or run the server installer with sudo (glibc tarball x64/arm64)."
 }
 
 ensure_app_tools() {
@@ -478,21 +490,21 @@ ensure_app_tools() {
 }
 
 ensure_git() {
-  say_c "=== Git (tylko --dev) ==="
+  say_c "=== Git (--dev only) ==="
   if command -v git >/dev/null 2>&1 && git --version >/dev/null 2>&1; then
     say_g "[OK] git"
     return 0
   fi
   if is_root; then
-    say_y "[Brak git] Instaluję z dystrybucji..."
-    pkg_install git || die "Nie udało się zainstalować git."
+    say_y "[Missing git] Installing from the distro..."
+    pkg_install git || die "Could not install git."
     if command -v git >/dev/null 2>&1 && git --version >/dev/null 2>&1; then
       say_g "[OK] git"
       return 0
     fi
-    die "git nie jest dostępny po instalacji pakietu."
+    die "git is not available after package install."
   fi
-  die "Brak Git. --dev nie instaluje Node ani serwera. Zainstaluj git z dystrybucji (np. sudo apt install git / sudo dnf install git / sudo pacman -S git) i ponów."
+  die "Git is missing. --dev does not install Node or the server. Install git from the distro (e.g. sudo apt install git / sudo dnf install git / sudo pacman -S git) and retry."
 }
 
 ensure_python_openpyxl() {
@@ -504,20 +516,20 @@ ensure_python_openpyxl() {
   if as_user python3 -c "import openpyxl" 2>/dev/null; then
     return 0
   fi
-  say_y "Instaluję openpyxl (parse-excel.py)..."
+  say_y "Installing openpyxl (parse-excel.py)..."
   as_user python3 -m pip install --user openpyxl
-  as_user python3 -c "import openpyxl" || die "openpyxl nie jest dostępny (python3 -m pip install --user openpyxl)."
+  as_user python3 -c "import openpyxl" || die "openpyxl is not available (python3 -m pip install --user openpyxl)."
 }
 
 run_parse_excel() {
   local excel="$1" out="$2"
   shift 2
   local py extra=()
-  py="$(resolve_pipeline parse-excel.py)" || die "Brak scripts/parse-excel.py"
+  py="$(resolve_pipeline parse-excel.py)" || die "Missing scripts/parse-excel.py"
   extra=(--excel "$excel" --out-dir "$out")
   if [ "$DROP_MISSING_MEDIA" -eq 1 ]; then
     extra+=(--drop-missing-media --media-dir "$GOV_DATA/raw")
-    say_y "DropMissingMedia: pytania bez lokalnego pliku w raw tracą odwołanie do mediów."
+    say_y "DropMissingMedia: questions without a local file in raw lose their media reference."
   fi
   say_c "-> parse-excel.py ${extra[*]}"
   as_user python3 "$py" "${extra[@]}"
@@ -526,12 +538,12 @@ run_parse_excel() {
 assert_gov_parsed() {
   local gov_dir="$1" excel="$2" meta qtotal
   meta="$gov_dir/meta.json"
-  [ -f "$meta" ] || die "Brak meta.json po parsowaniu Excela."
+  [ -f "$meta" ] || die "Missing meta.json after parsing Excel."
   qtotal="$(as_user python3 -c "import json,sys; m=json.load(open(sys.argv[1],encoding='utf-8')); print(sum(int(c.get('questionCount') or 0) for c in (m.get('categories') or [])))" "$meta")"
   if [ "${qtotal:-0}" -lt 100 ]; then
-    die "Parser Excela zapisał za mało pytań ($qtotal). Sprawdź układ kolumn w $excel."
+    die "Excel parser wrote too few questions ($qtotal). Check the column layout in $excel."
   fi
-  say_g "-> W gov-data: $qtotal przypisań pytań. Oryginały w contrib/src/data zostają."
+  say_g "-> In gov-data: $qtotal question assignments. Originals in contrib/src/data are left as-is."
 }
 
 ffmpeg_tools_root() {
@@ -562,24 +574,24 @@ install_portable_ffmpeg() {
   case "$(uname -m)" in
     x86_64) arch=linux64 ;;
     aarch64|arm64) arch=linuxarm64 ;;
-    *) die "Architektura $(uname -m): zainstaluj ffmpeg z dystrybucji i ponów." ;;
+    *) die "Architecture $(uname -m): install ffmpeg from the distro and retry." ;;
   esac
   root="$(ffmpeg_tools_root)"
   dest="$root/ffmpeg"
   url="https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-${arch}-gpl.tar.xz"
-  say_y "[Brak FFmpeg] Pobieram przenośną paczkę (${arch}) do $dest ..."
+  say_y "[FFmpeg missing] Downloading portable pack (${arch}) to $dest ..."
   mkdir -p "$root"
   stage="$(mktemp -d "${TMPDIR:-/tmp}/prawko-ffmpeg.XXXXXX")"
-  curl -fsSL --retry 5 -o "$stage/ffmpeg.tar.xz" "$url" || die "Nie udało się pobrać FFmpeg (BtbN/FFmpeg-Builds)."
-  tar -xf "$stage/ffmpeg.tar.xz" -C "$stage" || die "Nie udało się rozpakować FFmpeg (potrzebny tar z obsługą xz)."
+  curl -fsSL --retry 5 -o "$stage/ffmpeg.tar.xz" "$url" || die "Could not download FFmpeg (BtbN/FFmpeg-Builds)."
+  tar -xf "$stage/ffmpeg.tar.xz" -C "$stage" || die "Could not unpack FFmpeg (need tar with xz support)."
   inner="$(find "$stage" -mindepth 1 -maxdepth 1 -type d -name 'ffmpeg-*' | head -n 1)"
-  [ -n "$inner" ] || die "Tarball FFmpeg nie zawiera katalogu."
+  [ -n "$inner" ] || die "FFmpeg tarball contains no directory."
   rm -rf "$dest"
   mv "$inner" "$dest"
   rm -rf "$stage"
   load_tool_env
-  [ -x "$dest/bin/ffmpeg" ] || die "Po rozpakowaniu nie ma ffmpeg w $dest/bin."
-  say_g "[OK] FFmpeg (przenośny) $dest/bin/ffmpeg"
+  [ -x "$dest/bin/ffmpeg" ] || die "After unpacking, ffmpeg is missing in $dest/bin."
+  say_g "[OK] FFmpeg (portable) $dest/bin/ffmpeg"
 }
 
 ensure_ffmpeg() {
@@ -589,7 +601,7 @@ ensure_ffmpeg() {
     return 0
   fi
   if is_root; then
-    say_y "[Brak ffmpeg] Instaluję z dystrybucji..."
+    say_y "[ffmpeg missing] Installing from the distro..."
     pkg_install ffmpeg || true
     load_tool_env
     if resolve_ffmpeg >/dev/null; then
@@ -598,7 +610,7 @@ ensure_ffmpeg() {
     fi
   fi
   install_portable_ffmpeg
-  resolve_ffmpeg >/dev/null || die "FFmpeg nie jest dostępny (ani w systemie, ani w tools/)."
+  resolve_ffmpeg >/dev/null || die "FFmpeg is not available (neither on the system nor in tools/)."
   say_g "[OK] ffmpeg: $(resolve_ffmpeg)"
 }
 
@@ -644,7 +656,7 @@ resolve_npm() {
 
 install_service() {
   local node_exe="$1" serve_entry="$2" svc_user svc_group
-  have_systemd || die "Brak systemd. Ten instalator stawia usługę przez systemd (Ubuntu, Debian, Fedora, Arch, openSUSE)."
+  have_systemd || die "systemd is missing. This installer sets up the service via systemd (Ubuntu, Debian, Fedora, Arch, openSUSE)."
   svc_user="${SUDO_USER:-root}"
   svc_group="$(id -gn "$svc_user" 2>/dev/null || printf '%s\n' "$svc_user")"
   cat > "$SERVICE_UNIT" <<EOF
@@ -685,7 +697,7 @@ stop_service() {
 
 git_clone() {
   local dest="$1" git_exe
-  git_exe="$(resolve_git)" || die "Brak git"
+  git_exe="$(resolve_git)" || die "Missing git"
   GIT_LFS_SKIP_SMUDGE=1 "$git_exe" clone --branch "$REPO_BRANCH" "$REPO_URL" "$dest"
 }
 
@@ -695,74 +707,74 @@ install_from_github_zip() {
   zip="$stage/prawko.zip"
   unpack="$stage/unpack"
   mkdir -p "$unpack" "$dest"
-  say_y "Pobieram AnabelMaz/prawko ($REPO_BRANCH) jako ZIP — bez Gita..."
+  say_y "Downloading AnabelMaz/prawko ($REPO_BRANCH) as ZIP — no Git..."
   curl -fsSL --retry 5 -A "Mozilla/5.0 (X11; Linux x86_64)" \
     -o "$zip" "https://github.com/AnabelMaz/prawko/archive/refs/heads/${REPO_BRANCH}.zip" \
-    || die "Nie udało się pobrać ZIP z GitHuba."
+    || die "Could not download the ZIP from GitHub."
   if command -v tar >/dev/null 2>&1 && tar -tf "$zip" >/dev/null 2>&1; then
     tar -xf "$zip" -C "$unpack"
   else
     unzip -q "$zip" -d "$unpack"
   fi
   inner="$(find "$unpack" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
-  [ -n "$inner" ] || die "ZIP z GitHuba nie zawiera katalogu (oczekiwano prawko-${REPO_BRANCH})."
-  [ -f "$inner/src/index.html" ] || die "ZIP z GitHuba nie wygląda na Prawko (brak src/index.html)."
+  [ -n "$inner" ] || die "GitHub ZIP contains no directory (expected prawko-${REPO_BRANCH})."
+  [ -f "$inner/src/index.html" ] || die "GitHub ZIP does not look like Prawko (missing src/index.html)."
   rsync -a "$inner/" "$dest/"
-  [ -f "$dest/src/index.html" ] || die "Po rozpakowaniu brak src/index.html w $dest"
+  [ -f "$dest/src/index.html" ] || die "After unpacking, src/index.html is missing in $dest"
   rm -rf "$stage"
-  say_g "Aplikacja z ZIP: $dest"
+  say_g "App from ZIP: $dest"
 }
 
 install_dev_clone() {
   local dest="$1"
-  [ -n "$dest" ] || die "--dev wymaga ścieżki, np. --dev ~/prawko"
+  [ -n "$dest" ] || die "--dev requires a path, e.g. --dev ~/prawko"
   case "$dest" in
     /*) ;;
     *) dest="$INITIAL_PWD/$dest" ;;
   esac
   dest="$(mkdir -p "$(dirname "$dest")" && cd "$(dirname "$dest")" && pwd)/$(basename "$dest")"
   if [ "$dest" = "$TARGET_DIR" ]; then
-    die "--dev nie klonuje do serwera ($TARGET_DIR). Podaj osobny folder na kod i git."
+    die "--dev does not clone into the server ($TARGET_DIR). Give a separate folder for code and git."
   fi
   case "$dest" in
-    "$TARGET_DIR"/*) die "--dev: folder nie może leżeć wewnątrz $TARGET_DIR." ;;
+    "$TARGET_DIR"/*) die "--dev: folder must not lie inside $TARGET_DIR." ;;
   esac
   if looks_like_repo "$dest"; then
-    say_y "-> Git do zmian już jest: $dest (pomijam clone)."
+    say_y "-> Git for changes is already there: $dest (skipping clone)."
     DEV_WORK_ROOT="$dest"
     return 0
   fi
   if [ -e "$dest" ]; then
     if [ -n "$(ls -A "$dest" 2>/dev/null)" ]; then
-      die "Katalog $dest już istnieje i nie jest checkoutem Prawko. Podaj pusty folder albo inną ścieżkę."
+      die "Directory $dest already exists and is not a Prawko checkout. Give an empty folder or another path."
     fi
   fi
-  say_y "Klonowanie $REPO_URL ($REPO_BRANCH) → $dest (kod, bez folderu mediów w gicie)..."
+  say_y "Cloning $REPO_URL ($REPO_BRANCH) → $dest (code, no media folder in git)..."
   as_user env GIT_LFS_SKIP_SMUDGE=1 git clone --branch "$REPO_BRANCH" "$REPO_URL" "$dest"
-  [ -f "$dest/src/index.html" ] || die "Po --dev brak src/index.html w $dest"
+  [ -f "$dest/src/index.html" ] || die "After --dev, src/index.html is missing in $dest"
   if is_root && [ -n "${SUDO_USER:-}" ]; then
     chown -R "$SUDO_USER" "$dest"
   fi
   DEV_WORK_ROOT="$dest"
-  say_g "Git do zmian: $dest"
-  say_d "Podgląd zostaje w $TARGET_DIR. Tu commitujesz i pushujesz. Na serwer: ./Install_Prawko.linux.sh --patch"
+  say_g "Git for changes: $dest"
+  say_d "Preview stays in $TARGET_DIR. You commit and push here. Onto the server: ./Install_Prawko.linux.sh --patch"
 }
 
 export_pack() {
   local dest_root dest_install dest_contrib contrib
   dest_root="$1"
-  [ -n "$dest_root" ] || die "--export wymaga ścieżki, np. --export ~/Desktop/prawko-pack"
+  [ -n "$dest_root" ] || die "--export requires a path, e.g. --export ~/Desktop/prawko-pack"
   case "$dest_root" in
     /*) ;;
     *) dest_root="$INITIAL_PWD/$dest_root" ;;
   esac
   dest_root="$(mkdir -p "$dest_root" && cd "$dest_root" && pwd)"
   case "$dest_root" in
-    "$TARGET_DIR"|"$TARGET_DIR"/*) die "--export nie kopiuje do zainstalowanego serwera ($TARGET_DIR)." ;;
+    "$TARGET_DIR"|"$TARGET_DIR"/*) die "--export does not copy into the installed server ($TARGET_DIR)." ;;
   esac
   contrib="$(require_contrib)"
   case "$dest_root" in
-    "$contrib"|"$contrib"/*) die "--export: katalog docelowy nie może leżeć wewnątrz contrib ($contrib)." ;;
+    "$contrib"|"$contrib"/*) die "--export: destination directory must not lie inside contrib ($contrib)." ;;
   esac
   dest_install="$dest_root/prawko"
   dest_contrib="$dest_root/prawko-contrib"
@@ -771,58 +783,58 @@ export_pack() {
 #!/usr/bin/env bash
 set -euo pipefail
 real="$(cd "$(dirname "$0")/../prawko-contrib" && pwd)/Install_Prawko.linux.sh"
-[ -f "$real" ] || { echo "Nie znaleziono $real" >&2; exit 1; }
+[ -f "$real" ] || { echo "Not found: $real" >&2; exit 1; }
 exec bash "$real" "$@"
 STUB
   chmod +x "$dest_install/Install_Prawko.linux.sh"
   say_g "-> Launcher: $dest_install/Install_Prawko.linux.sh"
   if [ "$(cd "$contrib" && pwd)" = "$(mkdir -p "$dest_contrib" && cd "$dest_contrib" && pwd)" ]; then
-    say_d "-> Contrib już jest w $dest_contrib (pomijam kopię)."
+    say_d "-> Contrib is already in $dest_contrib (skipping copy)."
   else
     mkdir -p "$dest_contrib"
     say_c "-> rsync contrib: $contrib -> $dest_contrib"
     rsync -a --exclude node_modules --exclude .git --exclude test-results \
       --exclude playwright-report --exclude blob-report --exclude coverage --exclude .cursor \
       "$contrib/" "$dest_contrib/"
-    [ -f "$dest_contrib/src/index.html" ] || die "Po eksporcie brak $dest_contrib/src/index.html"
+    [ -f "$dest_contrib/src/index.html" ] || die "After export, missing $dest_contrib/src/index.html"
     say_g "-> Contrib: $dest_contrib"
   fi
-  say_g "Gotowe. Z paczki:"
+  say_g "Done. From the pack:"
   say "  bash \"$dest_install/Install_Prawko.linux.sh\""
-  say "  ... --patch  /  --install-gov  /  --export <inny folder>"
+  say "  ... --patch  /  --install-gov  /  --export <another folder>"
 }
 
 do_uninstall() {
-  say_c "=== UNINSTALL: usuwanie systemd i katalogu Prawko ==="
+  say_c "=== UNINSTALL: removing systemd and the Prawko directory ==="
   stop_service
   if [ -d "$TARGET_DIR" ]; then
-    say_y "Usuwam $TARGET_DIR ..."
+    say_y "Removing $TARGET_DIR ..."
     rm -rf "$TARGET_DIR"
   fi
-  [ ! -e "$TARGET_DIR" ] || die "Nie udało się usunąć $TARGET_DIR."
-  say_g "Usunięto usługę $SERVICE_NAME i katalog aplikacji."
-  say_d "Git i Node z dystrybucji zostają. FFmpeg/Node w $TARGET_DIR/tools znikają z folderem."
-  say_d "Staging gov-data zostaje w $GOV_DATA. Przenośny FFmpeg w ~/.local/share/prawko/tools też (gdy /opt nie był zapisywalny)."
+  [ ! -e "$TARGET_DIR" ] || die "Could not remove $TARGET_DIR."
+  say_g "Removed service $SERVICE_NAME and the application directory."
+  say_d "Distro Git and Node stay. FFmpeg/Node under $TARGET_DIR/tools go away with the folder."
+  say_d "gov-data staging stays in $GOV_DATA. Portable FFmpeg in ~/.local/share/prawko/tools too (when /opt was not writable)."
 }
 
 publish_gov_questions() {
   local excel="$GOV_DATA/baza_pytan.xlsx" copy_rc=0
   ensure_python_openpyxl
   remove_legacy_server_raw
-  say_c "GovQuestions: Excel z gov.pl → $GOV_DATA (contrib/src/data nietknięty)"
-  say_d "Bez ZIP multimediów, bez src/media, bez zmiany CDN."
+  say_c "GovQuestions: Excel from gov.pl → $GOV_DATA (contrib/src/data left untouched)"
+  say_d "No media ZIP, no src/media, no CDN change."
   run_pipeline download-gov.sh --excel-only
   run_parse_excel "$excel" "$GOV_DATA"
   assert_gov_parsed "$GOV_DATA" "$excel"
   copy_gov_json_to_server "$GOV_DATA" "prawko-govq" || copy_rc=$?
   if [ "$copy_rc" -eq 0 ]; then
-    say_g "Done. Serwer czyta JSON z ministerstwa. --patch tego nie cofnie (pomija data/)."
-    say_d "Oryginały nadal w contrib/src/data. Filmy z CDN."
+    say_g "Done. Server reads ministry JSON. --patch will not revert this (it skips data/)."
+    say_d "Originals remain in contrib/src/data. Videos from the CDN."
   elif [ "$copy_rc" -eq 1 ]; then
-    say_y "Serwer nie zainstalowany — JSON ministerstwa tylko w gov-data. Po instalacji odpal --gov-questions jeszcze raz."
+    say_y "Server is not installed — ministry JSON only in gov-data. After install, run --gov-questions again."
   else
-    say_y "JSON ministerstwa jest w gov-data, ale nie udało się zapisać na serwer."
-    say_d "contrib/src/data nietknięty. Sprawdź uprawnienia do $TARGET_DIR albo skopiuj gov-data ręcznie."
+    say_y "Ministry JSON is in gov-data, but could not be written to the server."
+    say_d "contrib/src/data left untouched. Check permissions on $TARGET_DIR or copy gov-data by hand."
   fi
 }
 
@@ -834,14 +846,14 @@ publish_gov_install() {
       pkg_install webp libwebp-tools 2>/dev/null || pkg_install libwebp 2>/dev/null || true
     fi
     if ! command -v cwebp >/dev/null 2>&1; then
-      say_y "Brak cwebp — convert-media użyje ffmpeg do WebP."
+      say_y "cwebp missing — convert-media will use ffmpeg for WebP."
     fi
   fi
   ensure_python_openpyxl
-  say_c "InstallGov: Excel + ZIP multimediów sytuacyjnych z gov.pl → $GOV_DATA"
-  say_d "Tłumaczeń migowych (PJM) nie pobieram."
+  say_c "InstallGov: Excel + situational-media ZIP from gov.pl → $GOV_DATA"
+  say_d "Not downloading PJM (sign-language) packs."
   run_pipeline download-gov.sh
-  [ -f "$excel" ] || die "Brak $excel — baza pytań z gov.pl nie została pobrana."
+  [ -f "$excel" ] || die "Missing $excel — the question bank from gov.pl was not downloaded."
   if server_installed; then
     img_out="$TARGET_DIR/src/media/img"
     vid_out="$TARGET_DIR/src/media/vid"
@@ -849,38 +861,38 @@ publish_gov_install() {
     img_out="$REAL_HOME/.local/share/prawko/media/img"
     vid_out="$REAL_HOME/.local/share/prawko/media/vid"
   fi
-  say_c "=== Konwersja mediów sytuacyjnych (JPG→WebP, WMV→MP4) ==="
-  ffmpeg="$(resolve_ffmpeg)" || die "FFmpeg nie jest dostępny (ani w systemie, ani w tools/)."
+  say_c "=== Converting situational media (JPG→WebP, WMV→MP4) ==="
+  ffmpeg="$(resolve_ffmpeg)" || die "FFmpeg is not available (neither on the system nor in tools/)."
   run_pipeline convert-media.sh --source "$GOV_DATA/raw" --img-out "$img_out" --vid-out "$vid_out" --ffmpeg "$ffmpeg"
-  say_c "=== JSON z Excela → gov-data ==="
+  say_c "=== JSON from Excel → gov-data ==="
   run_parse_excel "$excel" "$GOV_DATA"
   assert_gov_parsed "$GOV_DATA" "$excel"
   remove_legacy_server_raw
   if ! server_installed; then
-    say_y "Serwer nie zainstalowany — Excel/JSON/media w $GOV_DATA i $REAL_HOME/.local/share/prawko/media. Po instalacji odpal --install-gov jeszcze raz."
+    say_y "Server is not installed — Excel/JSON/media in $GOV_DATA and $REAL_HOME/.local/share/prawko/media. After install, run --install-gov again."
     return 0
   fi
-  say_c "Kopiuję JSON MI na serwer (git/ contrib/src/data nietknięty)..."
+  say_c "Copying ministry JSON onto the server (git/ contrib/src/data left untouched)..."
   copy_gov_json_to_server "$GOV_DATA" "prawko-govmedia" || copy_rc=$?
   if [ "$copy_rc" -ne 0 ]; then
-    say_y "JSON/media są w staging, ale nie udało się zapisać na serwer."
-    say_d "Sprawdź uprawnienia do $TARGET_DIR."
+    say_y "JSON/media are in staging, but could not be written to the server."
+    say_d "Check permissions on $TARGET_DIR."
     return 0
   fi
   mkdir -p "$TARGET_DIR/src/media/img" "$TARGET_DIR/src/media/vid"
   if [ "$img_out" != "$TARGET_DIR/src/media/img" ]; then
-    say_c "Kopiuję WebP/MP4: $img_out + $vid_out → $TARGET_DIR/src/media"
+    say_c "Copying WebP/MP4: $img_out + $vid_out → $TARGET_DIR/src/media"
     rsync -a "$img_out/" "$TARGET_DIR/src/media/img/" || {
-      say_y "JSON jest na serwerze, ale kopia mediów nie weszła. Sprawdź uprawnienia do $TARGET_DIR."
+      say_y "JSON is on the server, but the media copy did not land. Check permissions on $TARGET_DIR."
       return 0
     }
     rsync -a "$vid_out/" "$TARGET_DIR/src/media/vid/" || {
-      say_y "JSON jest na serwerze, ale kopia mediów nie weszła. Sprawdź uprawnienia do $TARGET_DIR."
+      say_y "JSON is on the server, but the media copy did not land. Check permissions on $TARGET_DIR."
       return 0
     }
   fi
   set_local_media_base "$TARGET_DIR"
-  say_g "Done. Serwer: JSON + media z gov.pl. --patch nie nadpisze data/ ani media/."
+  say_g "Done. Server: JSON + media from gov.pl. --patch will not overwrite data/ or media/."
 }
 
 do_merge() {
@@ -889,20 +901,20 @@ do_merge() {
   ensure_python_openpyxl
   remove_legacy_server_raw
   run_pipeline download-gov.sh --excel-only
-  [ -f "$excel" ] || die "Brak $excel — nie ma ściągniętej bazy ministerstwa do merge."
+  [ -f "$excel" ] || die "Missing $excel — no downloaded ministry bank to merge."
   run_parse_excel "$excel" "$GOV_DATA"
-  js="$(resolve_pipeline merge-gov.js)" || die "Brak scripts/merge-gov.js"
+  js="$(resolve_pipeline merge-gov.js)" || die "Missing scripts/merge-gov.js"
   media_args=(--gov-dir "$GOV_DATA" --out-dir "$TARGET_DIR/src/data")
   if ffmpeg="$(resolve_ffmpeg)"; then
     media_args+=(--ffmpeg "$ffmpeg")
   else
-    say_y "-> Brak FFmpeg — merge bez porównania klatek (tylko nazwa pliku mediów)."
+    say_y "-> FFmpeg missing — merge without frame comparison (media filename only)."
   fi
   [ -d "$GOV_DATA/raw" ] && media_args+=(--media-dir "$GOV_DATA/raw")
   [ -d "$TARGET_DIR/src/media/img" ] && media_args+=(--media-dir "$TARGET_DIR/src/media/img")
   [ -d "$TARGET_DIR/src/media/vid" ] && media_args+=(--media-dir "$TARGET_DIR/src/media/vid")
   say_c "-> merge-gov.js ${media_args[*]}"
-  node_exe="$(resolve_node)" || die "Brak node"
+  node_exe="$(resolve_node)" || die "Missing node"
   "$node_exe" "$js" "${media_args[@]}"
   restore_media_base_if_needed "$TARGET_DIR"
 }
@@ -911,7 +923,7 @@ pause_if_interactive() {
   cd "$INITIAL_PWD" 2>/dev/null || true
   [ "$NONINTERACTIVE" -eq 1 ] && return 0
   [ -t 0 ] || return 0
-  printf "Naciśnij Enter, aby zamknąć "
+  printf "Press Enter to close "
   read -r _
 }
 
@@ -923,22 +935,38 @@ if [ -n "$EXPORT" ]; then
 fi
 
 if [ "$DEV_SET" -eq 1 ] && [ "$UNINSTALL" -eq 0 ]; then
-  say_c "=== Git do zmian (--dev) — bez Node, bez serwera ==="
+  say_c "=== Git for changes (--dev) — no Node, no server ==="
   ensure_git
   install_dev_clone "$DEV"
   if [ "$PATCH" -eq 1 ]; then
     if server_installed; then
       remove_legacy_server_raw
       apply_patch
-      say_g "Gotowe. W otwartej aplikacji baner: Dostępna aktualizacja / Odśwież."
+      say_g "Done. In the open app, banner: Available update / Refresh."
     else
-      say_y "Serwer nie stoi — --patch pominięty. Najpierw bash Install_Prawko.linux.sh bez przełączników."
+      say_y "Server is not running — --patch skipped. First run bash Install_Prawko.linux.sh with no flags."
     fi
   else
-    say_d "To nie stawia localhost. Aplikacja: bash Install_Prawko.linux.sh bez przełączników."
+    say_d "This does not start localhost. App: bash Install_Prawko.linux.sh with no flags."
   fi
   pause_if_interactive
   exit 0
+fi
+
+if [ "$GOV_QUESTIONS" -eq 1 ] || [ "$INSTALL_GOV" -eq 1 ] || [ "$MERGE" -eq 1 ]; then
+  _prawko_gov_lib="$(resolve_pipeline download-gov.sh)" || die "Missing scripts/download-gov.sh. Run the installer with no flags (it will download the app with scripts into $TARGET_DIR) or run it from the root of a cloned repo."
+  PRAWKO_GOV_LIBRARY_ONLY=1
+  # shellcheck disable=SC1090
+  . "$_prawko_gov_lib"
+  unset PRAWKO_GOV_LIBRARY_ONLY
+  if [ -n "$_prawko_gov_data_preset" ]; then
+    export PRAWKO_GOV_DATA="$_prawko_gov_data_preset"
+  else
+    unset PRAWKO_GOV_DATA
+  fi
+  GOV_DATA="$(gov_data_dir)"
+  export PRAWKO_GOV_DATA="$GOV_DATA"
+  unset _prawko_gov_lib
 fi
 
 if [ "$GOV_QUESTIONS" -eq 1 ]; then
@@ -955,9 +983,9 @@ fi
 
 if [ "$MERGE" -eq 1 ]; then
   if ! server_installed; then
-    die "--merge wymaga stojącego serwera. Najpierw bash Install_Prawko.linux.sh bez przełączników."
+    die "--merge requires a running server. First run bash Install_Prawko.linux.sh with no flags."
   fi
-  say_c "=== MERGE: braki z Excel MI (bez reinstalu systemd) ==="
+  say_c "=== MERGE: gaps from ministry Excel (no systemd reinstall) ==="
   do_merge
   pause_if_interactive
   exit 0
@@ -966,19 +994,19 @@ fi
 if [ "$PATCH" -eq 1 ] && [ "$MERGE" -eq 0 ] && [ "$UNINSTALL" -eq 0 ] && [ "$DEV_SET" -eq 0 ] && server_installed; then
   remove_legacy_server_raw
   apply_patch
-  say_g "Gotowe. W otwartej aplikacji baner: Dostępna aktualizacja / Odśwież."
+  say_g "Done. In the open app, banner: Available update / Refresh."
   pause_if_interactive
   exit 0
 fi
 
 if [ "$UNINSTALL" -eq 0 ] && [ "$MERGE" -eq 0 ] && [ "$GOV_QUESTIONS" -eq 0 ] && [ "$INSTALL_GOV" -eq 0 ] && [ "$PATCH" -eq 0 ] && [ "$DEV_SET" -eq 0 ] && server_installed; then
   remove_legacy_server_raw
-  say_y "Serwer już stoi w $TARGET_DIR — nie nadpisuję plików (żadnego git checkout / pull)."
-  say_d "  Kod z lokalnego contrib: ./Install_Prawko.linux.sh --patch"
-  say_d "  Pytania MI:        ./Install_Prawko.linux.sh --install-gov   albo   --gov-questions"
-  say_d "  Git do zmian:      ./Install_Prawko.linux.sh --dev ~/prawko"
-  say_d "  Paczka:            ./Install_Prawko.linux.sh --export ~/Desktop/kopia"
-  say_d "  Od zera:           ./Install_Prawko.linux.sh --uninstall   potem bez przełączników"
+  say_y "Server already running in $TARGET_DIR — not overwriting files (no git checkout / pull)."
+  say_d "  Code from local contrib: ./Install_Prawko.linux.sh --patch"
+  say_d "  Ministry questions:  ./Install_Prawko.linux.sh --install-gov   or   --gov-questions"
+  say_d "  Git for changes:     ./Install_Prawko.linux.sh --dev ~/prawko"
+  say_d "  Pack:                ./Install_Prawko.linux.sh --export ~/Desktop/kopia"
+  say_d "  From scratch:        ./Install_Prawko.linux.sh --uninstall   then with no flags"
   pause_if_interactive
   exit 0
 fi
@@ -996,10 +1024,10 @@ if ! is_root && need_root_for_default; then
   [ -n "$EXPORT" ] && args+=(--export "$EXPORT")
   [ "$DEV_SET" -eq 1 ] && args+=(--dev "$DEV")
   if [ "$UNINSTALL" -eq 0 ]; then
-    # Pakiety Node wymagają roota — doinstalowanie po sudo, jak NSSM na Windows.
+    # Node packages need root — install after sudo, like NSSM on Windows.
     ensure_app_tools
   fi
-  say_y "Wymagane uprawnienia administratora. Ponawiam z sudo..."
+  say_y "Administrator privileges required. Re-running with sudo..."
   exec sudo -E "$SCRIPT_PATH" "${args[@]}"
 fi
 
@@ -1011,80 +1039,80 @@ if [ "$UNINSTALL" -eq 1 ]; then
   exit 0
 fi
 
-say_c "=== 1. SPRAWDZANIE I INSTALACJA NARZĘDZI ==="
+say_c "=== 1. CHECKING AND INSTALLING TOOLS ==="
 ensure_node
-say_d "-> Git pominięty (serwer ze ZIP). Do kodu: --dev."
-say_d "-> Tryb domyślny: ZIP AnabelMaz/prawko ($REPO_BRANCH) + CDN prawko-maz."
+say_d "-> Git skipped (server from ZIP). For code: --dev."
+say_d "-> Default mode: ZIP AnabelMaz/prawko ($REPO_BRANCH) + CDN prawko-maz."
 
-say_c "=== 2. ZATRZYMYWANIE SYSTEMD (JEŚLI DZIAŁA) ==="
+say_c "=== 2. STOPPING SYSTEMD (IF RUNNING) ==="
 stop_service
 
-say_c "=== 3. PRZYGOTOWANIE KATALOGU APLIKACJI ==="
+say_c "=== 3. PREPARING THE APPLICATION DIRECTORY ==="
 if server_installed; then
-  say_y "Serwer już ma src w $TARGET_DIR — pomijam pobieranie / clone."
-  say_d "src/data, src/media i nałożony kod zostają. Od zera: --uninstall."
+  say_y "Server already has src in $TARGET_DIR — skipping download / clone."
+  say_d "src/data, src/media, and overlayed code stay. From scratch: --uninstall."
 elif [ -d "$TARGET_DIR/.git" ]; then
-  die "Katalog $TARGET_DIR ma .git, ale brak src/index.html. Użyj --uninstall i zainstaluj ponownie."
+  die "Directory $TARGET_DIR has .git but is missing src/index.html. Use --uninstall and install again."
 else
   if [ -d "$TARGET_DIR" ] && [ -n "$(ls -A "$TARGET_DIR" 2>/dev/null)" ]; then
-    die "Katalog $TARGET_DIR już istnieje i nie jest pusty. Usuń go albo opróżnij przed instalacją."
+    die "Directory $TARGET_DIR already exists and is not empty. Remove or empty it before install."
   fi
   mkdir -p "$TARGET_DIR"
   install_from_github_zip "$TARGET_DIR"
 fi
-say_g "Katalog aplikacji gotowy: $TARGET_DIR"
+say_g "Application directory ready: $TARGET_DIR"
 remove_legacy_server_raw
 
-say_c "=== 4–5. POMINIĘTE (baza z ZIP AnabelMaz/prawko) ==="
-say_d "-> Pytania: src/data z paczki. Media: CDN prawko-maz."
-say_d "-> Excel+ZIP MI: ./Install_Prawko.linux.sh --install-gov"
-say_d "-> Katalog pytań MI: ./Install_Prawko.linux.sh --gov-questions"
-say_d "-> Braki z MI:    ./Install_Prawko.linux.sh --merge"
-say_d "-> Lokalny contrib: ./Install_Prawko.linux.sh --patch"
-say_d "-> Git do zmian:    ./Install_Prawko.linux.sh --dev ~/prawko (bez serwera)"
+say_c "=== 4–5. SKIPPED (bank from AnabelMaz/prawko ZIP) ==="
+say_d "-> Questions: src/data from the pack. Media: CDN prawko-maz."
+say_d "-> Ministry Excel+ZIP: ./Install_Prawko.linux.sh --install-gov"
+say_d "-> Ministry question catalogue: ./Install_Prawko.linux.sh --gov-questions"
+say_d "-> Gaps from ministry:    ./Install_Prawko.linux.sh --merge"
+say_d "-> Local contrib: ./Install_Prawko.linux.sh --patch"
+say_d "-> Git for changes:    ./Install_Prawko.linux.sh --dev ~/prawko (no server)"
 
 if [ "$PATCH" -eq 1 ]; then
-  say_c "=== 5b. KOD Z LOKALNEGO CONTRIB (--patch) ==="
+  say_c "=== 5b. CODE FROM LOCAL CONTRIB (--patch) ==="
   apply_patch
 else
-  say_c "=== 5b. POMINIĘTE (bez --patch) ==="
-  say_d "-> Kod aplikacji zostaje jak w AnabelMaz/prawko."
+  say_c "=== 5b. SKIPPED (no --patch) ==="
+  say_d "-> App code stays as in AnabelMaz/prawko."
 fi
 
-say_c "=== 6. INSTALACJA NPM I REJESTRACJA SYSTEMD ==="
+say_c "=== 6. NPM INSTALL AND SYSTEMD REGISTRATION ==="
 cd "$TARGET_DIR"
-[ -f "$TARGET_DIR/package.json" ] || die "Brak package.json w $TARGET_DIR — pobranie ZIP z GitHuba nie powiodło się."
-npm_exe="$(resolve_npm)" || die "Brak npm (Node.js). Instalator powinien był doinstalować Node."
-say_y "Instalacja 'serve'..."
+[ -f "$TARGET_DIR/package.json" ] || die "Missing package.json in $TARGET_DIR — GitHub ZIP download failed."
+npm_exe="$(resolve_npm)" || die "Missing npm (Node.js). The installer should have added Node."
+say_y "Installing 'serve'..."
 "$npm_exe" install --omit=dev --no-fund --no-audit
 "$npm_exe" install serve --no-fund --no-audit
-serve_entry="$(resolve_serve_entry "$TARGET_DIR")" || die "Nie znaleziono pakietu 'serve' w node_modules."
-node_exe="$(resolve_node)" || die "Brak node"
-[ -f "$TARGET_DIR/src/index.html" ] || die "Brak src/index.html."
+serve_entry="$(resolve_serve_entry "$TARGET_DIR")" || die "Could not find the 'serve' package in node_modules."
+node_exe="$(resolve_node)" || die "Missing node"
+[ -f "$TARGET_DIR/src/index.html" ] || die "Missing src/index.html."
 
-# User can later --patch without sudo (jak icacls Everyone na Windows).
+# User can later --patch without sudo (like icacls Everyone on Windows).
 if [ -n "${SUDO_USER:-}" ]; then
   chown -R "$SUDO_USER":"$(id -gn "$SUDO_USER")" "$TARGET_DIR" 2>/dev/null || chown -R "$SUDO_USER" "$TARGET_DIR"
   chmod -R u+rwX,go+rX "$TARGET_DIR"
 fi
 
-say_y "Rejestrowanie systemd $SERVICE_NAME.service..."
+say_y "Registering systemd $SERVICE_NAME.service..."
 install_service "$node_exe" "$serve_entry"
 sleep 3
 
 if curl -fsS "http://127.0.0.1:${LISTEN_PORT}/" >/dev/null 2>&1; then
   say_g "=================================================="
-  say_g " USŁUGA WYSTARTOWAŁA POPRAWNIE! "
-  say_y " Aplikacja: http://localhost:${LISTEN_PORT} "
+  say_g " SERVICE STARTED SUCCESSFULLY! "
+  say_y " App: http://localhost:${LISTEN_PORT} "
   if [ "$MERGE" -eq 1 ]; then
-    say_y " Pytania:   AnabelMaz/prawko + brakujące z Excel MI (merge) "
+    say_y " Questions:   AnabelMaz/prawko + gaps from ministry Excel (merge) "
   else
-    say_y " Pytania:   baza z AnabelMaz/prawko (src/data) "
+    say_y " Questions:   bank from AnabelMaz/prawko (src/data) "
     say_y " Media:     CDN prawko-maz (Backblaze) "
   fi
   say_g "=================================================="
 else
-  say_r "[BŁĄD] Usługa nie odpowiada na http://localhost:${LISTEN_PORT}"
+  say_r "[ERROR] Service is not responding at http://localhost:${LISTEN_PORT}"
   [ -f "$TARGET_DIR/service_error.log" ] && tail -n 20 "$TARGET_DIR/service_error.log"
   exit 1
 fi

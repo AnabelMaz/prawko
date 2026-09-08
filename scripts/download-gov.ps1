@@ -1,4 +1,4 @@
-﻿# UTF-8 with BOM — Windows PowerShell 5.1 otherwise misreads Polish text and here-strings.
+# UTF-8 with BOM — Windows PowerShell 5.1 otherwise misreads non-ASCII text and here-strings.
 # Download ministry catalogue + media ZIPs from gov.pl (Windows, no Python).
 # Excel → gov-data\baza_pytan.xlsx
 # Multimedia (JPG/WMV) → gov-data\raw
@@ -21,14 +21,19 @@ $script:PrawkoGovMainUrl = "https://www.gov.pl/web/infrastruktura/prawo-jazdy"
 $script:PrawkoGovUa = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
 $script:PrawkoRawMediaLegacyName = "Pytania egzaminacyjne na prawo jazdy 2025"
 
-if (-not $mainUrl) { $mainUrl = $script:PrawkoGovMainUrl }
-if (-not $ua) { $ua = $script:PrawkoGovUa }
+# convert-media.ps1 dotsources this under Set-StrictMode — do not read unset $mainUrl/$ua.
+if (-not (Get-Variable -Name mainUrl -ErrorAction SilentlyContinue) -or [string]::IsNullOrWhiteSpace($mainUrl)) {
+    $mainUrl = $script:PrawkoGovMainUrl
+}
+if (-not (Get-Variable -Name ua -ErrorAction SilentlyContinue) -or [string]::IsNullOrWhiteSpace($ua)) {
+    $ua = $script:PrawkoGovUa
+}
 
 function Get-PrawkoRepoRoot {
     $root = Split-Path -Parent $PSScriptRoot
     $index = Join-Path $root "src\index.html"
     if (-not (Test-Path -LiteralPath $index)) {
-        throw "Nie znaleziono katalogu repo (src\index.html) nad $PSScriptRoot."
+        throw "Repo directory not found (src\index.html) above $PSScriptRoot."
     }
     return [IO.Path]::GetFullPath($root)
 }
@@ -100,7 +105,7 @@ function Resolve-GovStagingDir {
     if ((Get-PathDriveId $Preferred) -eq (Get-PathDriveId $Overflow)) { return $Preferred }
     $overFree = Get-DriveFreeBytes $Overflow
     if ($overFree -ge $MinFreeBytes) {
-        Write-Host ("-> Mało miejsca na {0}: ({1} GB). {2} → {3}" -f (Get-PathDriveId $Preferred), [math]::Round($prefFree / 1GB, 1), $What, $Overflow) -ForegroundColor DarkYellow
+        Write-Host ("-> Low disk space on {0}: ({1} GB). {2} → {3}" -f (Get-PathDriveId $Preferred), [math]::Round($prefFree / 1GB, 1), $What, $Overflow) -ForegroundColor DarkYellow
         return $Overflow
     }
     return $Preferred
@@ -124,16 +129,16 @@ function Move-LegacyContribRawMediaDir {
     if ($legacyFull -eq $rawFull) { return }
     New-Item -ItemType Directory -Path (Get-GovDataDir) -Force | Out-Null
     if (-not (Test-Path -LiteralPath $raw)) {
-        Write-Host "Przenoszę stary folder surowych mediów → gov-data\raw" -ForegroundColor Yellow
+        Write-Host "Moving legacy raw-media folder → gov-data\raw" -ForegroundColor Yellow
         Move-Item -LiteralPath $legacy -Destination $raw
         return
     }
-    Write-Host "Scalam stary folder surowych mediów do gov-data\raw, potem usuwam stary." -ForegroundColor Yellow
+    Write-Host "Merging legacy raw-media folder into gov-data\raw, then removing the old folder." -ForegroundColor Yellow
     & robocopy.exe $legacy $raw /E /XO /R:2 /W:1 /NFL /NDL /NJH /NJS /nc /ns /np | Out-Null
     if ($LASTEXITCODE -ge 8) { throw "robocopy legacy raw → gov-data\raw failed (exit $LASTEXITCODE)" }
     Remove-Item -LiteralPath $legacy -Recurse -Force
     if (Test-Path -LiteralPath $legacy) {
-        throw "Nie udało się usunąć $legacy po scaleniu do gov-data\raw."
+        throw "Failed to remove $legacy after merging into gov-data\raw."
     }
 }
 
@@ -179,7 +184,7 @@ function Get-RemotePrefixHash ($url) {
             $resp.Close()
         }
     } catch {
-        Write-Host "-> Nie udało się pobrać 1 MB do hasha ($($_.Exception.Message))." -ForegroundColor DarkYellow
+        Write-Host "-> Failed to fetch 1 MB for the hash ($($_.Exception.Message))." -ForegroundColor DarkYellow
         return $null
     }
 }
@@ -224,20 +229,20 @@ function Invoke-CurlDownload ($url, $outFile) {
     $expected = Get-RemoteContentLength $url
     if ($expected) {
         $sizeMb = [math]::Round($expected / 1MB, 1)
-        Write-Host "-> Rozmiar: $sizeMb MB" -ForegroundColor DarkCyan
+        Write-Host "-> Size: $sizeMb MB" -ForegroundColor DarkCyan
     }
 
     & curl.exe -L -C - --retry 5 --retry-all-errors -A $ua -e $mainUrl --output $outFile $url
     if ($LASTEXITCODE -eq 33) {
-        Write-Host "-> Serwer nie obsługuje wznawiania, pobieram od zera..." -ForegroundColor DarkYellow
+        Write-Host "-> Server does not support resume; downloading from scratch..." -ForegroundColor DarkYellow
         Remove-Item $outFile -Force -ErrorAction SilentlyContinue
         & curl.exe -L --retry 5 --retry-all-errors -A $ua -e $mainUrl --output $outFile $url
     }
     if ($LASTEXITCODE -ne 0) {
-        throw "Pobieranie nie powiodło się (curl exit $LASTEXITCODE): $url"
+        throw "Download failed (curl exit $LASTEXITCODE): $url"
     }
     if ($expected -and (Test-Path $outFile) -and ((Get-Item $outFile).Length -lt $expected)) {
-        throw "Niekompletne pobieranie $($outFile): $((Get-Item $outFile).Length) / $expected bajtów"
+        throw "Incomplete download $($outFile): $((Get-Item $outFile).Length) / $expected bytes"
     }
 }
 
@@ -248,14 +253,14 @@ function Expand-ZipToDirectory ($zipPath, $destination) {
     if (Test-CommandExists "tar") {
         & tar.exe -xf $zipPath -C $destination
         if ($LASTEXITCODE -eq 0) { return }
-        Write-Host "-> tar nie rozpakował archiwum, próbuję Expand-Archive..." -ForegroundColor DarkYellow
+        Write-Host "-> tar failed to unpack the archive; trying Expand-Archive..." -ForegroundColor DarkYellow
     }
     Expand-Archive -Path $zipPath -DestinationPath $destination -Force
 }
 
 function Flatten-MediaDirectory ($directory) {
     if (-not (Test-Path $directory)) { return }
-    Write-Host "-> Spłaszczanie podfolderów w $directory..." -ForegroundColor Yellow
+    Write-Host "-> Flattening subfolders in $directory..." -ForegroundColor Yellow
     $subDirs = Get-ChildItem -Path $directory -Directory -ErrorAction SilentlyContinue
     foreach ($dir in $subDirs) {
         Get-ChildItem -Path $dir.FullName -Recurse -File | ForEach-Object {
@@ -291,7 +296,7 @@ function Sync-GovPjmAsset ($item) {
     New-GovDataJunction -linkPath $pjmPreferred -targetPath $pjmDir
     New-Item -ItemType Directory -Path $pjmDir -Force | Out-Null
     $zipPreferred = Get-GovZipCacheDir
-    $zipCache = Resolve-GovStagingDir -Preferred $zipPreferred -Overflow (Join-Path $overflowRoot "cache") -MinFreeBytes 12GB -What "ZIP-y MI"
+    $zipCache = Resolve-GovStagingDir -Preferred $zipPreferred -Overflow (Join-Path $overflowRoot "cache") -MinFreeBytes 12GB -What "ministry ZIPs"
     New-Item -ItemType Directory -Path $zipCache -Force | Out-Null
 
     $urlHash = Get-UrlFingerprint $item.Url
@@ -299,13 +304,13 @@ function Sync-GovPjmAsset ($item) {
     $hashFile = Join-Path $govDir ".pjm_$urlHash.hash"
     $zipPath = Join-Path $zipCache "pjm_$urlHash.zip"
 
-    Write-Host "-> Hash 1 MB paczki tłumaczeń migowych (PJM)..." -ForegroundColor Cyan
+    Write-Host "-> Hashing first 1 MB of the sign-language (PJM) pack..." -ForegroundColor Cyan
     if (-not (Test-RemoteFileNeedsDownload -url $item.Url -hashFilePath $hashFile -localFilePath $pjmMarkerPath)) {
-        Write-Host "-> Paczka PJM bez zmian. Pomijam pobieranie." -ForegroundColor Gray
+        Write-Host "-> PJM pack unchanged. Skipping download." -ForegroundColor Gray
     } else {
-        Write-Host "-> Pobieram tłumaczenia migowe (PJM) z gov.pl (wznawiane, jeśli przerwane)..." -ForegroundColor Yellow
+        Write-Host "-> Downloading sign-language (PJM) pack from gov.pl (resumable if interrupted)..." -ForegroundColor Yellow
         Invoke-CurlDownload -url $item.Url -outFile $zipPath
-        Write-Host "-> Rozpakowuję PJM do $pjmDir (osobno od gov-data\raw, bez konwersji)..." -ForegroundColor Green
+        Write-Host "-> Unpacking PJM to $pjmDir (separate from gov-data\raw, no conversion)..." -ForegroundColor Green
         Expand-ZipToDirectory -zipPath $zipPath -destination $pjmDir
         Flatten-MediaDirectory -directory $pjmDir
         New-Item -ItemType File -Path $pjmMarkerPath -Force | Out-Null
@@ -313,11 +318,11 @@ function Sync-GovPjmAsset ($item) {
         Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
     }
     $wmvCount = @(Get-ChildItem -LiteralPath $pjmDir -File -Filter "*.wmv" -ErrorAction SilentlyContinue).Count
-    Write-Host "-> PJM WMV w $pjmDir : $wmvCount (na razie tylko źródło; convert-media.ps1 tego nie rusza)." -ForegroundColor Green
+    Write-Host "-> PJM WMV in $pjmDir : $wmvCount (source only for now; convert-media.ps1 does not touch it)." -ForegroundColor Green
 }
 
 function Get-GovPlAssetLinks {
-    Write-Host "-> Parsuję $mainUrl ..." -ForegroundColor Cyan
+    Write-Host "-> Parsing $mainUrl ..." -ForegroundColor Cyan
     $response = Invoke-WebRequest -Uri $mainUrl -UserAgent $ua -UseBasicParsing
     $html = $response.Content
 
@@ -353,9 +358,9 @@ function Get-GovPlAssetLinks {
         } | Sort-Object { if (Test-GovExcelAsset $_) { 0 } else { 1 } })
 
     if ($znalezione.Count -eq 0) {
-        throw "Parser strony gov.pl nie znalazł linków do bazy pytań ani multimediów."
+        throw "gov.pl page parser found no question-bank or multimedia links."
     }
-    Write-Host "Znalezione pliki rządowe: $($znalezione.Count)" -ForegroundColor Green
+    Write-Host "Found government files: $($znalezione.Count)" -ForegroundColor Green
     return $znalezione
 }
 
@@ -366,14 +371,14 @@ function Sync-GovExcelFile ([string]$excelPath, [string]$hashFile) {
     }
     $item = @(Get-GovPlAssetLinks | Where-Object { Test-GovExcelAsset $_ } | Select-Object -First 1)
     if ($item.Count -eq 0) {
-        throw "gov.pl nie ma linku do Excela z bazą pytań."
+        throw "gov.pl has no Excel link for the question bank."
     }
-    Write-Host "-> Hash 1 MB Excela z serwera (ponowne pobranie, gdy zmienił się od ostatniego razu)..." -ForegroundColor Cyan
+    Write-Host "-> Hashing first 1 MB of the Excel from the server (re-download if it changed)..." -ForegroundColor Cyan
     if (-not (Test-RemoteFileNeedsDownload -url $item[0].Url -hashFilePath $hashFile -localFilePath $excelPath)) {
-        Write-Host "-> Excel bez zmian. Parsuję lokalny plik: $excelPath" -ForegroundColor Gray
+        Write-Host "-> Excel unchanged. Parsing local file: $excelPath" -ForegroundColor Gray
         return
     }
-    Write-Host "-> Pobieram Excel z gov.pl (bez ZIP multimediów) do $excelPath..." -ForegroundColor Cyan
+    Write-Host "-> Downloading Excel from gov.pl (no media ZIP) to $excelPath..." -ForegroundColor Cyan
     Invoke-CurlDownload -url $item[0].Url -outFile $excelPath
     Save-PrefixHash -hashFilePath $hashFile -url $item[0].Url
 }
@@ -394,10 +399,10 @@ $overflowRoot = Get-GovDataOverflowRoot
 New-Item -ItemType Directory -Path $govDir -Force | Out-Null
 
 if ($ExcelOnly) {
-    Write-Host "download-gov: tylko Excel → $excelPath" -ForegroundColor Cyan
+    Write-Host "download-gov: Excel only → $excelPath" -ForegroundColor Cyan
     Sync-GovExcelFile -excelPath $excelPath -hashFile $excelHash
     if (-not (Test-Path -LiteralPath $excelPath)) {
-        throw "Brak $excelPath — baza pytań z gov.pl nie została pobrana."
+        throw "Missing $excelPath — question bank from gov.pl was not downloaded."
     }
     Write-Host "Done. Excel: $excelPath" -ForegroundColor Green
     return
@@ -406,22 +411,22 @@ if ($ExcelOnly) {
 Move-LegacyContribRawMediaDir
 
 $rawPreferred = Get-ContribRawMediaDir
-$rawMediaDir = Resolve-GovStagingDir -Preferred $rawPreferred -Overflow (Join-Path $overflowRoot "raw") -MinFreeBytes 8GB -What "surowe JPG/WMV"
+$rawMediaDir = Resolve-GovStagingDir -Preferred $rawPreferred -Overflow (Join-Path $overflowRoot "raw") -MinFreeBytes 8GB -What "raw JPG/WMV"
 New-GovDataJunction -linkPath $rawPreferred -targetPath $rawMediaDir
 
 $zipPreferred = Get-GovZipCacheDir
-$zipCache = Resolve-GovStagingDir -Preferred $zipPreferred -Overflow (Join-Path $overflowRoot "cache") -MinFreeBytes 12GB -What "ZIP-y MI"
+$zipCache = Resolve-GovStagingDir -Preferred $zipPreferred -Overflow (Join-Path $overflowRoot "cache") -MinFreeBytes 12GB -What "ministry ZIPs"
 
 New-Item -ItemType Directory -Path $rawMediaDir -Force | Out-Null
 New-Item -ItemType Directory -Path $zipCache -Force | Out-Null
 
-Write-Host "download-gov: Excel + ZIP multimediów sytuacyjnych z gov.pl → gov-data (gitignore)." -ForegroundColor Cyan
+Write-Host "download-gov: Excel + situational media ZIP from gov.pl → gov-data (gitignore)." -ForegroundColor Cyan
 Write-Host "ZIP: $zipCache" -ForegroundColor Gray
-Write-Host "Sytuacyjne JPG/WMV: $rawMediaDir" -ForegroundColor Gray
+Write-Host "Situational JPG/WMV: $rawMediaDir" -ForegroundColor Gray
 
 $znalezione = Get-GovPlAssetLinks
 foreach ($item in $znalezione) {
-    Write-Host "OPIS: $($item.Opis)" -ForegroundColor Green
+    Write-Host "DESC: $($item.Opis)" -ForegroundColor Green
     Write-Host "LINK: $($item.Url)" -ForegroundColor DarkCyan
 
     $isExcel = Test-GovExcelAsset $item
@@ -430,34 +435,34 @@ foreach ($item in $znalezione) {
 
     if ($isExcel) {
         $hashFile = Join-Path $govDir ".baza_pytan.hash"
-        Write-Host "-> Hash 1 MB Excela..." -ForegroundColor Cyan
+        Write-Host "-> Hashing first 1 MB of the Excel..." -ForegroundColor Cyan
         if (-not (Test-RemoteFileNeedsDownload -url $item.Url -hashFilePath $hashFile -localFilePath $excelPath)) {
-            Write-Host "-> Excel bez zmian: $excelPath" -ForegroundColor Gray
+            Write-Host "-> Excel unchanged: $excelPath" -ForegroundColor Gray
         } else {
-            Write-Host "-> Pobieram Excel z gov.pl do $excelPath..." -ForegroundColor Cyan
+            Write-Host "-> Downloading Excel from gov.pl to $excelPath..." -ForegroundColor Cyan
             Invoke-CurlDownload -url $item.Url -outFile $excelPath
             Save-PrefixHash -hashFilePath $hashFile -url $item.Url
         }
     }
     elseif ($isPjm) {
-        Write-Host "-> Tłumaczenia migowe (PJM): znalezione, nie pobieram." -ForegroundColor DarkGray
+        Write-Host "-> Sign-language (PJM) pack found; not downloading." -ForegroundColor DarkGray
     }
     elseif ($isMedia) {
         if ($SkipMedia) {
-            Write-Host "-> Pomijam multimedia sytuacyjne (-SkipMedia)." -ForegroundColor DarkGray
+            Write-Host "-> Skipping situational media (-SkipMedia)." -ForegroundColor DarkGray
         } else {
             $urlHash = Get-UrlFingerprint $item.Url
             $mediaMarkerPath = Join-Path $rawMediaDir ".downloaded_$urlHash"
             $hashFile = Join-Path $govDir ".media_$urlHash.hash"
             $zipPath = Join-Path $zipCache "media_$urlHash.zip"
 
-            Write-Host "-> Hash 1 MB paczki multimediów..." -ForegroundColor Cyan
+            Write-Host "-> Hashing first 1 MB of the media pack..." -ForegroundColor Cyan
             if (-not (Test-RemoteFileNeedsDownload -url $item.Url -hashFilePath $hashFile -localFilePath $mediaMarkerPath)) {
-                Write-Host "-> Paczka multimediów bez zmian. Pomijam pobieranie." -ForegroundColor Gray
+                Write-Host "-> Media pack unchanged. Skipping download." -ForegroundColor Gray
             } else {
-                Write-Host "-> Pobieram paczkę multimediów z gov.pl (wznawiane, jeśli przerwane)..." -ForegroundColor Yellow
+                Write-Host "-> Downloading media pack from gov.pl (resumable if interrupted)..." -ForegroundColor Yellow
                 Invoke-CurlDownload -url $item.Url -outFile $zipPath
-                Write-Host "-> Rozpakowuję do $rawMediaDir..." -ForegroundColor Green
+                Write-Host "-> Unpacking to $rawMediaDir..." -ForegroundColor Green
                 Expand-ZipToDirectory -zipPath $zipPath -destination $rawMediaDir
                 Flatten-MediaDirectory -directory $rawMediaDir
                 New-Item -ItemType File -Path $mediaMarkerPath -Force | Out-Null
@@ -467,13 +472,13 @@ foreach ($item in $znalezione) {
         }
     }
     else {
-        Write-Host "-> Pomijam (to nie Excel ani multimedia)." -ForegroundColor DarkGray
+        Write-Host "-> Skipping (not Excel or media)." -ForegroundColor DarkGray
     }
     Write-Host "--------------------------------------------------"
 }
 
 if (-not (Test-Path -LiteralPath $excelPath)) {
-    throw "Brak $excelPath — baza pytań z gov.pl nie została pobrana."
+    throw "Missing $excelPath — question bank from gov.pl was not downloaded."
 }
 Write-Host "Done. Excel: $excelPath" -ForegroundColor Green
-Write-Host "Sytuacyjne: $rawMediaDir" -ForegroundColor Gray
+Write-Host "Situational: $rawMediaDir" -ForegroundColor Gray

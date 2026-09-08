@@ -1,4 +1,4 @@
-﻿# UTF-8 with BOM — Windows PowerShell 5.1 otherwise misreads Polish text and here-strings.
+# UTF-8 with BOM — Windows PowerShell 5.1 otherwise misreads non-ASCII text and here-strings.
 # Parse the ministry Excel catalogue into src/data JSON (Windows, no Python).
 # Same job as scripts/parse-excel.py. Uses column headers, not fixed indexes,
 # so extra columns (points, translations) do not shift Kategorie.
@@ -6,15 +6,15 @@
 # Regulation (Dz.U. 2023 poz. 2659): basic = TAK/NIE, specialist = A/B/C.
 # MI "Zakres struktury" is sometimes wrong (ABC tagged PODSTAWOWY). Type follows
 # the correct answer: T/N = basic, A/B/C = specialist.
-# Liczba punktow is stored on each question; exam draw uses those values.
+# The Excel "Liczba punktow" column is stored on each question; exam draw uses those values.
 #
 # Default: keep media file names even if the local pack is missing (CDN).
 # -DropMissingMedia only when asked: then missing raw files clear media in JSON.
 #
 # powershell -ExecutionPolicy Bypass -File scripts/parse-excel.ps1
 # powershell -ExecutionPolicy Bypass -File scripts/parse-excel.ps1 -Excel gov-data\baza_pytan.xlsx -OutDir src\data
-# Instalator: Install_Prawko.ps1 -GovQuestions / -InstallGov (katalog główny repo)
-# Wycinanie braków mediów: parse-excel.ps1 -DropMissingMedia albo Install_Prawko.ps1 -InstallGov -DropMissingMedia
+# Installer: Install_Prawko.windows.ps1 -GovQuestions / -InstallGov (repo root)
+# Drop missing media: parse-excel.ps1 -DropMissingMedia or Install_Prawko.windows.ps1 -InstallGov -DropMissingMedia
 
 param(
     [string]$Excel,
@@ -240,7 +240,7 @@ function Read-XlsxSheetRows ([string]$xlsxPath) {
 }
 
 if (-not (Test-Path -LiteralPath $Excel)) {
-    throw "Excel not found: $Excel. Download the catalogue from gov.pl (or Install_Prawko.ps1 -GovQuestions)."
+    throw "Excel not found: $Excel. Download the catalogue from gov.pl (or Install_Prawko.windows.ps1 -GovQuestions)."
 }
 
 $mediaLookup = $null
