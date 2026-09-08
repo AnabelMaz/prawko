@@ -29,3 +29,13 @@ test('service worker lets CDN media pass through unless the offline pack has the
   );
   expect(block).toMatch(/if \(indexReady && !remoteMediaCached\(url\.href\)\) return;/);
 });
+
+test('service worker clones the app-shell response before opening the cache', () => {
+  const block = handlerBlock(
+    '// App shell — network first',
+    "self.addEventListener('message'"
+  );
+  expect(block).toMatch(/const copy = response\.clone\(\);/);
+  expect(block).toMatch(/safeCachePut\(cache, event\.request, copy\)/);
+  expect(block).not.toMatch(/caches\.open\(APP_SHELL_CACHE\)\.then\(\(cache\) => \{\s*safeCachePut\(cache, event\.request, response\.clone\(\)/);
+});

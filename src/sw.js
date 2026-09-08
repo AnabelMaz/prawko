@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'prawko-v91';
+const CACHE_VERSION = 'prawko-v92';
 const APP_SHELL_CACHE = CACHE_VERSION + '-shell';
 const DATA_CACHE = CACHE_VERSION + '-data';
 const MEDIA_CACHE = CACHE_VERSION + '-media';
@@ -201,9 +201,10 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     fetch(event.request).then((response) => {
       if (response.ok) {
-        caches.open(APP_SHELL_CACHE).then((cache) => {
-          safeCachePut(cache, event.request, response.clone());
-        });
+        const copy = response.clone();
+        event.waitUntil(
+          caches.open(APP_SHELL_CACHE).then((cache) => safeCachePut(cache, event.request, copy))
+        );
       }
       return response;
     }).catch(() =>
