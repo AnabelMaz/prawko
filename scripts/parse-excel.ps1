@@ -1,4 +1,4 @@
-# UTF-8 with BOM — Windows PowerShell 5.1 otherwise misreads non-ASCII text and here-strings.
+﻿# UTF-8 with BOM — Windows PowerShell 5.1 otherwise misreads non-ASCII text and here-strings.
 # Parse the ministry Excel catalogue into src/data JSON (Windows, no Python).
 # Same job as scripts/parse-excel.py. Uses column headers, not fixed indexes,
 # so extra columns (points, translations) do not shift Kategorie.

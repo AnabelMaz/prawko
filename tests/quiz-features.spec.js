@@ -322,9 +322,14 @@ test.describe('Language switch during quiz', () => {
       [...document.querySelectorAll('.answer-btn')].map(b => b.textContent.trim())
     );
 
-    // For basic questions: TAK/NIE → YES/NO
-    // For specialist: answer text should be translated
-    expect(answersEn).not.toEqual(answersPl);
+    // TAK/NIE → YES/NO; specialist sentences translate. Letter-only ABC keys
+    // ("A." / "B." / "C.") are the same in every language — skip those.
+    const letterOnly = answersPl.every((t) => /^[ABC]\.\s*$/i.test(t));
+    if (!letterOnly) {
+      expect(answersEn).not.toEqual(answersPl);
+    } else {
+      expect(answersEn).toEqual(answersPl);
+    }
   });
 
   test('switching language preserves answer highlight in learn mode', async ({ page }) => {

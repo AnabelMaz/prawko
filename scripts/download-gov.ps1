@@ -1,4 +1,4 @@
-# UTF-8 with BOM — Windows PowerShell 5.1 otherwise misreads non-ASCII text and here-strings.
+﻿# UTF-8 with BOM — Windows PowerShell 5.1 otherwise misreads non-ASCII text and here-strings.
 # Download ministry catalogue + media ZIPs from gov.pl (Windows, no Python).
 # Excel → gov-data\baza_pytan.xlsx
 # Multimedia (JPG/WMV) → gov-data\raw

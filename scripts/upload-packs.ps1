@@ -1,4 +1,4 @@
-# UTF-8 with BOM — Windows PowerShell 5.1 otherwise misreads non-ASCII text and here-strings.
+﻿# UTF-8 with BOM — Windows PowerShell 5.1 otherwise misreads non-ASCII text and here-strings.
 # Upload zip packs + manifest (few objects) to B2 as an archive copy.
 # The app’s public “Download offline” host is Cloudflare R2 (PACKS_BASE in
 # src/js/data.js), not this B2 prefix. Do not point github.io at B2 zips —

@@ -1,4 +1,4 @@
-# UTF-8 with BOM — Windows PowerShell 5.1 otherwise misreads non-ASCII text and here-strings.
+﻿# UTF-8 with BOM — Windows PowerShell 5.1 otherwise misreads non-ASCII text and here-strings.
 # Upload src/media to a public Backblaze B2 bucket (Windows).
 # JSON questions stay in git; photos/films do not.
 #
