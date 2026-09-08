@@ -1,5 +1,8 @@
 root = true
 
+# Windows PowerShell 5.1. Editors often still strip the BOM — after a .ps1
+# write run: node scripts/ensure-ps1-bom.js
 [*.ps1]
 charset = utf-8-bom
 end_of_line = crlf
+

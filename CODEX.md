@@ -9,6 +9,7 @@ Day-to-day product is the local service at http://localhost:5173 (`C:\ProgramDat
 - Converted media for the app: `C:\ProgramData\prawko\src\media` (Windows), `/usr/local/prawko/src/media` (macOS), `/opt/prawko/src/media` (Linux). Git `src/media` stays empty.
 
 ## Key Rules
+- Windows `.ps1` files are UTF-8 **with BOM** (PowerShell 5.1). After creating or editing one: `node scripts/ensure-ps1-bom.js`
 - Vanilla JS (ES modules), no frameworks, no build step
 - UI languages: Polish (default), English, German, Ukrainian — switchable via the language toggle
 - Dark/light theme toggle (persisted in localStorage)

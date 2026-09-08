@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "description": "Polish driving-license theory exam (WORD Panel/Station layout, local profiles). Windows, macOS, and Linux. UI in PL, EN, DE, UA",
   "scripts": {
-    "test": "npx playwright test"
+    "ps1-bom": "node scripts/ensure-ps1-bom.js",
+    "test": "node scripts/ensure-ps1-bom.js --check && npx playwright test"
   },
   "repository": {
     "type": "git",
