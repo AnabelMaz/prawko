@@ -387,6 +387,23 @@ section.active {
   animation: screenEnter 0.35s var(--ease-out);
 }
 
+/* Nothing is drag-selectable except question/answer copy (and learn jump). */
+html,
+html * {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.question-text,
+.incorrect-question,
+.answer-text,
+.answer-label,
+.answer-btn,
+#quiz.learn-qnum-jump .learn-qnum-input {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 /* ==========================================================================
    #home — Landing / Hero
    ========================================================================== */
@@ -2076,61 +2093,6 @@ footer a {
 
 #quiz.exam-active .quiz-actions {
   display: none;
-}
-
-/* Question and answers stay selectable. Chrome (timers, labels, film mark, …) does not.
-   Do not set user-select on #quiz itself — in Panel fit/portrait the dock inherits
-   none and WebKit will not let .question-text override it. */
-#quiz .learn-top,
-#quiz .exam-top-fields,
-#quiz .word-side,
-#quiz .media-fit,
-#quiz .media-area,
-#quiz .learn-media-mark,
-#quiz .quiz-legend-bar,
-#quiz .exam-toolbar,
-#quiz .exam-counters,
-#quiz .pwpw-learn-flag,
-#quiz .learn-stats,
-#quiz .word-top-right,
-#quiz .progress-bar,
-#quiz .quiz-actions,
-#quiz .learn-nav,
-#quiz .learn-qnum-suffix,
-#quiz .word-meta-label,
-#quiz .learn-category-value,
-#quiz .exam-points-value,
-#quiz .exam-category-value,
-#quiz .total-timer,
-#quiz .question-timer,
-#quiz .exam-phase-caption,
-#quiz .exam-counter,
-#quiz .exam-practice-banner,
-#quiz .exam-film-start,
-#quiz .btn-exam-next,
-#quiz .media-fallback,
-#quiz .learn-toast,
-#quiz .learn-queue-dropdown {
-  -webkit-user-select: none;
-  user-select: none;
-}
-
-#quiz .question-text,
-#quiz .answer-btn,
-#quiz .answer-text,
-#quiz .answer-label {
-  -webkit-user-select: text;
-  user-select: text;
-}
-
-#quiz .learn-qnum-input {
-  -webkit-user-select: none;
-  user-select: none;
-}
-
-#quiz.learn-qnum-jump .learn-qnum-input {
-  -webkit-user-select: text;
-  user-select: text;
 }
 
 /* Question text */

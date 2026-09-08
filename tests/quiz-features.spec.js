@@ -661,6 +661,105 @@ test.describe('Quiz text selection', () => {
   }
 });
 
+test.describe('Home and categories are not selectable', () => {
+  function pageSelection(selectors) {
+    const u = (s) => {
+      const el = document.querySelector(s);
+      return el ? getComputedStyle(el).userSelect : null;
+    };
+    const out = {};
+    for (const s of selectors) out[s] = u(s);
+    out.selected = (window.getSelection()?.toString() || '').trim();
+    return out;
+  }
+
+  test('home copy and chrome cannot be selected', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    const selectors = [
+      '#home .hero-title',
+      '#home .hero-tagline',
+      '#home .feature-card p',
+      '#home .exam-info li',
+      '#home .app-footer',
+      '.theme-btn',
+      '.skin-btn',
+    ];
+    const sel = await page.evaluate(pageSelection, selectors);
+    for (const s of selectors) expect(sel[s], s).toBe('none');
+    await page.locator('#home .hero-title').click({ clickCount: 3 });
+    await page.locator('#home .feature-card p').first().click({ clickCount: 3 });
+    const after = await page.evaluate(() => (window.getSelection()?.toString() || '').trim());
+    expect(after).toBe('');
+  });
+
+  test('categories copy, cards, and search cannot be selected', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    await page.click('[data-navigate="categories"]');
+    await page.waitForSelector('#categories.active');
+    const selectors = [
+      '#categories .screen-header h2',
+      '#mode-description',
+      '.mode-btn',
+      '.category-card[data-category="B"] .category-name',
+      '.category-card[data-category="B"] .category-letter',
+      '#category-search',
+      '.btn-history-link',
+    ];
+    const sel = await page.evaluate(pageSelection, selectors);
+    for (const s of selectors) expect(sel[s], s).toBe('none');
+    await page.locator('#mode-description').click({ clickCount: 3 });
+    await page.locator('.category-card[data-category="B"] .category-name').click({ clickCount: 3 });
+    const after = await page.evaluate(() => (window.getSelection()?.toString() || '').trim());
+    expect(after).toBe('');
+  });
+
+  test('history and learn progress copy cannot be selected', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    await page.click('.profile-toggle');
+    await page.click('.profile-stat-exams');
+    await page.waitForSelector('#history.active');
+    const history = await page.evaluate(pageSelection, [
+      '#history .screen-header h2',
+      '.history-intro',
+      '.history-empty p',
+    ]);
+    expect(history['#history .screen-header h2']).toBe('none');
+    expect(history['.history-intro']).toBe('none');
+    expect(history['.history-empty p']).toBe('none');
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    await page.click('.profile-toggle');
+    await page.click('.profile-stat-learn');
+    await page.waitForSelector('#learn-progress.active');
+    const progress = await page.evaluate(pageSelection, [
+      '#learn-progress .screen-header h2',
+      '.learn-progress-intro',
+      '.learn-progress-empty p',
+    ]);
+    expect(progress['#learn-progress .screen-header h2']).toBe('none');
+    expect(progress['.learn-progress-intro']).toBe('none');
+    expect(progress['.learn-progress-empty p']).toBe('none');
+  });
+
+  test('data source copy cannot be selected', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    await page.click('[data-navigate="zrodlo-danych"]');
+    await page.waitForSelector('#zrodlo-danych.active');
+    const sel = await page.evaluate(pageSelection, [
+      '#zrodlo-danych .screen-header h2',
+      '#zrodlo-danych .source-content p',
+      '#zrodlo-danych .source-content a',
+    ]);
+    expect(sel['#zrodlo-danych .screen-header h2']).toBe('none');
+    expect(sel['#zrodlo-danych .source-content p']).toBe('none');
+    expect(sel['#zrodlo-danych .source-content a']).toBe('none');
+  });
+});
+
 test.describe('YN answer halo is not clipped', () => {
   const views = [
     { skin: 'panel', orient: 'portrait', viewport: { width: 420, height: 900 } },
@@ -1171,6 +1270,34 @@ test.describe('Exam results question review', () => {
     await expect(first.locator('.review-no-answer')).toHaveText(/Brak odpowiedzi/);
     await expect(first.locator('.review-answers .answer-btn.correct')).toHaveCount(1);
     await expect(first.locator('.review-answers .answer-btn.incorrect')).toHaveCount(0);
+
+    const reviewSel = await page.evaluate(() => {
+      const u = (s) => {
+        const el = document.querySelector(s);
+        return el ? getComputedStyle(el).userSelect : null;
+      };
+      return {
+        question: u('.incorrect-question'),
+        answer: u('.review-answers .answer-btn'),
+        answerText: u('.review-answers .answer-text'),
+        noAnswer: u('.review-no-answer'),
+        stats: u('.review-stats'),
+        index: u('.review-index'),
+        score: u('.score-value'),
+        verdict: u('.result-verdict'),
+      };
+    });
+    expect(reviewSel.question).toBe('text');
+    expect(reviewSel.answer).toBe('text');
+    if (reviewSel.answerText !== null) expect(reviewSel.answerText).toBe('text');
+    expect(reviewSel.noAnswer).toBe('none');
+    expect(reviewSel.stats).toBe('none');
+    expect(reviewSel.index).toBe('none');
+    expect(reviewSel.score).toBe('none');
+    expect(reviewSel.verdict).toBe('none');
+    await first.locator('.incorrect-question').click({ clickCount: 3 });
+    const copied = await page.evaluate(() => (window.getSelection()?.toString() || '').trim());
+    expect(copied.length).toBeGreaterThan(0);
 
     const heightBefore = await page.evaluate(() =>
       parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ui-design-height'))
