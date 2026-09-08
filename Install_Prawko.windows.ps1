@@ -84,7 +84,8 @@ SWITCHES
                     On first install: AnabelMaz ZIP + service + overlay.
 
   -Export <path>    Copies a pack to the given directory (robocopy), without
-                    installing and without touching the server:
+                    installing and without touching the server. Prints file
+                    count, size, and copy progress (same idea as media convert):
                       <path>\prawko\Install_Prawko.windows.ps1
                       <path>\prawko-contrib\
                     Contrib is looked up: next to the script, ..\prawko-contrib, ..\contrib.
@@ -304,15 +305,96 @@ function Test-PathIsInside ([string]$Inner, [string]$Outer) {
     return $a.StartsWith(($b + '\'), [StringComparison]::OrdinalIgnoreCase)
 }
 
+function Format-CopySize ([int64]$Bytes) {
+    if ($Bytes -ge 1GB) { return ("{0:N1} GB" -f ($Bytes / 1GB)) }
+    if ($Bytes -ge 1MB) { return ("{0:N1} MB" -f ($Bytes / 1MB)) }
+    if ($Bytes -ge 1KB) { return ("{0:N0} KB" -f ($Bytes / 1KB)) }
+    return ("{0} B" -f $Bytes)
+}
+
+function Get-CopyTreeStats {
+    param(
+        [Parameter(Mandatory = $true)][string]$Root,
+        [string[]]$ExcludeDirNames = @()
+    )
+    $skip = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+    foreach ($name in $ExcludeDirNames) {
+        if ($name) { [void]$skip.Add($name) }
+    }
+    $files = [int64]0
+    $bytes = [int64]0
+    if (-not (Test-Path -LiteralPath $Root)) {
+        return @{ Files = $files; Bytes = $bytes }
+    }
+    $stack = New-Object 'System.Collections.Generic.Stack[string]'
+    $stack.Push((Get-Item -LiteralPath $Root).FullName)
+    while ($stack.Count -gt 0) {
+        $dir = $stack.Pop()
+        try {
+            foreach ($child in [IO.Directory]::EnumerateDirectories($dir)) {
+                if ($skip.Contains([IO.Path]::GetFileName($child))) { continue }
+                $stack.Push($child)
+            }
+            foreach ($file in [IO.Directory]::EnumerateFiles($dir)) {
+                $files++
+                try { $bytes += (New-Object IO.FileInfo $file).Length } catch { }
+            }
+        } catch { }
+    }
+    return @{ Files = $files; Bytes = $bytes }
+}
+
 function Invoke-SafeRobocopy {
     param(
         [Parameter(Mandatory = $true)][string]$Source,
         [Parameter(Mandatory = $true)][string]$Destination,
-        [Parameter(Mandatory = $true)][string[]]$ArgumentList
+        [Parameter(Mandatory = $true)][string[]]$ArgumentList,
+        [switch]$ShowProgress,
+        [int64]$ProgressTotalBytes = 0,
+        [string[]]$ProgressExcludeDirNames = @()
     )
-    & robocopy.exe $Source $Destination @ArgumentList | Out-Null
-    if ($LASTEXITCODE -ge 8) {
-        throw "robocopy failed (code $LASTEXITCODE): $Source -> $Destination"
+    if (-not $ShowProgress) {
+        & robocopy.exe $Source $Destination @ArgumentList | Out-Null
+        if ($LASTEXITCODE -ge 8) {
+            throw "robocopy failed (code $LASTEXITCODE): $Source -> $Destination"
+        }
+        return
+    }
+
+    Write-Host "   copying..." -ForegroundColor DarkGray
+    $job = Start-Job -ScriptBlock {
+        param($Source, $Destination, $ArgumentList)
+        $p = Start-Process -FilePath "robocopy.exe" -ArgumentList (@($Source, $Destination) + $ArgumentList) -Wait -PassThru -WindowStyle Hidden
+        return $p.ExitCode
+    } -ArgumentList $Source, $Destination, $ArgumentList
+    $activity = "Export copy"
+    try {
+        while ($job.State -eq 'Running') {
+            Start-Sleep -Seconds 8
+            if ($job.State -ne 'Running') { break }
+            $now = Get-CopyTreeStats -Root $Destination -ExcludeDirNames $ProgressExcludeDirNames
+            $status = "{0} / {1}  ({2} files)" -f (Format-CopySize $now.Bytes), (Format-CopySize $ProgressTotalBytes), $now.Files
+            $pct = 0
+            if ($ProgressTotalBytes -gt 0) {
+                $pct = [int][Math]::Min(99, [Math]::Floor(100.0 * $now.Bytes / $ProgressTotalBytes))
+            }
+            Write-Progress -Activity $activity -Status $status -PercentComplete $pct
+            Write-Host ("   {0}" -f $status) -ForegroundColor DarkGray
+        }
+        $raw = Receive-Job -Job $job -Wait
+        if ($job.State -eq 'Failed') {
+            throw "robocopy job failed: $Source -> $Destination : $raw"
+        }
+        $code = 0
+        if ($null -ne $raw) {
+            $code = [int](@($raw) | Select-Object -Last 1)
+        }
+        if ($code -ge 8) {
+            throw "robocopy failed (code $code): $Source -> $Destination"
+        }
+    } finally {
+        Write-Progress -Activity $activity -Completed
+        Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
     }
 }
 
@@ -425,9 +507,13 @@ exit `$LASTEXITCODE
         Write-Host "-> Contrib is already at $destContrib (skipping copy)." -ForegroundColor Gray
     } else {
         New-Item -ItemType Directory -Path $destContrib -Force | Out-Null
+        $xdNames = @("node_modules", ".git", "test-results", "playwright-report", "blob-report", "coverage", ".cursor")
         Write-Host "-> robocopy contrib: $contribSrc -> $destContrib (no node_modules/.git, no /MIR)" -ForegroundColor Cyan
         Write-Host "   Large src\media may take a while. Existing files at the destination are updated; nothing is deleted." -ForegroundColor Gray
-        Invoke-SafeRobocopy -Source $contribSrc -Destination $destContrib -ArgumentList @(
+        Write-Host "   counting files..." -ForegroundColor DarkGray
+        $srcStats = Get-CopyTreeStats -Root $contribSrc -ExcludeDirNames $xdNames
+        Write-Host ("   {0} files, {1}" -f $srcStats.Files, (Format-CopySize $srcStats.Bytes)) -ForegroundColor DarkCyan
+        Invoke-SafeRobocopy -ShowProgress -ProgressTotalBytes $srcStats.Bytes -ProgressExcludeDirNames $xdNames -Source $contribSrc -Destination $destContrib -ArgumentList @(
             "/E", "/XD", "node_modules", ".git", "test-results", "playwright-report", "blob-report", "coverage", ".cursor",
             "/R:2", "/W:1", "/NFL", "/NDL", "/NJH", "/NJS", "/nc", "/ns", "/np"
         )
@@ -1280,174 +1366,6 @@ function Get-PrawkoCategoryIds {
     return @("A", "A1", "A2", "AM", "B", "B1", "C", "C1", "D", "D1", "PT", "T")
 }
 
-function Get-QuestionIdKey ($id) {
-    return ([string]$id).Trim()
-}
-
-function Get-QuestionTextKey ($text) {
-    if ([string]::IsNullOrWhiteSpace([string]$text)) { return "" }
-    $t = ([string]$text).Trim() -replace '\s+', ' '
-    return $t.ToLowerInvariant()
-}
-
-function Get-QuestionMediaStem ($media) {
-    $name = [IO.Path]::GetFileName(([string]$media).Trim())
-    if ([string]::IsNullOrWhiteSpace($name)) { return "" }
-    return [IO.Path]::GetFileNameWithoutExtension($name).ToLowerInvariant()
-}
-
-function Get-UniqueQuestionId ([string]$desired, $existingIds) {
-    $base = Get-QuestionIdKey $desired
-    if ([string]::IsNullOrWhiteSpace($base)) { $base = "mi" }
-    if (-not $existingIds.Contains($base)) { return $base }
-    $n = 1
-    do {
-        $id = if ($n -eq 1) { "$base-mi" } else { "$base-mi$n" }
-        $n++
-    } while ($existingIds.Contains($id))
-    return $id
-}
-
-function Get-QuestionDuplicateReason ($q, $candidates, $ffmpegExe, $ffprobeExe, $mediaIndex) {
-    if ($null -eq $candidates -or $candidates.Count -eq 0) { return $null }
-    $newStem = Get-QuestionMediaStem $q.media
-    foreach ($old in $candidates) {
-        $oldStem = Get-QuestionMediaStem $old.media
-        if ($newStem -and $oldStem -and ($newStem -eq $oldStem)) { return "filename" }
-        if (-not $newStem -and -not $oldStem) { return "text-only" }
-        if ($ffmpegExe -and (Test-QuestionMediaVisuallySame $ffmpegExe $ffprobeExe $mediaIndex $q $old)) {
-            return "visual"
-        }
-    }
-    return $null
-}
-
-$script:MediaVisualCache = @{}
-$script:MediaVisualSize = 96
-$script:MediaVisualThreshold = 0.95
-
-function Get-FfprobeExe ([string]$ffmpegExe) {
-    if (-not $ffmpegExe) { return $null }
-    $probe = Join-Path (Split-Path $ffmpegExe -Parent) "ffprobe.exe"
-    if (Test-Path -LiteralPath $probe) { return $probe }
-    return $null
-}
-
-function Test-MediaPathIsVideo ([string]$path, $question) {
-    $ext = [IO.Path]::GetExtension($path).ToLowerInvariant()
-    if ($ext -in @(".mp4", ".wmv", ".webm", ".avi", ".mov")) { return $true }
-    return ([string]$question.mediaType -eq "video")
-}
-
-function Get-FfmpegRawFrame ([string]$ffmpegExe, [string]$path, [double]$startAt, [int]$size) {
-    $ss = ""
-    if ($startAt -gt 0) {
-        $ss = "-ss " + $startAt.ToString("0.###", [Globalization.CultureInfo]::InvariantCulture) + " "
-    }
-    $psi = New-Object System.Diagnostics.ProcessStartInfo
-    $psi.FileName = $ffmpegExe
-    $vf = "scale=${size}:${size}:force_original_aspect_ratio=decrease:flags=lanczos,pad=${size}:${size}:(ow-iw)/2:(oh-ih)/2:black"
-    $psi.Arguments = "-hide_banner -loglevel error -nostdin $ss-i `"$path`" -an -vf `"$vf`" -frames:v 1 -f rawvideo -pix_fmt rgb24 pipe:1"
-    $psi.UseShellExecute = $false
-    $psi.RedirectStandardOutput = $true
-    $psi.RedirectStandardError = $true
-    $psi.CreateNoWindow = $true
-    $proc = New-Object System.Diagnostics.Process
-    $proc.StartInfo = $psi
-    [void]$proc.Start()
-    $outMs = New-Object System.IO.MemoryStream
-    $errMs = New-Object System.IO.MemoryStream
-    $errTask = $proc.StandardError.BaseStream.CopyToAsync($errMs)
-    $proc.StandardOutput.BaseStream.CopyTo($outMs)
-    [void]$errTask.Wait()
-    $proc.WaitForExit()
-    $bytes = $outMs.ToArray()
-    $outMs.Dispose()
-    $errMs.Dispose()
-    $expected = $size * $size * 3
-    if ($proc.ExitCode -ne 0 -or $bytes.Length -lt $expected) { return $null }
-    if ($bytes.Length -eq $expected) { return $bytes }
-    $trim = New-Object byte[] $expected
-    [Array]::Copy($bytes, $trim, $expected)
-    return $trim
-}
-
-function Get-MediaDurationSeconds ([string]$ffprobeExe, [string]$path) {
-    if (-not $ffprobeExe) { return 0.0 }
-    $raw = & $ffprobeExe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 $path 2>$null
-    $text = (($raw | Out-String) -replace '\s+', '').Trim()
-    $dur = 0.0
-    if ([double]::TryParse($text, [Globalization.NumberStyles]::Float, [Globalization.CultureInfo]::InvariantCulture, [ref]$dur)) {
-        return $dur
-    }
-    return 0.0
-}
-
-function Get-MediaVisualSignature ([string]$ffmpegExe, [string]$ffprobeExe, [string]$path, $question) {
-    if ($script:MediaVisualCache.ContainsKey($path)) {
-        return $script:MediaVisualCache[$path]
-    }
-    $size = $script:MediaVisualSize
-    $sig = $null
-    if (Test-MediaPathIsVideo $path $question) {
-        $dur = Get-MediaDurationSeconds $ffprobeExe $path
-        $tMid = if ($dur -gt 0.4) { $dur / 2.0 } else { 0.0 }
-        $tLast = if ($dur -gt 0.2) { [Math]::Max(0.0, $dur - 0.08) } else { 0.0 }
-        $f0 = Get-FfmpegRawFrame $ffmpegExe $path 0.0 $size
-        $f1 = Get-FfmpegRawFrame $ffmpegExe $path $tMid $size
-        $f2 = Get-FfmpegRawFrame $ffmpegExe $path $tLast $size
-        if ($f0 -and $f1 -and $f2) {
-            $sig = New-Object byte[] ($f0.Length + $f1.Length + $f2.Length)
-            [Array]::Copy($f0, 0, $sig, 0, $f0.Length)
-            [Array]::Copy($f1, 0, $sig, $f0.Length, $f1.Length)
-            [Array]::Copy($f2, 0, $sig, ($f0.Length + $f1.Length), $f2.Length)
-        }
-    } else {
-        $sig = Get-FfmpegRawFrame $ffmpegExe $path 0.0 $size
-    }
-    $script:MediaVisualCache[$path] = $sig
-    return $sig
-}
-
-function Get-RgbSimilarity ([byte[]]$a, [byte[]]$b) {
-    if ($null -eq $a -or $null -eq $b -or $a.Length -eq 0 -or $a.Length -ne $b.Length) { return 0.0 }
-    $sum = [int64]0
-    for ($i = 0; $i -lt $a.Length; $i++) {
-        $sum += [Math]::Abs([int]$a[$i] - [int]$b[$i])
-    }
-    return [double](1.0 - ($sum / ($a.Length * 255.0)))
-}
-
-function New-MediaStemIndex ([string[]]$directories) {
-    $map = @{}
-    foreach ($dir in $directories) {
-        if (-not $dir -or -not (Test-Path -LiteralPath $dir)) { continue }
-        Get-ChildItem -LiteralPath $dir -File -ErrorAction SilentlyContinue | ForEach-Object {
-            $stem = $_.BaseName.ToLowerInvariant()
-            $ext = $_.Extension.ToLowerInvariant()
-            $prefer = $ext -in @(".webp", ".mp4")
-            if (-not $map.ContainsKey($stem) -or $prefer) {
-                $map[$stem] = $_.FullName
-            }
-        }
-    }
-    return $map
-}
-
-function Test-QuestionMediaVisuallySame ($ffmpegExe, $ffprobeExe, $mediaIndex, $left, $right) {
-    if (-not $ffmpegExe -or $null -eq $mediaIndex) { return $false }
-    $stemL = Get-QuestionMediaStem $left.media
-    $stemR = Get-QuestionMediaStem $right.media
-    if (-not $stemL -or -not $stemR) { return $false }
-    if (-not $mediaIndex.ContainsKey($stemL) -or -not $mediaIndex.ContainsKey($stemR)) { return $false }
-    $pathL = $mediaIndex[$stemL]
-    $pathR = $mediaIndex[$stemR]
-    $sigL = Get-MediaVisualSignature $ffmpegExe $ffprobeExe $pathL $left
-    $sigR = Get-MediaVisualSignature $ffmpegExe $ffprobeExe $pathR $right
-    $sim = Get-RgbSimilarity $sigL $sigR
-    return ($sim -ge $script:MediaVisualThreshold)
-}
-
 function Test-GovExcelAsset ($item) {
     if (-not $item) { return $false }
     return ($item.Url -match "\.xlsx$") -or ($item.Opis -match "KATALOG") -or ($item.Opis -match "Baza pytań")
@@ -1867,151 +1785,6 @@ function Publish-GovInstall {
     }
 }
 
-function Merge-GovExcelIntoDataFiles ([string]$govDir, [string]$outDir) {
-    $categories = Get-PrawkoCategoryIds
-    $parsedCategories = @{}
-    foreach ($cat in $categories) {
-        $src = Join-Path $govDir "$cat.json"
-        if (-not (Test-Path -LiteralPath $src)) {
-            throw "Missing $src — run scripts/parse-excel.ps1 first."
-        }
-        $payload = Get-Content -LiteralPath $src -Raw -Encoding UTF8 | ConvertFrom-Json
-        $parsedCategories[$cat] = @($payload.questions)
-    }
-    $mediaDir = Get-ContribRawMediaDir
-    $utf8 = New-Object System.Text.UTF8Encoding $false
-    $addedTotal = 0
-    $metaCategories = @()
-    $script:MediaVisualCache = @{}
-    $ffmpegExe = Resolve-FfmpegExe
-    $ffprobeExe = Get-FfprobeExe $ffmpegExe
-    $indexDirs = New-Object System.Collections.Generic.List[string]
-    if ($mediaDir) { [void]$indexDirs.Add($mediaDir) }
-    [void]$indexDirs.Add($mediaOutImg)
-    [void]$indexDirs.Add($mediaOutVid)
-    try {
-        $contribRoot = Get-ContribRoot
-        [void]$indexDirs.Add((Join-Path $contribRoot "src\media\img"))
-        [void]$indexDirs.Add((Join-Path $contribRoot "src\media\vid"))
-    } catch {}
-    $mediaIndex = New-MediaStemIndex $indexDirs.ToArray()
-    if (-not $ffmpegExe) {
-        Write-Host "-> No FFmpeg — merge without frame comparison (media file name only)." -ForegroundColor DarkYellow
-    } elseif ($mediaIndex.Count -eq 0) {
-        Write-Host "-> No local media — merge without frame comparison (file name only)." -ForegroundColor DarkYellow
-        $ffmpegExe = $null
-    } else {
-        Write-Host "-> Visual media comparison (FFmpeg $($script:MediaVisualSize)×$($script:MediaVisualSize), threshold $([int]($script:MediaVisualThreshold * 100))%, videos: 1st/middle/last frame)." -ForegroundColor Cyan
-    }
-
-    foreach ($cat in $categories) {
-        $path = Join-Path $outDir "$cat.json"
-        if (-not (Test-Path $path)) {
-            throw "Missing $path — merge needs the question bank from the repository."
-        }
-        $data = Get-Content $path -Raw -Encoding UTF8 | ConvertFrom-Json
-        $existingIds = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
-        $byText = @{}
-        $list = New-Object System.Collections.Generic.List[object]
-        foreach ($q in @($data.questions)) {
-            [void]$existingIds.Add((Get-QuestionIdKey $q.id))
-            $tk = Get-QuestionTextKey $q.q
-            if ($tk) {
-                if (-not $byText.ContainsKey($tk)) {
-                    $byText[$tk] = New-Object System.Collections.Generic.List[object]
-                }
-                $byText[$tk].Add($q)
-            }
-            $list.Add($q)
-        }
-
-        $added = 0
-        $skippedSame = 0
-        $skippedVisual = 0
-        $idRewritten = 0
-        foreach ($q in $parsedCategories[$cat]) {
-            $tk = Get-QuestionTextKey $q.q
-            if (-not $tk) { continue }
-            $candidates = $null
-            if ($byText.ContainsKey($tk)) { $candidates = $byText[$tk] }
-            $why = Get-QuestionDuplicateReason $q $candidates $ffmpegExe $ffprobeExe $mediaIndex
-            if ($why -eq "filename" -or $why -eq "text-only") {
-                $skippedSame++
-                continue
-            }
-            if ($why -eq "visual") {
-                $skippedVisual++
-                continue
-            }
-            $newId = Get-UniqueQuestionId ([string]$q.id) $existingIds
-            $toAdd = $q
-            if ((Get-QuestionIdKey $newId) -ne (Get-QuestionIdKey $q.id)) {
-                $toAdd = $q.PSObject.Copy()
-                $toAdd.id = $newId
-                $idRewritten++
-            }
-            [void]$existingIds.Add((Get-QuestionIdKey $toAdd.id))
-            if (-not $byText.ContainsKey($tk)) {
-                $byText[$tk] = New-Object System.Collections.Generic.List[object]
-            }
-            $byText[$tk].Add($toAdd)
-            $list.Add($toAdd)
-            $added++
-        }
-
-        $questions = $list.ToArray()
-        $basic = @($questions | Where-Object { $_.type -eq "basic" }).Count
-        $specialist = @($questions | Where-Object { $_.type -eq "specialist" }).Count
-        $payload = [ordered]@{ category = $cat; questions = $questions }
-        [IO.File]::WriteAllText($path, (ConvertTo-Json -InputObject $payload -Depth 8), $utf8)
-        $metaCategories += [ordered]@{
-            id              = $cat
-            name            = "Kategoria $cat"
-            questionCount   = $questions.Length
-            basicCount      = $basic
-            specialistCount = $specialist
-        }
-        $addedTotal += $added
-        $skipBits = @()
-        if ($skippedSame) { $skipBits += "same text+media: $skippedSame" }
-        if ($skippedVisual) { $skipBits += "same text+frames ≥95%: $skippedVisual" }
-        if ($idRewritten) { $skipBits += "new id (number taken): $idRewritten" }
-        $skipNote = if ($skipBits.Count) { ", skipped $($skipBits -join ', ')" } else { "" }
-        Write-Host ("  {0,3}: +{1,4} from ministry (total {2}{3})" -f $cat, $added, $questions.Length, $skipNote)
-    }
-
-    $metaPath = Join-Path $outDir "meta.json"
-    $exam = $null
-    if (Test-Path $metaPath) {
-        $oldMeta = Get-Content $metaPath -Raw -Encoding UTF8 | ConvertFrom-Json
-        $exam = $oldMeta.exam
-        for ($i = 0; $i -lt $metaCategories.Count; $i++) {
-            $id = $metaCategories[$i].id
-            $prev = @($oldMeta.categories | Where-Object { $_.id -eq $id } | Select-Object -First 1)
-            if ($prev.Count -gt 0 -and $prev[0].name) {
-                $metaCategories[$i].name = [string]$prev[0].name
-            }
-        }
-    }
-    if (-not $exam) {
-        $exam = [ordered]@{
-            totalQuestions        = 32
-            basicQuestions        = 20
-            specialistQuestions   = 12
-            maxPoints             = 74
-            passThreshold         = 68
-            totalTimeSeconds      = 1500
-            basicTimeSeconds      = 20
-            specialistTimeSeconds = 50
-            basicPoints           = @(3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1)
-            specialistPoints      = @(3, 3, 3, 3, 3, 3, 2, 2, 2, 2, 1, 1)
-        }
-    }
-    $meta = [ordered]@{ categories = $metaCategories; exam = $exam }
-    [IO.File]::WriteAllText($metaPath, (ConvertTo-Json -InputObject $meta -Depth 8), $utf8)
-    Write-Host "-> Merge: appended $addedTotal questions from the ministry bank that were not in the repo." -ForegroundColor Green
-}
-
 function Convert-GovMedia ($ffmpegExe, $sourceDir, $imgOut, $vidOut) {
     New-Item -ItemType Directory -Path $imgOut -Force | Out-Null
     New-Item -ItemType Directory -Path $vidOut -Force | Out-Null
@@ -2177,7 +1950,28 @@ if ($Merge) {
         throw "Missing $excelPath — no downloaded ministry question bank to merge."
     }
     Invoke-PrawkoScript "parse-excel.ps1" @("-Excel", $excelPath, "-OutDir", $govDir)
-    Merge-GovExcelIntoDataFiles -govDir $govDir -outDir (Join-Path $targetDir "src\data")
+    $mergeArgs = @(
+        "-GovDir", $govDir,
+        "-OutDir", (Join-Path $targetDir "src\data")
+    )
+    $ffmpegMerge = Resolve-FfmpegExe
+    if ($ffmpegMerge) { $mergeArgs += @("-FfmpegExe", $ffmpegMerge) }
+    $mergeMedia = New-Object System.Collections.Generic.List[string]
+    $rawMerge = Get-ContribRawMediaDir
+    if ($rawMerge -and (Test-Path -LiteralPath $rawMerge)) { [void]$mergeMedia.Add($rawMerge) }
+    if (Test-Path -LiteralPath $mediaOutImg) { [void]$mergeMedia.Add($mediaOutImg) }
+    if (Test-Path -LiteralPath $mediaOutVid) { [void]$mergeMedia.Add($mediaOutVid) }
+    try {
+        $contribRoot = Get-ContribRoot
+        foreach ($rel in @("src\media\img", "src\media\vid")) {
+            $mp = Join-Path $contribRoot $rel
+            if (Test-Path -LiteralPath $mp) { [void]$mergeMedia.Add($mp) }
+        }
+    } catch {}
+    if ($mergeMedia.Count -gt 0) {
+        $mergeArgs += @("-MediaDir", ($mergeMedia.ToArray() -join ";"))
+    }
+    Invoke-PrawkoScript "merge-gov.ps1" $mergeArgs
     Restore-LocalMediaBaseIfNeeded -Root $targetDir
     Complete-IfInteractive
     exit 0

@@ -1,7 +1,0 @@
-#!/bin/sh
-# Put UTF-8 BOM back on .ps1 files before the commit (Windows PowerShell 5.1).
-set -e
-root=$(git rev-parse --show-toplevel)
-cd "$root"
-node scripts/ensure-ps1-bom.js
-git add -u -- '*.ps1'

@@ -1,5 +1,5 @@
 # Windows PowerShell 5.1 parses UTF-8 scripts only when they have a BOM.
-# Keep EF BB BF in the committed bytes. After any .ps1 write: node scripts/ensure-ps1-bom.js
+# Keep EF BB BF in the committed bytes.
 *.ps1 text eol=crlf
 
 # Linux/macOS installers and pipeline scripts.

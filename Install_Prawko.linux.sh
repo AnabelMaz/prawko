@@ -2,6 +2,7 @@
 # Install_Prawko.linux.sh — Prawko installer for Linux (counterpart of Install_Prawko.windows.ps1 / .macos.sh).
 # Download this one file and run it. Server: Node (distro package or tarball) + ZIP + systemd.
 # --dev: Git and clone only (no Node, no server).
+# Pipeline (gov.pl, Excel, media, merge) is Python under scripts/, not Node.
 #
 #   curl -fsSL -o Install_Prawko.linux.sh https://raw.githubusercontent.com/AnabelMaz/prawko/main/Install_Prawko.linux.sh
 #   bash Install_Prawko.linux.sh
@@ -95,8 +96,8 @@ TWO USER TYPES
     --dev            Git + clone (no Node, no server, no sudo)
     --patch          nothing when the server is up; without a server: Node + systemd + overlay
     --install-gov    FFmpeg if missing (distro package or tarball); Excel+ZIP from gov.pl
-    --gov-questions  Python for the parser
-    --merge          Node + Python; writes to the running server
+    --gov-questions  Python (Excel + gov.pl)
+    --merge          Python; writes to the running server
     --export         nothing (file copy)
     --uninstall      nothing new
 
@@ -106,7 +107,7 @@ REQUIREMENTS
          installs the package; without sudo install from the distro (apt/dnf/pacman/zypper/apk).
   --install-gov: FFmpeg (distro package or portable tarball in tools/, as on Windows);
                  Python+openpyxl for parse-excel.py. No sudo.
-  --gov-questions: Python for the parser. --merge: Node + Python; requires a server.
+  --gov-questions: Python. --merge: Python; requires a server.
 EOF
 }
 
@@ -191,7 +192,7 @@ looks_like_repo() {
   local root="$1"
   [ -n "$root" ] || return 1
   [ -f "$root/src/index.html" ] || return 1
-  [ -f "$root/scripts/download-gov.sh" ] || [ -f "$root/scripts/download-gov.ps1" ]
+  [ -f "$root/scripts/download-gov.py" ] || [ -f "$root/scripts/download-gov.ps1" ]
 }
 
 abs_path() {
@@ -263,7 +264,7 @@ run_pipeline() {
   local path
   path="$(resolve_pipeline "$name")" || die "Missing script $name (looked next to the installer, in contrib, and in $TARGET_DIR/scripts)."
   say_c "-> $name $*"
-  bash "$path" "$@"
+  python3 "$path" "$@"
 }
 
 server_installed() {
@@ -402,8 +403,12 @@ pkg_install() {
 
 node_major() {
   local v
-  v="$(node -p "parseInt(process.versions.node,10)" 2>/dev/null || true)"
-  [ -n "$v" ] || return 1
+  v="$(node --version 2>/dev/null || true)"
+  v="${v#v}"
+  v="${v%%.*}"
+  case "$v" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
   printf '%s\n' "$v"
 }
 
@@ -793,9 +798,18 @@ STUB
   else
     mkdir -p "$dest_contrib"
     say_c "-> rsync contrib: $contrib -> $dest_contrib"
-    rsync -a --exclude node_modules --exclude .git --exclude test-results \
-      --exclude playwright-report --exclude blob-report --exclude coverage --exclude .cursor \
-      "$contrib/" "$dest_contrib/"
+    say_d "   Large src/media may take a while."
+    _rsync_ex=(
+      -a
+      --exclude node_modules --exclude .git --exclude test-results
+      --exclude playwright-report --exclude blob-report --exclude coverage --exclude .cursor
+    )
+    if rsync --help 2>&1 | grep -q -- '--info'; then
+      rsync "${_rsync_ex[@]}" --info=progress2 "$contrib/" "$dest_contrib/"
+    else
+      rsync "${_rsync_ex[@]}" --progress "$contrib/" "$dest_contrib/"
+    fi
+    unset _rsync_ex
     [ -f "$dest_contrib/src/index.html" ] || die "After export, missing $dest_contrib/src/index.html"
     say_g "-> Contrib: $dest_contrib"
   fi
@@ -823,7 +837,7 @@ publish_gov_questions() {
   remove_legacy_server_raw
   say_c "GovQuestions: Excel from gov.pl → $GOV_DATA (contrib/src/data left untouched)"
   say_d "No media ZIP, no src/media, no CDN change."
-  run_pipeline download-gov.sh --excel-only
+  run_pipeline download-gov.py --excel-only
   run_parse_excel "$excel" "$GOV_DATA"
   assert_gov_parsed "$GOV_DATA" "$excel"
   copy_gov_json_to_server "$GOV_DATA" "prawko-govq" || copy_rc=$?
@@ -852,7 +866,7 @@ publish_gov_install() {
   ensure_python_openpyxl
   say_c "InstallGov: Excel + situational-media ZIP from gov.pl → $GOV_DATA"
   say_d "Not downloading PJM (sign-language) packs."
-  run_pipeline download-gov.sh
+  run_pipeline download-gov.py
   [ -f "$excel" ] || die "Missing $excel — the question bank from gov.pl was not downloaded."
   if server_installed; then
     img_out="$TARGET_DIR/src/media/img"
@@ -863,7 +877,7 @@ publish_gov_install() {
   fi
   say_c "=== Converting situational media (JPG→WebP, WMV→MP4) ==="
   ffmpeg="$(resolve_ffmpeg)" || die "FFmpeg is not available (neither on the system nor in tools/)."
-  run_pipeline convert-media.sh --source "$GOV_DATA/raw" --img-out "$img_out" --vid-out "$vid_out" --ffmpeg "$ffmpeg"
+  run_pipeline convert-media.py --source "$GOV_DATA/raw" --img-out "$img_out" --vid-out "$vid_out" --ffmpeg "$ffmpeg"
   say_c "=== JSON from Excel → gov-data ==="
   run_parse_excel "$excel" "$GOV_DATA"
   assert_gov_parsed "$GOV_DATA" "$excel"
@@ -896,14 +910,13 @@ publish_gov_install() {
 }
 
 do_merge() {
-  local excel="$GOV_DATA/baza_pytan.xlsx" js ffmpeg="" media_args=() node_exe
-  ensure_node
+  local excel="$GOV_DATA/baza_pytan.xlsx" py ffmpeg="" media_args=()
   ensure_python_openpyxl
   remove_legacy_server_raw
-  run_pipeline download-gov.sh --excel-only
+  run_pipeline download-gov.py --excel-only
   [ -f "$excel" ] || die "Missing $excel — no downloaded ministry bank to merge."
   run_parse_excel "$excel" "$GOV_DATA"
-  js="$(resolve_pipeline merge-gov.js)" || die "Missing scripts/merge-gov.js"
+  py="$(resolve_pipeline merge-gov.py)" || die "Missing scripts/merge-gov.py"
   media_args=(--gov-dir "$GOV_DATA" --out-dir "$TARGET_DIR/src/data")
   if ffmpeg="$(resolve_ffmpeg)"; then
     media_args+=(--ffmpeg "$ffmpeg")
@@ -913,9 +926,8 @@ do_merge() {
   [ -d "$GOV_DATA/raw" ] && media_args+=(--media-dir "$GOV_DATA/raw")
   [ -d "$TARGET_DIR/src/media/img" ] && media_args+=(--media-dir "$TARGET_DIR/src/media/img")
   [ -d "$TARGET_DIR/src/media/vid" ] && media_args+=(--media-dir "$TARGET_DIR/src/media/vid")
-  say_c "-> merge-gov.js ${media_args[*]}"
-  node_exe="$(resolve_node)" || die "Missing node"
-  "$node_exe" "$js" "${media_args[@]}"
+  say_c "-> merge-gov.py ${media_args[*]}"
+  python3 "$py" "${media_args[@]}"
   restore_media_base_if_needed "$TARGET_DIR"
 }
 
@@ -954,19 +966,16 @@ if [ "$DEV_SET" -eq 1 ] && [ "$UNINSTALL" -eq 0 ]; then
 fi
 
 if [ "$GOV_QUESTIONS" -eq 1 ] || [ "$INSTALL_GOV" -eq 1 ] || [ "$MERGE" -eq 1 ]; then
-  _prawko_gov_lib="$(resolve_pipeline download-gov.sh)" || die "Missing scripts/download-gov.sh. Run the installer with no flags (it will download the app with scripts into $TARGET_DIR) or run it from the root of a cloned repo."
-  PRAWKO_GOV_LIBRARY_ONLY=1
-  # shellcheck disable=SC1090
-  . "$_prawko_gov_lib"
-  unset PRAWKO_GOV_LIBRARY_ONLY
+  _prawko_gov_py="$(resolve_pipeline download-gov.py)" || die "Missing scripts/download-gov.py. Run the installer with no flags (it will download the app with scripts into $TARGET_DIR) or run it from the root of a cloned repo."
+  command -v python3 >/dev/null 2>&1 || die "python3 is required for --install-gov / --gov-questions / --merge."
   if [ -n "$_prawko_gov_data_preset" ]; then
     export PRAWKO_GOV_DATA="$_prawko_gov_data_preset"
   else
     unset PRAWKO_GOV_DATA
   fi
-  GOV_DATA="$(gov_data_dir)"
+  GOV_DATA="$(python3 "$_prawko_gov_py" --print-gov-data-dir)"
   export PRAWKO_GOV_DATA="$GOV_DATA"
-  unset _prawko_gov_lib
+  unset _prawko_gov_py
 fi
 
 if [ "$GOV_QUESTIONS" -eq 1 ]; then

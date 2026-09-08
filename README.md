@@ -236,7 +236,7 @@ Gdy usługa już stoi, ponowne odpalenie **bez przełączników nic nie nadpisuj
 ./Install_Prawko.macos.sh --uninstall
 ```
 
-Na macOS `--gov-questions` i `--merge` potrzebują **Node** (parsowanie gov.pl) i Pythona (Excel). `--dev` tego nie rusza. Sudo tylko przy pierwszej instalacji serwera albo `--uninstall`.
+Na macOS `--gov-questions`, `--install-gov` i `--merge` potrzebują **Pythona** (gov.pl + Excel). Node jest tylko do serwera aplikacji. `--dev` tego nie rusza. Sudo tylko przy pierwszej instalacji serwera albo `--uninstall`.
 
 ### Instalacja dla dewelopera (macOS)
 
@@ -369,7 +369,7 @@ Push na `main` odpala testy Playwright i wgrywa `src/` na GitHub Pages: [anabelm
 
 ## Pipeline danych na Windows
 
-Regeneracja JSON i mediów jest w **PowerShellu**. Na Windowsie nie używaj bliźniaków `.py` / `.sh`. Instalator `Install_Prawko.windows.ps1` woła te skrypty sam (`-InstallGov` / `-GovQuestions` / `-Merge`). Ścieżki `gov-data` bierze z `scripts/download-gov.ps1 -LibraryOnly` (nie zgaduje katalogu w instalatorze). `convert-media.ps1` ładuje tę samą bibliotekę.
+Regeneracja JSON i mediów jest w **PowerShellu** (bez Pythona i bez Node w pipeline). Na Windowsie nie używaj bliźniaków `.py`. Instalator `Install_Prawko.windows.ps1` woła te skrypty sam (`-InstallGov` / `-GovQuestions` / `-Merge`). Ścieżki `gov-data` bierze z `scripts/download-gov.ps1 -LibraryOnly` (nie zgaduje katalogu w instalatorze). `convert-media.ps1` ładuje tę samą bibliotekę. `-Merge` woła `scripts/merge-gov.ps1` (ten sam job co `merge-gov.py` na macOS/Linux).
 
 Wymagania poza instalatorem: przy konwersji mediów **FFmpeg** i **cwebp** (instalator przy `-InstallGov` kładzie przenośnego FFmpeg do `tools\`, jeśli nie ma w PATH).
 
@@ -378,6 +378,7 @@ Wymagania poza instalatorem: przy konwersji mediów **FFmpeg** i **cwebp** (inst
 | `scripts/download-gov.ps1` | Excel + ZIP z gov.pl → `%LOCALAPPDATA%\prawko\gov-data` |
 | `scripts/parse-excel.ps1` | Excel → `src/data/*.json` oraz `translations_{en,de,uk}.json` |
 | `scripts/convert-media.ps1` | JPG → WebP, WMV → MP4 (nie rusza PJM) |
+| `scripts/merge-gov.ps1` | Dopisywanie braków MI (`-Merge`); też `. scripts\merge-gov.ps1 -LibraryOnly` |
 | `scripts/filter-no-media.ps1` | **Raport** pytań z `media: null`. Kasowanie wierszy tylko z `-Remove` |
 | `scripts/upload-media.ps1` | Upload `src/media` (`img/` `vid/`) na Backblaze B2 (klucze w `.b2env`, nie w gicie) |
 | `scripts/build-media-packs.ps1` | Zipy + `manifest.json` → `%LOCALAPPDATA%\prawko\packs` (nie git) |
@@ -415,24 +416,25 @@ Zwykła aktualizacja pytań na już stojącym serwerze: `Install_Prawko.windows.
 
 ## Pipeline danych na macOS i Linuxie
 
-Instalatory `Install_Prawko.macos.sh` i `Install_Prawko.linux.sh` wołają te skrypty same. Przy `--install-gov` / `--gov-questions` / `--merge` wczytują `download-gov.sh` jako bibliotekę (`PRAWKO_GOV_LIBRARY_ONLY=1`), żeby ścieżka `gov-data` była ta sama co w pipeline. `convert-media.sh` ładuje tę samą bibliotekę. Ręcznie (z checkoutu):
+Instalator to **`.sh`**. Reszta pipeline to **Python** (`python3`), bez Node i bez bliźniaków `.sh` / `.js` w `scripts/`. Node jest tylko do serwera aplikacji (`serve`). Ścieżka `gov-data`: `python3 scripts/download-gov.py --print-gov-data-dir`. Ręcznie (z checkoutu):
 
 | Skrypt | Zadanie |
 |---|---|
-| `scripts/download-gov.sh` | Excel + ZIP z gov.pl → macOS: `~/Library/Application Support/prawko/gov-data`; Linux: `~/.local/share/prawko/gov-data` |
-| `scripts/parse-excel.py` | Excel → JSON (ten sam zestaw reguł co `parse-excel.ps1`; w bashu nie ma parsera xlsx) |
-| `scripts/convert-media.sh` | JPG → WebP, WMV → MP4 (VideoToolbox, gdy jest; nie rusza PJM) |
+| `scripts/download-gov.py` | Excel + ZIP z gov.pl → macOS: `~/Library/Application Support/prawko/gov-data`; Linux: `~/.local/share/prawko/gov-data` |
+| `scripts/parse-excel.py` | Excel → JSON (ten sam zestaw reguł co `parse-excel.ps1`) |
+| `scripts/convert-media.py` | JPG → WebP, WMV → MP4 (VideoToolbox, gdy jest; nie rusza PJM) |
 | `scripts/filter-no-media.py` | Raport; kasowanie tylko z `--remove` |
-| `scripts/merge-gov.js` | Dopisywanie braków MI (`--merge`) |
-| `scripts/upload-media.sh` | Upload `src/media` na B2 |
+| `scripts/merge-gov.py` | Dopisywanie braków MI (`--merge`) |
+| `scripts/upload-media.py` | Upload `src/media` na B2 (klucze w `.b2env`) |
 | `scripts/build-media-packs.py` | To samo co `build-media-packs.ps1` (zipy + manifest) |
+| `scripts/upload-packs.py` | Archiwum zipów na B2 — nie publiczny host |
 
 ```bash
-bash scripts/download-gov.sh --excel-only
+python3 scripts/download-gov.py --excel-only
 python3 scripts/parse-excel.py \
   --excel "$HOME/Library/Application Support/prawko/gov-data/baza_pytan.xlsx" \
   --out-dir src/data
-bash scripts/convert-media.sh
+python3 scripts/convert-media.py
 ```
 
 ---
@@ -816,7 +818,7 @@ A push to `main` runs Playwright and publishes `src/` to GitHub Pages: [anabelma
 
 ## Data pipeline on Windows
 
-Regenerate JSON and media with **PowerShell**. Do not use the `.py` / `.sh` twins on Windows. `Install_Prawko.windows.ps1` runs these scripts (`-InstallGov` / `-GovQuestions` / `-Merge`). Gov-data paths come from `scripts/download-gov.ps1 -LibraryOnly` (the installer does not invent that folder). `convert-media.ps1` loads the same library.
+Regenerate JSON and media with **PowerShell** (no Python and no Node in the pipeline). Do not use the `.py` twins on Windows. `Install_Prawko.windows.ps1` runs these scripts (`-InstallGov` / `-GovQuestions` / `-Merge`). Gov-data paths come from `scripts/download-gov.ps1 -LibraryOnly` (the installer does not invent that folder). `convert-media.ps1` loads the same library. `-Merge` runs `scripts/merge-gov.ps1` (same job as `merge-gov.py` on macOS/Linux).
 
 Besides the installer: media conversion needs **FFmpeg** and **cwebp** (`-InstallGov` can drop a portable FFmpeg into `tools\` if none is on PATH).
 
@@ -825,6 +827,7 @@ Besides the installer: media conversion needs **FFmpeg** and **cwebp** (`-Instal
 | `scripts/download-gov.ps1` | Excel + ZIPs from gov.pl → `%LOCALAPPDATA%\prawko\gov-data` |
 | `scripts/parse-excel.ps1` | Excel → `src/data/*.json` and `translations_{en,de,uk}.json` |
 | `scripts/convert-media.ps1` | JPG → WebP, WMV → MP4 (does not touch PJM) |
+| `scripts/merge-gov.ps1` | Append missing ministry rows (`-Merge`); also `. scripts\merge-gov.ps1 -LibraryOnly` |
 | `scripts/filter-no-media.ps1` | **Report** questions with `media: null`. Drops rows only with `-Remove` |
 | `scripts/upload-media.ps1` | Upload `src/media` (`img/` `vid/`) to Backblaze B2 (keys in `.b2env`, not in git) |
 | `scripts/build-media-packs.ps1` | Zips + `manifest.json` → `%LOCALAPPDATA%\prawko\packs` (not git) |
@@ -862,24 +865,25 @@ To refresh questions on a running server, use `Install_Prawko.windows.ps1 -GovQu
 
 ## Data pipeline on macOS and Linux
 
-`Install_Prawko.macos.sh` and `Install_Prawko.linux.sh` call these scripts. For `--install-gov` / `--gov-questions` / `--merge` they source `download-gov.sh` as a library (`PRAWKO_GOV_LIBRARY_ONLY=1`) so the `gov-data` path matches the pipeline. `convert-media.sh` loads the same library. To run them yourself from a checkout:
+The installer is **`.sh`**. The rest of the pipeline is **Python** (`python3`), with no Node and no `.sh` / `.js` twins under `scripts/`. Node is only for the app server (`serve`). Gov-data path: `python3 scripts/download-gov.py --print-gov-data-dir`. To run them yourself from a checkout:
 
 | Script | Job |
 |---|---|
-| `scripts/download-gov.sh` | Excel + ZIPs from gov.pl → macOS: `~/Library/Application Support/prawko/gov-data`; Linux: `~/.local/share/prawko/gov-data` |
-| `scripts/parse-excel.py` | Excel → JSON (same rules as `parse-excel.ps1`; bash has no xlsx parser) |
-| `scripts/convert-media.sh` | JPG → WebP, WMV → MP4 (VideoToolbox when available; skips PJM) |
+| `scripts/download-gov.py` | Excel + ZIPs from gov.pl → macOS: `~/Library/Application Support/prawko/gov-data`; Linux: `~/.local/share/prawko/gov-data` |
+| `scripts/parse-excel.py` | Excel → JSON (same rules as `parse-excel.ps1`) |
+| `scripts/convert-media.py` | JPG → WebP, WMV → MP4 (VideoToolbox when available; skips PJM) |
 | `scripts/filter-no-media.py` | Report; delete rows only with `--remove` |
-| `scripts/merge-gov.js` | Add missing ministry rows (`--merge`) |
-| `scripts/upload-media.sh` | Upload `src/media` to B2 |
+| `scripts/merge-gov.py` | Add missing ministry rows (`--merge`) |
+| `scripts/upload-media.py` | Upload `src/media` to B2 (keys in `.b2env`) |
 | `scripts/build-media-packs.py` | Same job as `build-media-packs.ps1` (zips + manifest) |
+| `scripts/upload-packs.py` | Archive copy of zips to B2 — not the app’s public pack host |
 
 ```bash
-bash scripts/download-gov.sh --excel-only
+python3 scripts/download-gov.py --excel-only
 python3 scripts/parse-excel.py \
   --excel "$HOME/Library/Application Support/prawko/gov-data/baza_pytan.xlsx" \
   --out-dir src/data
-bash scripts/convert-media.sh
+python3 scripts/convert-media.py
 ```
 
 ---

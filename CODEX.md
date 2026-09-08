@@ -9,7 +9,7 @@ Day-to-day product is the local service at http://localhost:5173 (`C:\ProgramDat
 - Converted media for the app: `C:\ProgramData\prawko\src\media` (Windows), `/usr/local/prawko/src/media` (macOS), `/opt/prawko/src/media` (Linux). Git `src/media` stays empty.
 
 ## Key Rules
-- Windows `.ps1` files are UTF-8 **with BOM** (PowerShell 5.1). After creating or editing one: `node scripts/ensure-ps1-bom.js`
+- Windows `.ps1` files are UTF-8 **with BOM** (PowerShell 5.1). Write/StrReplace strip it — restore with `UTF8Encoding $true` (Cursor rule). No helper script in `scripts/`. CI: `tests/ps1-utf8-bom.spec.js` reads the bytes itself.
 - Vanilla JS (ES modules), no frameworks, no build step
 - UI languages: Polish (default), English, German, Ukrainian — switchable via the language toggle
 - Dark/light theme toggle (persisted in localStorage)
@@ -37,20 +37,31 @@ Day-to-day product is the local service at http://localhost:5173 (`C:\ProgramDat
 - `src/js/` — app.js (router), data.js, exam.js, learn.js, ui.js, timer.js, stats.js, i18n.js, profiles.js, offline.js, zip.js, scale.js, scale-boot.js, fit-text.js
 - `src/data/` — meta.json, {category}.json, translations_{en,de,uk}.json
 - `src/media/` — empty in git; img/ (WebP) and vid/ (MP4) live only on the server after `-InstallGov`
-- `Install_Prawko.windows.ps1` / `Install_Prawko.macos.sh` / `Install_Prawko.linux.sh` — one downloaded file per OS. Default: ZIP of AnabelMaz/prawko + Node + service (no Git). `-Dev` / `--dev`: Git clone only (no Node, no server). macOS: launchd, `/usr/local/prawko`. Linux: systemd, `/opt/prawko`. `-InstallGov` / `--install-gov` dotsources `scripts/download-gov` (`-LibraryOnly` / `PRAWKO_GOV_LIBRARY_ONLY`) so gov-data paths come from that library, then runs convert-media and parse-excel.
-- `scripts/` — download-gov, convert-media, parse-excel, filter-no-media, build-media-packs (Windows `.ps1`; macOS/Linux `.sh` + existing `parse-excel.py` / `build-media-packs.py`).
+- `Install_Prawko.windows.ps1` / `Install_Prawko.macos.sh` / `Install_Prawko.linux.sh` — one downloaded file per OS. Default: ZIP of AnabelMaz/prawko + Node + service (no Git). `-Dev` / `--dev`: Git clone only (no Node, no server). macOS: launchd, `/usr/local/prawko`. Linux: systemd, `/opt/prawko`. `-InstallGov` / `--install-gov` uses `download-gov.ps1` (Windows) or `download-gov.py` (macOS/Linux) for gov-data paths, then convert-media and parse-excel.
+- `scripts/` — Windows `.ps1` (no Python). macOS/Linux pipeline `.py`. Installers stay `.ps1` / `.sh`. No Node in the data pipeline.
 
 ## Data Pipeline
+Windows: PowerShell only (no Python, no Node in `scripts/`). macOS/Linux: installer `.sh`, remaining scripts `.py` (no Node).
+
 ```bash
-powershell -File scripts/parse-excel.ps1     # Excel → src/data/*.json (+ translations_*.json)
-powershell -File scripts/convert-media.ps1   # JPG → WebP, WMV → MP4 (entry point on Windows)
-bash scripts/convert-media.sh                # same job on macOS/Linux
-powershell -File scripts/filter-no-media.ps1 # report only; -Remove to drop rows
-bash scripts/upload-media.sh                 # Upload img/vid to Backblaze B2
-powershell -File scripts/build-media-packs.ps1  # Zip packs + manifest (Windows)
+# Windows
+powershell -File scripts/parse-excel.ps1
+powershell -File scripts/convert-media.ps1
+powershell -File scripts/merge-gov.ps1
+powershell -File scripts/filter-no-media.ps1
+powershell -File scripts/upload-media.ps1
+powershell -File scripts/build-media-packs.ps1
+
+# macOS / Linux
+python3 scripts/parse-excel.py
+python3 scripts/convert-media.py
+python3 scripts/filter-no-media.py
+python3 scripts/merge-gov.py --gov-dir DIR --out-dir DIR
+python3 scripts/upload-media.py
+python3 scripts/build-media-packs.py
 ```
 
-Media conversion entry points: `convert-media.ps1` (Windows) and `convert-media.sh` (macOS/Linux).
+Media conversion entry points: `convert-media.ps1` (Windows) and `convert-media.py` (macOS/Linux). Windows `-Merge` calls `merge-gov.ps1`; unix `--merge` calls `merge-gov.py`.
 
 ## Licensing
 - Questions: CC BY-SA 4.0
