@@ -12,6 +12,8 @@ Baza w repozytorium to JSON z katalogu Ministerstwa Infrastruktury (**3518** uni
 
 ## Instalacja na Windows
 
+Instalator Windows to **`Install_Prawko.windows.ps1`** (ten sam schemat nazw co `Install_Prawko.macos.sh` i `Install_Prawko.linux.sh`).
+
 Docelowe środowisko to **Windows 10/11**. Python nie jest potrzebny — ani do instalacji, ani do skryptów danych.
 
 ### Wymagania
@@ -29,11 +31,11 @@ Instalator sam doinstaluje brakujące **Node.js** i **NSSM**. Gita nie rusza, ch
 
 ### Szybki start
 
-1. Ściągnij [`Install_Prawko.ps1`](https://github.com/AnabelMaz/prawko/blob/main/Install_Prawko.ps1) (**Raw** → Zapisz jako) — Pulpit, Pobrane albo pendrive. **Nie musisz** klonować repozytorium ręcznie.
+1. Ściągnij [`Install_Prawko.windows.ps1`](https://github.com/AnabelMaz/prawko/blob/main/Install_Prawko.windows.ps1) (**Raw** → Zapisz jako) — Pulpit, Pobrane albo pendrive. **Nie musisz** klonować repozytorium ręcznie.
 2. W PowerShellu, w folderze z plikiem:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\Install_Prawko.ps1
+powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1
 ```
 
 Ściągaj plik na dysk (`-OutFile` albo Raw → Zapisz jako). Nie wklejaj treści ze strony do Notatnika — Windows PowerShell 5.1 wymaga UTF-8 z BOM.
@@ -41,13 +43,13 @@ powershell -ExecutionPolicy Bypass -File .\Install_Prawko.ps1
 Albo bez przeglądarki, jednym ciągiem:
 
 ```powershell
-Invoke-WebRequest -Uri https://raw.githubusercontent.com/AnabelMaz/prawko/main/Install_Prawko.ps1 -OutFile Install_Prawko.ps1
-powershell -ExecutionPolicy Bypass -File .\Install_Prawko.ps1
+Invoke-WebRequest -Uri https://raw.githubusercontent.com/AnabelMaz/prawko/main/Install_Prawko.windows.ps1 -OutFile Install_Prawko.windows.ps1
+powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1
 ```
 
 3. Otwórz [http://localhost:5173](http://localhost:5173).
 
-Jeśli Windows zablokuje skrypt (SmartScreen / ExecutionPolicy), zostaw `-ExecutionPolicy Bypass` jak wyżej — dotyczy tylko tego procesu, nie całego systemu. Pełna lista przełączników: `Install_Prawko.ps1 -Help`.
+Jeśli Windows zablokuje skrypt (SmartScreen / ExecutionPolicy), zostaw `-ExecutionPolicy Bypass` jak wyżej — dotyczy tylko tego procesu, nie całego systemu. Pełna lista przełączników: `Install_Prawko.windows.ps1 -Help`.
 
 ### Co instalator robi (tryb domyślny)
 
@@ -58,7 +60,7 @@ Bez przełączników instalator:
 - stawia usługę Windows **PrawkoWORDService**,
 - serwuje aplikację na porcie **5173**.
 
-Pytania pochodzą z JSON w repozytorium. Zdjęcia i filmy z publicznego kubełka Backblaze `prawko-maz`. Gdy usługa już stoi, ponowne odpalenie **bez przełączników nic nie nadpisuje**.
+Pytania pochodzą z JSON w repozytorium. Oglądanie zdjęć i filmów: kubeł Backblaze `prawko-maz`. „Pobierz offline”: zipy z Cloudflare R2. Gdy usługa już stoi, ponowne odpalenie **bez przełączników nic nie nadpisuje**.
 
 Po wgraniu nowszej wersji kodu w otwartej karcie może pojawić się baner „Dostępna aktualizacja” — wystarczy **Odśwież**, bez Ctrl+F5.
 
@@ -113,7 +115,7 @@ Domyślna instalacja **wystarcza do nauki i egzaminu**. JSON jest w repo, media 
 Lokalne WebP/MP4 (offline bez CDN, albo własna kopia):
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\Install_Prawko.ps1 -InstallGov
+powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -InstallGov
 ```
 
 Staging (ZIP, surowe JPG/WMV) ląduje w `%LOCALAPPDATA%\prawko\gov-data`. Konwersja i JSON — tylko na serwerze w ProgramData. Gdy na `C:` mało miejsca, ZIP/raw mogą spaść do `gov-data` w checkoutcie na innym dysku.
@@ -121,7 +123,7 @@ Staging (ZIP, surowe JPG/WMV) ląduje w `%LOCALAPPDATA%\prawko\gov-data`. Konwer
 Sam katalog pytań, bez ściągania filmów:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\Install_Prawko.ps1 -GovQuestions
+powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -GovQuestions
 ```
 
 ### Instalacja dla dewelopera
@@ -129,7 +131,7 @@ powershell -ExecutionPolicy Bypass -File .\Install_Prawko.ps1 -GovQuestions
 Sam kod, bez localhost i bez Node:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\Install_Prawko.ps1 -Dev D:\prawko
+powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -Dev D:\prawko
 ```
 
 Git doinstaluje się tylko tu. Serwera to **nie** stawia. Folder musi być **pusty** albo jeszcze nie istnieć (nie `C:\ProgramData\prawko`).
@@ -139,7 +141,7 @@ Oba (aplikacja + git): najpierw instalator **bez** przełączników, potem `-Dev
 Na podgląd localhost z Twojego kodu (gdy serwer już stoi):
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\Install_Prawko.ps1 -Patch
+powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -Patch
 ```
 
 `-Patch` nakłada `src` z contrib, **bez** `data\` i `media\`. Gov ZIP-y i WebP nie idą drugi raz do folderu gita. Gdy serwer już stoi — tylko overlay. Gdy nie stoi — najpierw ZIP + usługa, potem overlay.
@@ -147,7 +149,7 @@ powershell -ExecutionPolicy Bypass -File .\Install_Prawko.ps1 -Patch
 ### Odinstalowanie
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\Install_Prawko.ps1 -Uninstall
+powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -Uninstall
 ```
 
 Znika usługa i `C:\ProgramData\prawko` (w tym FFmpeg ściągnięty tam przez `-InstallGov`). Katalog `%LOCALAPPDATA%\prawko\gov-data` oraz Git / Node / NSSM zostają.
@@ -318,11 +320,11 @@ bash Install_Prawko.linux.sh --uninstall
 - **Symulacja egzaminu** — 32 pytania, 25 minut, punktacja jak na egzaminie
 - **12 kategorii** — A, A1, A2, AM, B, B1, C, C1, D, D1, PT, T
 - **Skórki** — Panel i Stacja
-- **Multimedia** — zdjęcia i filmy z oficjalnej bazy (CDN albo lokalnie po `-InstallGov`)
+- **Multimedia** — zdjęcia i filmy z oficjalnej bazy (stream z Backblaze, albo lokalnie po `-InstallGov`)
 - **Języki** — PL, EN, DE, UA (interfejs i treść pytań)
 - **Tryb ciemny / jasny** — zapisany w przeglądarce
 - **Profile lokalne** — postęp na tym komputerze
-- **Offline** — PWA / Service Worker; przy CDN pierwsze otwarcie mediów wymaga sieci
+- **Offline** — PWA / Service Worker; „Pobierz offline” ściąga zipy z Cloudflare R2 i rozpakowuje je w Cache Storage przeglądarki
 - **Układ** — telefon i szeroki ekran, w tym tryb stacji
 
 ## Zasady egzaminu
@@ -348,7 +350,16 @@ Treść pytań w językach obcych pochodzi z Excela MI (`Pytanie [EN]`, `Pytanie
 | Zdjęcia / filmy | nie (pusty `src/media`) | CDN albo `C:\ProgramData\prawko\src\media` | CDN albo `/usr/local/prawko/src/media` | CDN albo `/opt/prawko/src/media` |
 | Excel / ZIP / JPG / WMV | nie | `%LOCALAPPDATA%\prawko\gov-data` | `~/Library/Application Support/prawko/gov-data` | `~/.local/share/prawko/gov-data` |
 
-Czysty clone **nie wymaga** `-InstallGov`: JSON jest w `src/data`, a `MEDIA_CDN` w `src/js/data.js` wskazuje kubeł B2 `prawko-maz` (`img/` i `vid/`).
+Czysty clone **nie wymaga** `-InstallGov`. JSON jest w `src/data`. Domyślnie (github.io i localhost bez mediów na dysku):
+
+| Co | Skąd | Stała w `src/js/data.js` |
+|---|---|---|
+| Oglądanie `img/` i `vid/` | Backblaze B2 `prawko-maz` | `MEDIA_CDN` |
+| „Pobierz offline” (zip + manifest) | Cloudflare R2 `prawko-packs` | `PACKS_BASE` (`https://pub-….r2.dev`) |
+
+R2 zostaje na publicznym adresie testowym `r2.dev` (bez płatnej domeny). Własna domena na kubeł nie jest wymagana. Stary fetch plik-po-pliku z B2 zostaje w kodzie (`OFFLINE_DOWNLOAD = 'files'`).
+
+Na **localhost** przeglądarka czyta `src/local.json` (gitignore, nie ma go na github.io). Klucze: `learnQuestionJump`, `mediaBase` (`media` / `cdn`), `offlineDownload` (`packs` / `files`), `packsBase` (nadpisuje host zipów).
 
 W paczce MI brakuje pliku `!RS_Parking zastrzeżony.webp`. Parser **nie wycina** przez to pytania — nazwa z Excela zostaje, żeby zadziałał CDN albo późniejsze uzupełnienie.
 
@@ -358,7 +369,7 @@ Push na `main` odpala testy Playwright i wgrywa `src/` na GitHub Pages: [anabelm
 
 ## Pipeline danych na Windows
 
-Regeneracja JSON i mediów jest w **PowerShellu**. Na Windowsie nie używaj bliźniaków `.py` / `.sh`.
+Regeneracja JSON i mediów jest w **PowerShellu**. Na Windowsie nie używaj bliźniaków `.py` / `.sh`. Instalator `Install_Prawko.windows.ps1` woła te skrypty sam (`-InstallGov` / `-GovQuestions` / `-Merge`). Ścieżki `gov-data` bierze z `scripts/download-gov.ps1 -LibraryOnly` (nie zgaduje katalogu w instalatorze). `convert-media.ps1` ładuje tę samą bibliotekę.
 
 Wymagania poza instalatorem: przy konwersji mediów **FFmpeg** i **cwebp** (instalator przy `-InstallGov` kładzie przenośnego FFmpeg do `tools\`, jeśli nie ma w PATH).
 
@@ -368,7 +379,9 @@ Wymagania poza instalatorem: przy konwersji mediów **FFmpeg** i **cwebp** (inst
 | `scripts/parse-excel.ps1` | Excel → `src/data/*.json` oraz `translations_{en,de,uk}.json` |
 | `scripts/convert-media.ps1` | JPG → WebP, WMV → MP4 (nie rusza PJM) |
 | `scripts/filter-no-media.ps1` | **Raport** pytań z `media: null`. Kasowanie wierszy tylko z `-Remove` |
-| `scripts/upload-media.ps1` | Upload `src/media` na Backblaze B2 (klucze w `.b2env`, nie w gicie) |
+| `scripts/upload-media.ps1` | Upload `src/media` (`img/` `vid/`) na Backblaze B2 (klucze w `.b2env`, nie w gicie) |
+| `scripts/build-media-packs.ps1` | Zipy + `manifest.json` → `%LOCALAPPDATA%\prawko\packs` (nie git) |
+| `scripts/upload-packs.ps1` | Archiwum zipów na B2 — **nie** publiczny host aplikacji |
 
 Przykład — JSON z Excela już leżącego na dysku:
 
@@ -392,15 +405,17 @@ Raport mediów (nic nie kasuje):
 powershell -ExecutionPolicy Bypass -File .\scripts\filter-no-media.ps1
 ```
 
-Upload na B2: skopiuj `scripts/b2env.example` do `.b2env` w katalogu głównym repo, uzupełnij klucze, potem `scripts/upload-media.ps1`. Po pierwszym wgraniu ustaw `MEDIA_CDN` w `src/js/data.js` na URL wypisany przez skrypt.
+Upload streamu na B2: skopiuj `scripts/b2env.example` do `.b2env` w katalogu głównym repo, uzupełnij klucze, potem `scripts/upload-media.ps1`. Po pierwszym wgraniu ustaw `MEDIA_CDN` w `src/js/data.js` na URL wypisany przez skrypt.
 
-Zwykła aktualizacja pytań na już stojącym serwerze: `Install_Prawko.ps1 -GovQuestions` albo `-InstallGov`. Nie odpalaj pełnego instalatora „dla pewności”, jeśli serwer już działa.
+Paczki offline: `scripts/build-media-packs.ps1` (JSON + lokalne `img/` `vid/`). Wynik wrzuć do kubełka R2 **prawko-packs** w panelu Cloudflare (Objects → Upload: `manifest.json` i zipy). Aplikacja czyta `PACKS_BASE`. **Nie** wgrywaj zipów na Backblaze jako źródła „Pobierz offline” — B2 tnie duże pobrania. `upload-packs.ps1` zostaje tylko jako kopia archiwalna na B2.
+
+Zwykła aktualizacja pytań na już stojącym serwerze: `Install_Prawko.windows.ps1 -GovQuestions` albo `-InstallGov`. Nie odpalaj pełnego instalatora „dla pewności”, jeśli serwer już działa.
 
 ---
 
 ## Pipeline danych na macOS i Linuxie
 
-Instalatory `Install_Prawko.macos.sh` i `Install_Prawko.linux.sh` wołają te skrypty same. Ręcznie (z checkoutu):
+Instalatory `Install_Prawko.macos.sh` i `Install_Prawko.linux.sh` wołają te skrypty same. Przy `--install-gov` / `--gov-questions` / `--merge` wczytują `download-gov.sh` jako bibliotekę (`PRAWKO_GOV_LIBRARY_ONLY=1`), żeby ścieżka `gov-data` była ta sama co w pipeline. `convert-media.sh` ładuje tę samą bibliotekę. Ręcznie (z checkoutu):
 
 | Skrypt | Zadanie |
 |---|---|
@@ -410,6 +425,7 @@ Instalatory `Install_Prawko.macos.sh` i `Install_Prawko.linux.sh` wołają te sk
 | `scripts/filter-no-media.py` | Raport; kasowanie tylko z `--remove` |
 | `scripts/merge-gov.js` | Dopisywanie braków MI (`--merge`) |
 | `scripts/upload-media.sh` | Upload `src/media` na B2 |
+| `scripts/build-media-packs.py` | To samo co `build-media-packs.ps1` (zipy + manifest) |
 
 ```bash
 bash scripts/download-gov.sh --excel-only
@@ -446,6 +462,8 @@ The repo JSON has **3518** unique ministry questions. Photos and films are not i
 
 ## Install on Windows
 
+The Windows installer is **`Install_Prawko.windows.ps1`** (same naming scheme as `Install_Prawko.macos.sh` and `Install_Prawko.linux.sh`).
+
 **Windows 10/11** is the supported PC target. Python is not required for install or for the Windows data pipeline.
 
 ### Requirements
@@ -463,11 +481,11 @@ The installer installs **Node.js** and **NSSM** if they are missing. It does not
 
 ### Quick start
 
-1. Download [`Install_Prawko.ps1`](https://github.com/AnabelMaz/prawko/blob/main/Install_Prawko.ps1) (**Raw**, then Save as) anywhere. You do **not** need to clone the repo first.
+1. Download [`Install_Prawko.windows.ps1`](https://github.com/AnabelMaz/prawko/blob/main/Install_Prawko.windows.ps1) (**Raw**, then Save as) anywhere. You do **not** need to clone the repo first.
 2. In PowerShell, in that folder:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\Install_Prawko.ps1
+powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1
 ```
 
 Download the file to disk (`-OutFile` or Raw → Save as). Do not paste it into Notepad — Windows PowerShell 5.1 needs UTF-8 with a BOM.
@@ -475,13 +493,13 @@ Download the file to disk (`-OutFile` or Raw → Save as). Do not paste it into 
 Or without a browser:
 
 ```powershell
-Invoke-WebRequest -Uri https://raw.githubusercontent.com/AnabelMaz/prawko/main/Install_Prawko.ps1 -OutFile Install_Prawko.ps1
-powershell -ExecutionPolicy Bypass -File .\Install_Prawko.ps1
+Invoke-WebRequest -Uri https://raw.githubusercontent.com/AnabelMaz/prawko/main/Install_Prawko.windows.ps1 -OutFile Install_Prawko.windows.ps1
+powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1
 ```
 
 3. Open [http://localhost:5173](http://localhost:5173).
 
-If Windows blocks the script, keep `-ExecutionPolicy Bypass` as above — it applies to this process only. All switches: `Install_Prawko.ps1 -Help`.
+If Windows blocks the script, keep `-ExecutionPolicy Bypass` as above — it applies to this process only. All switches: `Install_Prawko.windows.ps1 -Help`.
 
 ### What the default install does
 
@@ -492,7 +510,7 @@ With no switches the installer:
 - registers the **PrawkoWORDService** Windows service,
 - serves the app on port **5173**.
 
-Questions come from the repo JSON. Photos and films come from the public Backblaze bucket `prawko-maz`. If the service is already running, a second run **with no switches does not overwrite** it.
+Questions come from the repo JSON. Photos and films stream from the public Backblaze bucket `prawko-maz`. “Download offline” pulls zip packs from Cloudflare R2. If the service is already running, a second run **with no switches does not overwrite** it.
 
 After a code overlay, an open tab may show an "Update available" banner — use **Refresh**; a hard reload is not required.
 
@@ -547,7 +565,7 @@ The default install is enough to study and sit a mock exam. JSON is in the repo;
 Local WebP/MP4 (offline without CDN, or your own copy):
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\Install_Prawko.ps1 -InstallGov
+powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -InstallGov
 ```
 
 Staging (ZIP, raw JPG/WMV) goes to `%LOCALAPPDATA%\prawko\gov-data`. Conversion and JSON go only to the ProgramData server. If `C:` is tight, ZIP/raw may overflow to `gov-data` in a checkout on another drive.
@@ -555,7 +573,7 @@ Staging (ZIP, raw JPG/WMV) goes to `%LOCALAPPDATA%\prawko\gov-data`. Conversion 
 Questions only, no film download:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\Install_Prawko.ps1 -GovQuestions
+powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -GovQuestions
 ```
 
 ### Developer install
@@ -563,7 +581,7 @@ powershell -ExecutionPolicy Bypass -File .\Install_Prawko.ps1 -GovQuestions
 Code only, no localhost and no Node:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\Install_Prawko.ps1 -Dev D:\prawko
+powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -Dev D:\prawko
 ```
 
 Git is installed only here. This does **not** set up the server. The folder must be **empty** or not exist yet (not `C:\ProgramData\prawko`).
@@ -573,7 +591,7 @@ Both (app + git): run the installer **with no switches** first, then `-Dev`.
 Preview your code on localhost (server already running):
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\Install_Prawko.ps1 -Patch
+powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -Patch
 ```
 
 `-Patch` overlays `src` from the contrib tree and **skips** `data\` and `media\`. Gov ZIPs and WebP are not copied into the git folder. If the server is already up — overlay only. If it is not — ZIP + service first, then overlay.
@@ -581,7 +599,7 @@ powershell -ExecutionPolicy Bypass -File .\Install_Prawko.ps1 -Patch
 ### Uninstall
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\Install_Prawko.ps1 -Uninstall
+powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -Uninstall
 ```
 
 Removes the service and `C:\ProgramData\prawko` (including FFmpeg dropped there by `-InstallGov`). `%LOCALAPPDATA%\prawko\gov-data` and Git / Node / NSSM remain.
@@ -749,11 +767,11 @@ bash Install_Prawko.linux.sh --uninstall
 - **Exam simulation** — 32 questions, 25 minutes, official scoring
 - **12 categories** — A, A1, A2, AM, B, B1, C, C1, D, D1, PT, T
 - **Skins** — Panel and Station
-- **Media** — official photos and films (CDN, or local after `-InstallGov`)
+- **Media** — official photos and films (Backblaze stream, or local after `-InstallGov`)
 - **Languages** — PL, EN, DE, UA (UI and question text)
 - **Dark / light theme** — persisted in the browser
 - **Local profiles** — progress on this machine
-- **Offline** — PWA / service worker; CDN media needs the network on first fetch
+- **Offline** — PWA / service worker; “Download offline” fetches zip packs from Cloudflare R2 into Cache Storage
 - **Layout** — phone and wide station screens
 
 ## Exam rules
@@ -779,7 +797,16 @@ Non-Polish question text comes from the ministry Excel (`Pytanie [EN]`, `Pytanie
 | Photos / films | no (empty `src/media`) | CDN or `C:\ProgramData\prawko\src\media` | CDN or `/usr/local/prawko/src/media` | CDN or `/opt/prawko/src/media` |
 | Excel / ZIP / JPG / WMV | no | `%LOCALAPPDATA%\prawko\gov-data` | `~/Library/Application Support/prawko/gov-data` | `~/.local/share/prawko/gov-data` |
 
-A clean clone does **not** need `-InstallGov`: JSON is in `src/data`, and `MEDIA_CDN` in `src/js/data.js` points at the `prawko-maz` B2 bucket (`img/` and `vid/`).
+A clean clone does **not** need `-InstallGov`. JSON is in `src/data`. Defaults (github.io and localhost without files on disk):
+
+| What | Where | Constant in `src/js/data.js` |
+|---|---|---|
+| Playing `img/` and `vid/` | Backblaze B2 `prawko-maz` | `MEDIA_CDN` |
+| “Download offline” (zip + manifest) | Cloudflare R2 `prawko-packs` | `PACKS_BASE` (`https://pub-….r2.dev`) |
+
+Packs stay on the free `r2.dev` public development URL (no paid custom domain). The old per-file B2 fetch remains in code (`OFFLINE_DOWNLOAD = 'files'`).
+
+On **localhost** the browser reads `src/local.json` (gitignored; github.io does not have it). Keys: `learnQuestionJump`, `mediaBase` (`media` / `cdn`), `offlineDownload` (`packs` / `files`), `packsBase` (overrides the zip host).
 
 The ministry pack is missing `!RS_Parking zastrzeżony.webp`. The parser does **not** drop that question — the Excel file name stays so the CDN or a later file can fill it.
 
@@ -789,7 +816,7 @@ A push to `main` runs Playwright and publishes `src/` to GitHub Pages: [anabelma
 
 ## Data pipeline on Windows
 
-Regenerate JSON and media with **PowerShell**. Do not use the `.py` / `.sh` twins on Windows.
+Regenerate JSON and media with **PowerShell**. Do not use the `.py` / `.sh` twins on Windows. `Install_Prawko.windows.ps1` runs these scripts (`-InstallGov` / `-GovQuestions` / `-Merge`). Gov-data paths come from `scripts/download-gov.ps1 -LibraryOnly` (the installer does not invent that folder). `convert-media.ps1` loads the same library.
 
 Besides the installer: media conversion needs **FFmpeg** and **cwebp** (`-InstallGov` can drop a portable FFmpeg into `tools\` if none is on PATH).
 
@@ -799,7 +826,9 @@ Besides the installer: media conversion needs **FFmpeg** and **cwebp** (`-Instal
 | `scripts/parse-excel.ps1` | Excel → `src/data/*.json` and `translations_{en,de,uk}.json` |
 | `scripts/convert-media.ps1` | JPG → WebP, WMV → MP4 (does not touch PJM) |
 | `scripts/filter-no-media.ps1` | **Report** questions with `media: null`. Drops rows only with `-Remove` |
-| `scripts/upload-media.ps1` | Upload `src/media` to Backblaze B2 (keys in `.b2env`, not in git) |
+| `scripts/upload-media.ps1` | Upload `src/media` (`img/` `vid/`) to Backblaze B2 (keys in `.b2env`, not in git) |
+| `scripts/build-media-packs.ps1` | Zips + `manifest.json` → `%LOCALAPPDATA%\prawko\packs` (not git) |
+| `scripts/upload-packs.ps1` | Archive copy of zips to B2 — **not** the app’s public pack host |
 
 Parse an Excel file already on disk:
 
@@ -823,15 +852,17 @@ Report only (does not delete questions):
 powershell -ExecutionPolicy Bypass -File .\scripts\filter-no-media.ps1
 ```
 
-B2 upload: copy `scripts/b2env.example` to `.b2env` at the repo root, fill in the keys, then run `scripts/upload-media.ps1`. After the first upload, set `MEDIA_CDN` in `src/js/data.js` to the URL the script prints.
+B2 stream upload: copy `scripts/b2env.example` to `.b2env` at the repo root, fill in the keys, then run `scripts/upload-media.ps1`. After the first upload, set `MEDIA_CDN` in `src/js/data.js` to the URL the script prints.
 
-To refresh questions on a running server, use `Install_Prawko.ps1 -GovQuestions` or `-InstallGov`. Do not re-run a full install “just in case” if the service is already up.
+Offline packs: `scripts/build-media-packs.ps1` (JSON + local `img/` `vid/`). Upload the result to the R2 bucket **prawko-packs** in the Cloudflare dashboard (Objects → Upload: `manifest.json` and the zips). The app reads `PACKS_BASE`. **Do not** serve those zips from Backblaze — B2 throttles large downloads. `upload-packs.ps1` is only an archive copy on B2.
+
+To refresh questions on a running server, use `Install_Prawko.windows.ps1 -GovQuestions` or `-InstallGov`. Do not re-run a full install “just in case” if the service is already up.
 
 ---
 
 ## Data pipeline on macOS and Linux
 
-`Install_Prawko.macos.sh` and `Install_Prawko.linux.sh` call these scripts. To run them yourself from a checkout:
+`Install_Prawko.macos.sh` and `Install_Prawko.linux.sh` call these scripts. For `--install-gov` / `--gov-questions` / `--merge` they source `download-gov.sh` as a library (`PRAWKO_GOV_LIBRARY_ONLY=1`) so the `gov-data` path matches the pipeline. `convert-media.sh` loads the same library. To run them yourself from a checkout:
 
 | Script | Job |
 |---|---|
@@ -841,6 +872,7 @@ To refresh questions on a running server, use `Install_Prawko.ps1 -GovQuestions`
 | `scripts/filter-no-media.py` | Report; delete rows only with `--remove` |
 | `scripts/merge-gov.js` | Add missing ministry rows (`--merge`) |
 | `scripts/upload-media.sh` | Upload `src/media` to B2 |
+| `scripts/build-media-packs.py` | Same job as `build-media-packs.ps1` (zips + manifest) |
 
 ```bash
 bash scripts/download-gov.sh --excel-only

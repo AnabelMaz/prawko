@@ -1191,14 +1191,15 @@ footer a {
 }
 
 .offline-btn.downloading {
-  color: var(--accent-warm);
+  --offline-hue: 0;
   cursor: wait;
+  color: hsl(var(--offline-hue), 72%, 28%);
+  border-color: hsl(var(--offline-hue), 65%, 42%);
   background: linear-gradient(
     to right,
-    rgba(34, 197, 94, 0.15) calc(var(--dl-progress, 0) * 1%),
-    var(--bg) calc(var(--dl-progress, 0) * 1%)
+    hsl(var(--offline-hue), 65%, 82%) calc(var(--dl-progress, 0) * 1%),
+    hsl(var(--offline-hue), 70%, 94%) calc(var(--dl-progress, 0) * 1%)
   );
-  transition: none;
 }
 
 .offline-btn.downloaded {
@@ -1211,6 +1212,59 @@ footer a {
 .offline-btn.downloaded:hover {
   color: var(--accent);
   background: rgba(34, 197, 94, 0.06);
+}
+
+.offline-btn.partial {
+  --offline-hue: 0;
+  color: hsl(var(--offline-hue), 72%, 28%);
+  border-color: hsl(var(--offline-hue), 65%, 42%);
+  background: hsl(var(--offline-hue), 70%, 94%);
+  cursor: pointer;
+}
+
+.offline-btn.partial:hover {
+  color: hsl(var(--offline-hue), 72%, 22%);
+  background: hsl(var(--offline-hue), 70%, 90%);
+}
+
+:root[data-theme="dark"] .offline-btn.partial {
+  color: hsl(var(--offline-hue), 68%, 78%);
+  border-color: hsl(var(--offline-hue), 55%, 40%);
+  background: hsl(var(--offline-hue), 35%, 16%);
+}
+
+:root[data-theme="dark"] .offline-btn.partial:hover {
+  color: hsl(var(--offline-hue), 70%, 84%);
+  background: hsl(var(--offline-hue), 35%, 20%);
+}
+
+.offline-btn.partial.downloading,
+.offline-btn.downloading:hover,
+.offline-btn.partial.downloading:hover {
+  color: hsl(var(--offline-hue), 72%, 28%);
+  border-color: hsl(var(--offline-hue), 65%, 42%);
+  background: linear-gradient(
+    to right,
+    hsl(var(--offline-hue), 65%, 82%) calc(var(--dl-progress, 0) * 1%),
+    hsl(var(--offline-hue), 70%, 94%) calc(var(--dl-progress, 0) * 1%)
+  );
+}
+
+:root[data-theme="dark"] .offline-btn.downloading,
+:root[data-theme="dark"] .offline-btn.partial.downloading,
+:root[data-theme="dark"] .offline-btn.downloading:hover,
+:root[data-theme="dark"] .offline-btn.partial.downloading:hover {
+  color: hsl(var(--offline-hue), 68%, 78%);
+  border-color: hsl(var(--offline-hue), 55%, 40%);
+  background: linear-gradient(
+    to right,
+    hsl(var(--offline-hue), 40%, 24%) calc(var(--dl-progress, 0) * 1%),
+    hsl(var(--offline-hue), 35%, 16%) calc(var(--dl-progress, 0) * 1%)
+  );
+}
+
+.offline-btn.unavailable.partial {
+  cursor: not-allowed;
 }
 
 .category-card.category-unavailable {
@@ -1446,6 +1500,15 @@ footer a {
 .learn-media-mark.incorrect {
   color: var(--danger);
   text-shadow: 0 2px 0 rgba(0, 0, 0, 0.2), 0 0 28px rgba(0, 0, 0, 0.45);
+}
+
+.learn-media-mark[hidden] {
+  display: none !important;
+}
+
+.learn-media-mark {
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .media-area img,
@@ -2004,6 +2067,61 @@ footer a {
 
 #quiz.exam-active .quiz-actions {
   display: none;
+}
+
+/* Question and answers stay selectable. Chrome (timers, labels, film mark, …) does not.
+   Do not set user-select on #quiz itself — in Panel fit/portrait the dock inherits
+   none and WebKit will not let .question-text override it. */
+#quiz .learn-top,
+#quiz .exam-top-fields,
+#quiz .word-side,
+#quiz .media-fit,
+#quiz .media-area,
+#quiz .learn-media-mark,
+#quiz .quiz-legend-bar,
+#quiz .exam-toolbar,
+#quiz .exam-counters,
+#quiz .pwpw-learn-flag,
+#quiz .learn-stats,
+#quiz .word-top-right,
+#quiz .progress-bar,
+#quiz .quiz-actions,
+#quiz .learn-nav,
+#quiz .learn-qnum-suffix,
+#quiz .word-meta-label,
+#quiz .learn-category-value,
+#quiz .exam-points-value,
+#quiz .exam-category-value,
+#quiz .total-timer,
+#quiz .question-timer,
+#quiz .exam-phase-caption,
+#quiz .exam-counter,
+#quiz .exam-practice-banner,
+#quiz .exam-film-start,
+#quiz .btn-exam-next,
+#quiz .media-fallback,
+#quiz .learn-toast,
+#quiz .learn-queue-dropdown {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+#quiz .question-text,
+#quiz .answer-btn,
+#quiz .answer-text,
+#quiz .answer-label {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+#quiz .learn-qnum-input {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+#quiz.learn-qnum-jump .learn-qnum-input {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 /* Question text */
@@ -4518,6 +4636,19 @@ html[data-ui-mode="fit"] #quiz.active:not(.exam-active) .learn-nav button {
   margin: 0;
 }
 
+.media-unavailable .media-offline-link {
+  display: block;
+  margin-top: 6px;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.media-unavailable .media-offline-link:hover {
+  color: var(--text);
+}
+
 .media-retry-btn {
   min-width: 120px;
 }
@@ -5036,9 +5167,10 @@ html[data-exam-skin="panel"][data-ui-mode="fit"] #quiz.active:is(.exam-active, .
   --pwpw-a-size: calc(16 / 960 * 100cqw);
   --pwpw-yn-w: 150px;
   --pwpw-next-h: 68px;
-  --pwpw-yn-pad-y: calc(40 / 620 * 100cqh);
-  --pwpw-answers-h: calc(var(--pwpw-yn-pad-y) * 2 + 34px);
   --yn-h: 34px;
+  --pwpw-yn-halo: calc(var(--yn-h) * 2 / 3);
+  --pwpw-yn-pad-y: max(var(--pwpw-yn-halo), calc(40 / 620 * 100cqh));
+  --pwpw-answers-h: calc(var(--pwpw-yn-pad-y) * 2 + var(--yn-h));
 }
 
 html[data-exam-skin="panel"][data-ui-mode="fit"] #quiz.active:is(.exam-active, .learn-active) .word-layout {
@@ -5468,6 +5600,11 @@ html[data-exam-skin="panel"][data-ui-mode="fit"] #quiz.active:is(.exam-active, .
   flex-direction: column;
 }
 
+html[data-exam-skin="panel"][data-ui-mode="fit"] #quiz.active:is(.exam-active, .learn-active) .quiz-dock:has(.yn-answers),
+html[data-ui-mode="fit"] #quiz.active:is(.exam-active, .learn-active) .quiz-dock:has(.yn-answers) {
+  overflow: visible;
+}
+
 html[data-exam-skin="panel"][data-ui-mode="fit"] #quiz.active:is(.exam-active, .learn-active) .quiz-dock:has(.abc-answers) {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -5791,24 +5928,27 @@ html[data-ui-orient="portrait"][data-exam-skin="station"][data-ui-mode="fit"] #q
   aspect-ratio: unset;
 }
 
-/* Same dock height as landscape Panel (35% of 800). Leftover stays below, so ABC/YN do not jump. */
-html[data-ui-orient="portrait"][data-exam-skin="panel"][data-ui-mode="fit"] #quiz.active:is(.exam-active, .learn-active) .word-layout {
-  grid-template-rows: auto auto auto 280px;
-  align-content: start;
-}
-
+/* Same idea as landscape Panel (35% of 800 = 280px). Portrait used to squeeze
+   YN pad to 8px, which clipped the WORD halo (spread = 2/3 of --yn-h). Keep the
+   230px question block; grow the dock with the answers row so ABC/YN still match. */
 html[data-ui-orient="portrait"][data-exam-skin="panel"][data-ui-mode="fit"] #quiz.active:is(.exam-active, .learn-active) {
   --pwpw-q-size: calc(20 / 960 * 100cqmax);
   --pwpw-a-size: calc(16 / 960 * 100cqmax);
-  --pwpw-yn-pad-y: 8px;
-  --pwpw-answers-h: calc(var(--pwpw-yn-pad-y) * 2 + 34px);
+  --pwpw-yn-pad-y: calc(var(--pwpw-yn-halo) + 8px);
+  --pwpw-answers-h: calc(var(--pwpw-yn-pad-y) * 2 + var(--yn-h));
+  --pwpw-dock-h: calc(230px + var(--pwpw-answers-h));
+}
+
+html[data-ui-orient="portrait"][data-exam-skin="panel"][data-ui-mode="fit"] #quiz.active:is(.exam-active, .learn-active) .word-layout {
+  grid-template-rows: auto auto auto var(--pwpw-dock-h);
+  align-content: start;
 }
 
 html[data-ui-orient="portrait"][data-exam-skin="panel"][data-ui-mode="fit"] #quiz.active:is(.exam-active, .learn-active) .quiz-dock,
 html[data-ui-orient="portrait"][data-exam-skin="panel"][data-ui-mode="fit"] #quiz.active:is(.exam-active, .learn-active) .quiz-dock:has(.abc-answers) {
-  height: 280px;
-  min-height: 280px;
-  max-height: 280px;
+  height: var(--pwpw-dock-h);
+  min-height: var(--pwpw-dock-h);
+  max-height: var(--pwpw-dock-h);
 }
 
 html[data-ui-orient="portrait"][data-exam-skin="panel"][data-ui-mode="fit"] #quiz.active.learn-active .learn-queue-dropdown {
@@ -5825,7 +5965,7 @@ html[data-ui-orient="portrait"][data-exam-skin="station"][data-ui-mode="fit"] #q
   --exam-dock-gap: 24px;
   --exam-abc-row: 60px;
   --exam-abc-gap: 20px;
-  --exam-dock-pad-bot: 20px;
+  --exam-dock-pad-bot: max(20px, calc(var(--yn-h, 35px) * 2 / 3));
   grid-template-rows: auto auto auto var(--exam-dock-h);
   align-content: start;
 }

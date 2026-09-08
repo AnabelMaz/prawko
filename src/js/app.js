@@ -1,11 +1,11 @@
 // app.js — Router, initialization, and event wiring
 
-import { fetchMeta, fetchCategory, fetchUniqueQuestionCount } from './data.js';
+import { fetchMeta, fetchCategory, fetchUniqueQuestionCount, loadLocalConfig } from './data.js';
 import { startExam, setupExamListeners, cleanupExam, getLastExamCategory, refreshExamQuestion } from './exam.js';
 import { startLearn, setupLearnListeners, cleanupLearn, refreshLearnQuestion, loadLearnLocalFlags } from './learn.js';
 import { showScreen, renderCategories, applyLanguage, renderHistory, renderLearnProgress, renderResults, showConfirmModal } from './ui.js';
 import { setLang, getLang, loadQuestionTranslations, nextLang, LANG_LABELS, t } from './i18n.js';
-import { downloadCategoryMedia, getDownloadedCategories, reconcileDownloadedCategories } from './offline.js';
+import { downloadCategoryMedia, getDownloadedCategories, reconcileDownloadedCategories, offlineCoverageHue } from './offline.js';
 import { getProfileSummary, loadHistory, loadLastResult, clearHistory, clearLearnProgress } from './stats.js';
 import { setupUiFitScale, refitUiScale, layoutCategoryGrid } from './scale.js';
 import {
@@ -28,6 +28,7 @@ let meta = null;
 let uniqueQuestionCount = null;
 let currentMode = 'learn'; // 'learn' or 'exam'
 let pendingCategory = null;
+let pendingOfflineDownload = null;
 
 function paintHomeTagline() {
   const el = document.querySelector('.hero-tagline');
@@ -248,6 +249,15 @@ function handleRoute() {
   focusCurrentScreenHeading(hash);
   syncSessionChrome(hash);
   refitUiScale();
+  if (hash === 'categories' && pendingOfflineDownload) {
+    const catId = pendingOfflineDownload;
+    pendingOfflineDownload = null;
+    requestAnimationFrame(() => {
+      const dlBtn = document.querySelector(`.category-grid .offline-btn[data-category="${CSS.escape(catId)}"]`);
+      dlBtn?.closest('.category-card')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      startOfflineDownload(dlBtn);
+    });
+  }
 }
 
 // ---- Category & Mode Selection ----
@@ -270,6 +280,51 @@ function handleCategorySelect(categoryId) {
   addRecentCategory(categoryId);
   pendingCategory = categoryId;
   navigate('quiz');
+}
+
+async function startOfflineDownload(dlBtn) {
+  if (!dlBtn) return;
+  const catId = dlBtn.dataset.category;
+  if (!catId) return;
+  if (dlBtn.classList.contains('downloaded') || dlBtn.classList.contains('downloading') || dlBtn.classList.contains('unavailable')) return;
+
+  dlBtn.classList.add('downloading');
+  const startPct = Number(dlBtn.dataset.offlinePct);
+  const initial = Number.isFinite(startPct) && startPct > 0 ? Math.min(99, Math.round(startPct)) : 0;
+  dlBtn.textContent = `\u2193 ${initial}%`;
+  dlBtn.style.setProperty('--dl-progress', String(initial));
+  dlBtn.style.setProperty('--offline-hue', String(offlineCoverageHue(initial)));
+
+  try {
+    const result = await downloadCategoryMedia(catId, (done, total) => {
+      const pct = Math.round((done / total) * 100);
+      dlBtn.textContent = `\u2193 ${pct}%`;
+      dlBtn.style.setProperty('--dl-progress', String(pct));
+      dlBtn.style.setProperty('--offline-hue', String(offlineCoverageHue(pct)));
+    });
+    await reconcileDownloadedCategories();
+    dlBtn.classList.remove('downloading');
+    dlBtn.style.removeProperty('--dl-progress');
+    if (result.success) {
+      dlBtn.classList.add('downloaded');
+      dlBtn.textContent = `\u2713 ${t('savedOffline')}`;
+    } else {
+      dlBtn.classList.remove('downloaded');
+      dlBtn.textContent = `\u2193 ${t('saveOffline')}`;
+    }
+    renderCategories(meta, getDownloadedCategories());
+    syncCategoryCardVisibility();
+    renderRecentCategories();
+    applyCategorySearch();
+  } catch {
+    dlBtn.classList.remove('downloading');
+    dlBtn.style.removeProperty('--dl-progress');
+    dlBtn.textContent = `\u2193 ${t('saveOffline')}`;
+    renderCategories(meta, getDownloadedCategories());
+    syncCategoryCardVisibility();
+    renderRecentCategories();
+    applyCategorySearch();
+  }
 }
 
 function updateLanguageButtons(lang) {
@@ -585,6 +640,7 @@ async function applyAppUpdate(registration) {
 // ---- Init ----
 async function init() {
   setupUiFitScale();
+  await loadLocalConfig();
   await loadLearnLocalFlags();
   // Load metadata
   const spinner = document.getElementById('home-spinner');
@@ -725,48 +781,19 @@ async function init() {
   });
 
   // Offline download handler
-  document.querySelector('.category-grid').addEventListener('click', async (e) => {
+  document.addEventListener('prawko-offline-download', (e) => {
+    const categoryId = e.detail?.categoryId;
+    if (!categoryId) return;
+    pendingOfflineDownload = categoryId;
+    navigate('categories');
+  });
+
+  document.querySelector('.category-grid').addEventListener('click', (e) => {
     const dlBtn = e.target.closest('.offline-btn');
     if (!dlBtn) return;
     e.stopPropagation();
     e.preventDefault();
-
-    const catId = dlBtn.dataset.category;
-    if (dlBtn.classList.contains('downloaded') || dlBtn.classList.contains('downloading') || dlBtn.classList.contains('unavailable')) return;
-
-    dlBtn.classList.add('downloading');
-    dlBtn.textContent = '\u2193 0%';
-    dlBtn.style.setProperty('--dl-progress', '0');
-
-    try {
-      const result = await downloadCategoryMedia(catId, (done, total) => {
-        const pct = Math.round((done / total) * 100);
-        dlBtn.textContent = `\u2193 ${pct}%`;
-        dlBtn.style.setProperty('--dl-progress', String(pct));
-      });
-      await reconcileDownloadedCategories();
-      dlBtn.classList.remove('downloading');
-      dlBtn.style.removeProperty('--dl-progress');
-      if (result.success) {
-        dlBtn.classList.add('downloaded');
-        dlBtn.textContent = `\u2713 ${t('savedOffline')}`;
-      } else {
-        dlBtn.classList.remove('downloaded');
-        dlBtn.textContent = `\u2193 ${t('saveOffline')}`;
-      }
-      renderCategories(meta, getDownloadedCategories());
-      syncCategoryCardVisibility();
-      renderRecentCategories();
-      applyCategorySearch();
-    } catch {
-      dlBtn.classList.remove('downloading');
-      dlBtn.style.removeProperty('--dl-progress');
-      dlBtn.textContent = `\u2193 ${t('saveOffline')}`;
-      renderCategories(meta, getDownloadedCategories());
-      syncCategoryCardVisibility();
-      renderRecentCategories();
-      applyCategorySearch();
-    }
+    startOfflineDownload(dlBtn);
   });
 
   // Clear history button — with confirmation

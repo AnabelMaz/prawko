@@ -10,7 +10,6 @@ import {
   showConfirmModal,
   confirmModalAction,
   hideModal,
-  preloadMedia,
 } from './ui.js';
 import { saveLastResult, saveResult } from './stats.js';
 import { t, getLang } from './i18n.js';
@@ -661,9 +660,6 @@ function showQuestion() {
   updatePracticeBanner();
   updateExamNextButton();
   ensureExamClock();
-
-  const next = state.questions[state.currentIndex + 1];
-  if (next) preloadMedia(next.question);
 
   if (q.type === 'specialist') {
     beginAnswerPhase();

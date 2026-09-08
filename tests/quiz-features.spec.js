@@ -2,7 +2,7 @@ const { test, expect } = require('@playwright/test');
 const { cycleLanguage, cycleSkin, learnCatalogLabel } = require('./helpers');
 
 // Helper: navigate to categories and start learn mode for category B
-async function startLearnMode(page, { localJson } = {}) {
+async function startLearnMode(page, { localJson, category = 'B' } = {}) {
   await page.route('**/local.json', async (route) => {
     if (localJson) {
       await route.fulfill({
@@ -20,7 +20,7 @@ async function startLearnMode(page, { localJson } = {}) {
   await page.waitForSelector('#categories.active');
   // Ensure "Nauka" mode is selected (default)
   await page.click('.mode-btn[data-mode="learn"]');
-  await page.click('.category-grid .category-card[data-category="B"]');
+  await page.click(`.category-grid .category-card[data-category="${category}"]`);
   await page.waitForSelector('#quiz.active');
 }
 
@@ -112,12 +112,13 @@ test.describe('Video autoplay', () => {
     // We'll check by evaluating the renderQuestion logic - look for any video element
     const hasVideo = await page.evaluate(() => {
       const video = document.querySelector('.media-area video');
-      return video ? { muted: video.muted, autoplay: video.autoplay } : null;
+      return video ? { muted: video.muted, autoplay: video.autoplay, preload: video.preload } : null;
     });
 
     if (hasVideo) {
       expect(hasVideo.muted).toBe(true);
       expect(hasVideo.autoplay).toBe(true);
+      expect(hasVideo.preload).toBe('auto');
     } else {
       // No video on first question - verify the attributes are set in the source code
       // by checking that the renderQuestion function sets them
@@ -127,7 +128,69 @@ test.describe('Video autoplay', () => {
       });
       expect(uiSource).toContain('video.muted = true');
       expect(uiSource).toContain('video.autoplay = true');
+      expect(uiSource).toContain("video.preload = 'auto'");
     }
+  });
+});
+
+test.describe('Learn media is only the current question', () => {
+  test('catalog 867 in T does not also fetch another question webp', async ({ page }) => {
+    const media = [];
+    page.on('request', (req) => {
+      const url = req.url();
+      if (/\.(mp4|webm|webp)(\?|$)/i.test(url)) media.push(url);
+    });
+    await startLearnMode(page, {
+      category: 'T',
+      localJson: { learnQuestionJump: true, mediaBase: 'cdn' },
+    });
+    await setLearnQueue(page, 'filter', 'all');
+    await setLearnQueue(page, 'order', 'sequential');
+    const input = page.locator('.learn-qnum-input');
+    await input.click();
+    await input.fill('867');
+    await input.press('Enter');
+    await page.waitForFunction(() => document.querySelector('.learn-qnum-input')?.value === '867');
+    await page.waitForSelector('#quiz .media-area video, #quiz .media-area img');
+    const src = await page.locator('#quiz .media-area video, #quiz .media-area img').evaluate((el) => el.currentSrc || el.src);
+    expect(src).toContain('3596.mp4');
+    const names = [...new Set(media.map((url) => url.split('/').pop().split('?')[0]))];
+    expect(names).not.toContain('4C301.webp');
+  });
+});
+
+test.describe('Learn video result mark', () => {
+  test('replay hides the mark until the clip ends and leaves answer buttons', async ({ page }) => {
+    await page.route(/\.(mp4|webm)(\?|$)/i, async () => {});
+    await startLearnMode(page);
+    const mediaArea = page.locator('#quiz .media-area');
+    for (let i = 0; i < 25; i += 1) {
+      if (await mediaArea.locator('video').count()) break;
+      const next = page.locator('.btn-next');
+      if (await next.isDisabled()) break;
+      await next.click();
+    }
+    await expect(mediaArea.locator('video')).toHaveCount(1);
+    await page.locator('.answers .answer-btn').first().click();
+    const mark = page.locator('#quiz .learn-media-mark');
+    await expect(mark).toBeVisible();
+    const markedAnswers = page.locator('.answers .answer-btn.correct, .answers .answer-btn.incorrect');
+    await expect(markedAnswers).not.toHaveCount(0);
+    const answerSnapshot = await markedAnswers.evaluateAll((els) => els.map((el) => el.className).sort());
+    await mediaArea.locator('video').evaluate((video) => {
+      video.pause();
+      video.dispatchEvent(new Event('ended'));
+    });
+    await page.locator('#quiz .media-replay-btn').click();
+    await expect(mark).toBeHidden();
+    await expect(markedAnswers).not.toHaveCount(0);
+    expect(await markedAnswers.evaluateAll((els) => els.map((el) => el.className).sort())).toEqual(answerSnapshot);
+    await mediaArea.locator('video').evaluate((video) => {
+      video.pause();
+      video.dispatchEvent(new Event('ended'));
+    });
+    await expect(mark).toBeVisible();
+    expect(await markedAnswers.evaluateAll((els) => els.map((el) => el.className).sort())).toEqual(answerSnapshot);
   });
 });
 
@@ -155,6 +218,55 @@ test.describe('Media slot size', () => {
     expect(filledBox, 'expected a question with media').toBeTruthy();
     expect(Math.abs(emptyBox.width - filledBox.width)).toBeLessThan(2);
     expect(Math.abs(emptyBox.height - filledBox.height)).toBeLessThan(2);
+  });
+});
+
+test.describe('Unavailable CDN media', () => {
+  test('learn fallback keeps the message and links to category download', async ({ page }) => {
+    await page.route('https://f003.backblazeb2.com/**', (route) => route.abort());
+    await page.route('https://pub-e8e3a36b9ab44034913636d87ee3f0ee.r2.dev/**', async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 20000));
+      await route.abort();
+    });
+    await startLearnMode(page);
+    await page.evaluate(async () => {
+      const { renderQuestion } = await import(new URL('./js/ui.js', location.href).href);
+      renderQuestion({
+        id: 1,
+        q: 'Test?',
+        media: 'no-such-file.webp',
+        mediaType: 'image',
+        type: 'basic',
+        correct: 'T',
+      }, document.querySelector('.question-card'), { categoryId: 'B' });
+    });
+    const box = page.locator('.media-unavailable');
+    await expect(box).toContainText('Multimedia niedostępne');
+    const link = page.locator('.media-offline-link');
+    await expect(link).toHaveText('Pobierz kategorię B offline');
+    await expect(page.locator('.media-retry-btn')).toHaveText('Spróbuj ponownie');
+    await link.click();
+    await page.waitForSelector('#categories.active');
+    await expect(page.locator('.category-grid .category-card[data-category="B"] .offline-btn')).toHaveClass(/downloading/);
+  });
+
+  test('local media fallback does not offer a CDN pack download', async ({ page }) => {
+    await page.route('**/media/**', (route) => route.abort());
+    await page.route('https://f003.backblazeb2.com/**', (route) => route.abort());
+    await startLearnMode(page, { localJson: { mediaBase: 'media' } });
+    await page.evaluate(async () => {
+      const { renderQuestion } = await import(new URL('./js/ui.js', location.href).href);
+      renderQuestion({
+        id: 1,
+        q: 'Test?',
+        media: 'no-such-file.webp',
+        mediaType: 'image',
+        type: 'basic',
+        correct: 'T',
+      }, document.querySelector('.question-card'), { categoryId: 'B' });
+    });
+    await expect(page.locator('.media-unavailable')).toHaveText('Multimedia niedostępne');
+    await expect(page.locator('.media-offline-link')).toHaveCount(0);
   });
 });
 
@@ -451,6 +563,196 @@ test.describe('Learn progress summary', () => {
       ]);
     });
     expect(counts).toEqual({ total: 3, known: 1, hard: 0, unknown: 2 });
+  });
+});
+
+test.describe('Quiz text selection', () => {
+  const views = [
+    { skin: 'panel', orient: 'portrait', viewport: { width: 420, height: 900 } },
+    { skin: 'panel', orient: 'landscape', viewport: { width: 1280, height: 800 } },
+    { skin: 'station', orient: 'portrait', viewport: { width: 420, height: 900 } },
+    { skin: 'station', orient: 'landscape', viewport: { width: 1280, height: 800 } },
+  ];
+
+  async function openLearn(page, { skin, viewport, localJson } = {}) {
+    await page.setViewportSize(viewport);
+    await page.addInitScript((nextSkin) => {
+      try { localStorage.setItem('prawko_exam_skin', nextSkin); } catch {}
+    }, skin);
+    await startLearnMode(page, { localJson });
+    await expect.poll(() => page.locator('html').getAttribute('data-exam-skin')).toBe(skin);
+    await expect.poll(() => page.locator('html').getAttribute('data-ui-orient')).toBe(
+      viewport.width < viewport.height ? 'portrait' : 'landscape',
+    );
+    await page.waitForFunction(() => !document.querySelector('.quiz-dock')?.classList.contains('is-fitting'));
+  }
+
+  function selectionStyles() {
+    const u = (s) => {
+      const el = document.querySelector(s);
+      return el ? getComputedStyle(el).userSelect : null;
+    };
+    return {
+      question: u('.question-text'),
+      answer: u('.answer-btn'),
+      input: u('.learn-qnum-input'),
+      suffix: u('.learn-qnum-suffix'),
+      category: u('.learn-category-value'),
+      points: u('.exam-points-value'),
+      examCategory: u('.exam-category-value'),
+      side: u('.word-side'),
+      mark: u('.learn-media-mark'),
+    };
+  }
+
+  for (const view of views) {
+    test(`learn ${view.skin} ${view.orient}: question is selectable, chrome is not`, async ({ page }) => {
+      await openLearn(page, view);
+      const sel = await page.evaluate(selectionStyles);
+      expect(sel.question).toBe('text');
+      expect(sel.answer).toBe('text');
+      expect(sel.input).toBe('none');
+      expect(sel.suffix).toBe('none');
+      expect(sel.category).toBe('none');
+      expect(sel.side).toBe('none');
+      await page.locator('#quiz .question-text').click({ clickCount: 3 });
+      const copied = await page.evaluate(() => window.getSelection()?.toString() || '');
+      expect(copied.trim().length).toBeGreaterThan(0);
+    });
+  }
+
+  test('learn jump input is selectable only with local.json', async ({ page }) => {
+    await openLearn(page, { skin: 'panel', viewport: { width: 420, height: 900 }, localJson: { learnQuestionJump: true } });
+    await page.locator('.answers .answer-btn').first().click();
+    const sel = await page.evaluate(selectionStyles);
+    expect(sel.input).toBe('text');
+    expect(sel.suffix).toBe('none');
+    expect(sel.mark).toBe('none');
+  });
+
+  test('learn catalog number is not selectable without jump', async ({ page }) => {
+    await startLearnMode(page);
+    const sel = await page.evaluate(selectionStyles);
+    expect(sel.input).toBe('none');
+    expect(sel.suffix).toBe('none');
+  });
+
+  for (const view of views) {
+    test(`exam ${view.skin} ${view.orient}: question is selectable, chrome is not`, async ({ page }) => {
+      await page.setViewportSize(view.viewport);
+      await page.addInitScript((nextSkin) => {
+        try { localStorage.setItem('prawko_exam_skin', nextSkin); } catch {}
+      }, view.skin);
+      await startExamMode(page);
+      await expect.poll(() => page.locator('html').getAttribute('data-exam-skin')).toBe(view.skin);
+      await expect.poll(() => page.locator('html').getAttribute('data-ui-orient')).toBe(view.orient);
+      const sel = await page.evaluate(selectionStyles);
+      expect(sel.question).toBe('text');
+      expect(sel.answer).toBe('text');
+      expect(sel.points).toBe('none');
+      expect(sel.examCategory).toBe('none');
+      expect(sel.side).toBe('none');
+    });
+  }
+});
+
+test.describe('YN answer halo is not clipped', () => {
+  const views = [
+    { skin: 'panel', orient: 'portrait', viewport: { width: 420, height: 900 } },
+    { skin: 'panel', orient: 'landscape', viewport: { width: 1280, height: 800 } },
+    { skin: 'station', orient: 'portrait', viewport: { width: 420, height: 900 } },
+    { skin: 'station', orient: 'landscape', viewport: { width: 1280, height: 800 } },
+  ];
+
+  function ynHaloRoom() {
+    const btn = document.querySelector('.yn-answers .answer-btn.selected, .yn-answers .answer-btn.correct');
+    const row = document.querySelector('.yn-answers');
+    if (!btn || !row) return null;
+    const scale = Number(getComputedStyle(document.documentElement).getPropertyValue('--ui-scale')) || 1;
+    const ynHCss = parseFloat(getComputedStyle(row).getPropertyValue('--yn-h')) || 34;
+    const ynH = ynHCss * scale;
+    const halo = ynHCss * (2 / 3) * scale;
+    const b = btn.getBoundingClientRect();
+    const r = row.getBoundingClientRect();
+    let top = -Infinity;
+    let right = Infinity;
+    let bottom = Infinity;
+    let left = -Infinity;
+    for (let el = btn.parentElement; el; el = el.parentElement) {
+      if (!(el instanceof HTMLElement)) continue;
+      const cs = getComputedStyle(el);
+      const clipsX = cs.overflowX !== 'visible';
+      const clipsY = cs.overflowY !== 'visible';
+      if (!clipsX && !clipsY) continue;
+      const box = el.getBoundingClientRect();
+      if (clipsY) {
+        top = Math.max(top, box.top);
+        bottom = Math.min(bottom, box.bottom);
+      }
+      if (clipsX) {
+        left = Math.max(left, box.left);
+        right = Math.min(right, box.right);
+      }
+    }
+    return {
+      ynH,
+      halo,
+      rowH: r.height,
+      topRoom: b.top - top,
+      bottomRoom: bottom - b.bottom,
+      leftRoom: b.left - left,
+      rightRoom: right - b.right,
+      shadow: getComputedStyle(btn).boxShadow,
+    };
+  }
+
+  async function clickYn(page) {
+    const yn = page.locator('.yn-answers .answer-btn').first();
+    await expect(yn).toHaveCount(1);
+    await yn.click({ force: true });
+    await expect(yn).toHaveClass(/selected|correct/);
+  }
+
+  for (const view of views) {
+    test(`learn ${view.skin} ${view.orient}: Tak/Nie ring fits in the dock`, async ({ page }) => {
+      await page.setViewportSize(view.viewport);
+      await page.addInitScript((nextSkin) => {
+        try { localStorage.setItem('prawko_exam_skin', nextSkin); } catch {}
+      }, view.skin);
+      await startLearnMode(page, { category: 'PT' });
+      await expect.poll(() => page.locator('html').getAttribute('data-exam-skin')).toBe(view.skin);
+      await expect.poll(() => page.locator('html').getAttribute('data-ui-orient')).toBe(view.orient);
+      await page.waitForFunction(() => !document.querySelector('.quiz-dock')?.classList.contains('is-fitting'));
+      await page.waitForSelector('.yn-answers .answer-btn, .abc-answers .answer-btn');
+      for (let i = 0; i < 20 && !(await page.locator('.yn-answers .answer-btn').count()); i += 1) {
+        await page.locator('.learn-nav .btn-next').click();
+        await page.waitForSelector('.answers .answer-btn');
+      }
+      await clickYn(page);
+      const room = await page.evaluate(ynHaloRoom);
+      expect(room).toBeTruthy();
+      expect(room.shadow).toMatch(/0px 0px 0px/);
+      expect(room.rowH).toBeGreaterThanOrEqual(room.ynH + 2 * room.halo - 2);
+      expect(room.topRoom).toBeGreaterThanOrEqual(room.halo - 1.5);
+      expect(room.bottomRoom).toBeGreaterThanOrEqual(room.halo - 1.5);
+      expect(room.leftRoom).toBeGreaterThanOrEqual(room.halo - 1.5);
+      expect(room.rightRoom).toBeGreaterThanOrEqual(room.halo - 1.5);
+    });
+  }
+
+  test('exam panel portrait: selected Tak/Nie ring fits in the dock', async ({ page }) => {
+    await page.setViewportSize({ width: 420, height: 900 });
+    await page.addInitScript(() => {
+      try { localStorage.setItem('prawko_exam_skin', 'panel'); } catch {}
+    });
+    await startExamMode(page);
+    await expect.poll(() => page.locator('html').getAttribute('data-exam-skin')).toBe('panel');
+    await expect.poll(() => page.locator('html').getAttribute('data-ui-orient')).toBe('portrait');
+    await clickYn(page);
+    const room = await page.evaluate(ynHaloRoom);
+    expect(room).toBeTruthy();
+    expect(room.bottomRoom).toBeGreaterThanOrEqual(room.halo - 1.5);
+    expect(room.topRoom).toBeGreaterThanOrEqual(room.halo - 1.5);
   });
 });
 

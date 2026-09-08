@@ -3,7 +3,7 @@
 import { t, getLang, translateQuestion } from './i18n.js';
 import { getCategoryStats, getLearnProgress, loadHistory, getLearnTouchedCategories, getLearnCategoryBreakdown, getLearnUniqueFilterCounts } from './stats.js';
 import { getMediaUrls, fetchCategory, usesLocalMedia } from './data.js';
-import { getCategoryMediaAccess } from './offline.js';
+import { getCategoryMediaAccess, getCategoriesOfflineCoverage, getDownloadedCategories, offlineCoverageHue } from './offline.js';
 import { refitUiScale, layoutCategoryGrid } from './scale.js';
 import { scheduleFitQuizDockText } from './fit-text.js';
 
@@ -188,6 +188,77 @@ function applyCategoryAccess(card, access) {
   else card.removeAttribute('title');
 }
 
+let lastCoverageMap = {};
+let coverageScanId = 0;
+let coverageScanTimer = 0;
+
+function clampCoveragePct(pct) {
+  const n = Math.round(Number(pct));
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(100, n));
+}
+
+function paintOfflineButton(dlBtn, access, coverage) {
+  if (!dlBtn || dlBtn.classList.contains('downloading')) return;
+  const pct = clampCoveragePct(coverage?.pct);
+  const showPct = !access.offlineReady && pct >= 1 && pct <= 99;
+
+  dlBtn.classList.toggle('downloaded', access.offlineReady);
+  dlBtn.classList.toggle('unavailable', !access.available);
+  dlBtn.classList.toggle('partial', showPct);
+  if (showPct) {
+    dlBtn.style.setProperty('--offline-hue', String(offlineCoverageHue(pct)));
+    dlBtn.dataset.offlinePct = String(pct);
+    dlBtn.textContent = t('offlinePct').replace('{n}', String(pct));
+    return;
+  }
+  dlBtn.style.removeProperty('--offline-hue');
+  delete dlBtn.dataset.offlinePct;
+  if (!access.available) dlBtn.textContent = t('unavailableOffline');
+  else if (access.offlineReady) dlBtn.textContent = `\u2713 ${t('savedOffline')}`;
+  else dlBtn.textContent = `\u2193 ${t('saveOffline')}`;
+}
+
+function paintCoverageMap(coverageMap, downloadedSet = new Set()) {
+  lastCoverageMap = coverageMap && typeof coverageMap === 'object' ? coverageMap : {};
+  const localMedia = usesLocalMedia();
+  document.querySelectorAll('.category-grid .offline-btn[data-category]').forEach((dlBtn) => {
+    const catId = dlBtn.dataset.category;
+    const cov = lastCoverageMap[catId];
+    const access = getCategoryMediaAccess(catId, downloadedSet, {
+      localMedia,
+      coveragePct: cov?.pct,
+    });
+    applyCategoryAccess(dlBtn.closest('.category-card'), access);
+    paintOfflineButton(dlBtn, access, cov);
+  });
+}
+
+export function applyOfflineCoverageToButtons(coverageMap, downloadedSet = new Set()) {
+  if (coverageScanTimer) {
+    clearTimeout(coverageScanTimer);
+    coverageScanTimer = 0;
+  }
+  coverageScanId += 1;
+  paintCoverageMap(coverageMap, downloadedSet);
+}
+
+function scheduleCoverageScan(meta, downloadedSet) {
+  const ids = (meta?.categories || []).map((cat) => cat.id);
+  if (!ids.length) return;
+  if (coverageScanTimer) clearTimeout(coverageScanTimer);
+  coverageScanTimer = setTimeout(() => {
+    coverageScanTimer = 0;
+    const scanId = ++coverageScanId;
+    getCategoriesOfflineCoverage(ids)
+      .then((map) => {
+        if (scanId !== coverageScanId) return;
+        paintCoverageMap(map, downloadedSet);
+      })
+      .catch(() => {});
+  }, 40);
+}
+
 export function renderCategories(meta, downloadedSet = new Set()) {
   const localMedia = usesLocalMedia();
   document.documentElement.dataset.localMedia = localMedia ? 'true' : 'false';
@@ -252,17 +323,15 @@ export function renderCategories(meta, downloadedSet = new Set()) {
       dlBtn.dataset.category = cat.id;
       card.appendChild(dlBtn);
     }
-    const access = getCategoryMediaAccess(cat.id, downloadedSet, { localMedia });
+    const coverage = lastCoverageMap[cat.id];
+    const access = getCategoryMediaAccess(cat.id, downloadedSet, {
+      localMedia,
+      coveragePct: coverage?.pct,
+    });
     applyCategoryAccess(card, access);
-
-    if (!dlBtn.classList.contains('downloading')) {
-      dlBtn.classList.toggle('downloaded', access.offlineReady);
-      dlBtn.classList.toggle('unavailable', !access.available);
-      if (!access.available) dlBtn.textContent = t('unavailableOffline');
-      else if (access.offlineReady) dlBtn.textContent = `\u2713 ${t('savedOffline')}`;
-      else dlBtn.textContent = `\u2193 ${t('saveOffline')}`;
-    }
+    paintOfflineButton(dlBtn, access, coverage);
   });
+  scheduleCoverageScan(meta, downloadedSet);
   requestAnimationFrame(() => {
     ensureCategorySearchUi();
     ensureQuizModeUi();
@@ -327,7 +396,25 @@ export function renderQuestion(question, container, options = {}) {
 
       const p = document.createElement('p');
       p.className = 'media-unavailable';
-      p.textContent = t('mediaUnavailable');
+      p.append(t('mediaUnavailable'));
+
+      const categoryId = options.categoryId;
+      const access = categoryId
+        ? getCategoryMediaAccess(categoryId, getDownloadedCategories())
+        : { canDownload: false };
+      if (categoryId && access.canDownload) {
+        const link = document.createElement('a');
+        link.className = 'media-offline-link';
+        link.href = '#categories';
+        link.textContent = t('mediaUnavailableDownload').replace('{cat}', categoryId);
+        link.addEventListener('click', (e) => {
+          e.preventDefault();
+          document.dispatchEvent(new CustomEvent('prawko-offline-download', {
+            detail: { categoryId },
+          }));
+        });
+        p.append(link);
+      }
 
       const retryBtn = document.createElement('button');
       retryBtn.type = 'button';
@@ -355,7 +442,7 @@ export function renderQuestion(question, container, options = {}) {
 
         const video = document.createElement('video');
         lockVideoChrome(video);
-        video.preload = examMedia ? 'auto' : 'metadata';
+        video.preload = 'auto';
         video.onerror = () => loadVideo();
         if (examMedia) {
           video.autoplay = false;
@@ -416,10 +503,14 @@ export function renderQuestion(question, container, options = {}) {
             video.currentTime = 0;
             video.muted = false;
             setReplayVisible(false);
+            setLearnMediaMarkHidden(true);
             video.play();
           });
           video.addEventListener('play', () => setReplayVisible(false));
-          video.addEventListener('ended', () => setReplayVisible(true));
+          video.addEventListener('ended', () => {
+            setReplayVisible(true);
+            setLearnMediaMarkHidden(false);
+          });
 
           mediaArea.classList.add('has-learn-video');
           video.src = mediaUrl;
@@ -594,9 +685,15 @@ export function showLearnMediaMark(isCorrect) {
     mark.setAttribute('aria-hidden', 'true');
     mediaArea.appendChild(mark);
   }
+  mark.hidden = false;
   mark.classList.toggle('correct', isCorrect);
   mark.classList.toggle('incorrect', !isCorrect);
   mark.textContent = isCorrect ? '\u2713' : '\u2717';
+}
+
+function setLearnMediaMarkHidden(hidden) {
+  const mark = document.querySelector('#quiz .media-area .learn-media-mark');
+  if (mark) mark.hidden = Boolean(hidden);
 }
 
 export function highlightAnswer(answersDiv, selected, correct) {
@@ -813,24 +910,6 @@ export function renderResults(result) {
     reviewList.appendChild(details);
   });
   refitUiScale();
-}
-
-/** Preload the next question's media so it's ready when navigated to */
-export function preloadMedia(question) {
-  if (!question?.media) return;
-  const urls = getMediaUrls(question.media, question.mediaType);
-  if (!urls.length) return;
-  if (question.mediaType === 'image') {
-    const img = new Image();
-    bindMediaFallback(img, urls);
-  } else {
-    const video = document.createElement('video');
-    video.preload = 'metadata';
-    video.muted = true;
-    video.playsInline = true;
-    bindMediaFallback(video, urls);
-    video.load();
-  }
 }
 
 export function renderHistory() {

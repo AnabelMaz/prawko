@@ -4,7 +4,7 @@
 // Switching order keeps the same question. The counter is always the catalog
 // number of that question, so next/prev on random jumps 2022 → 1500, not 2023.
 
-import { renderQuestion, highlightAnswer, markSelectedAnswer, showLearnMediaMark, preloadMedia } from './ui.js';
+import { renderQuestion, highlightAnswer, markSelectedAnswer, showLearnMediaMark } from './ui.js';
 import {
   saveLearnAnswer,
   getLearnKnownCount,
@@ -13,16 +13,12 @@ import {
 } from './stats.js';
 import { getLang, t } from './i18n.js';
 import { profileGet, profileSet } from './profiles.js';
+import { loadLocalConfig } from './data.js';
 
 let state = null;
 let keydownHandler = null;
 let questionJump = false;
 const QUEUE_MODE_KEY = 'prawko_learn_queue_mode';
-
-function isLocalDevHost() {
-  const host = location.hostname;
-  return host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
-}
 
 function applyQuestionJumpUi() {
   const quiz = document.getElementById('quiz');
@@ -40,17 +36,8 @@ function applyQuestionJumpUi() {
 
 export async function loadLearnLocalFlags() {
   questionJump = false;
-  if (isLocalDevHost()) {
-    try {
-      const res = await fetch(new URL('local.json', document.baseURI), { cache: 'no-store' });
-      if (res.ok) {
-        const data = await res.json();
-        questionJump = data?.learnQuestionJump === true;
-      }
-    } catch {
-      questionJump = false;
-    }
-  }
+  const data = await loadLocalConfig();
+  questionJump = data?.learnQuestionJump === true;
   applyQuestionJumpUi();
 }
 
@@ -209,8 +196,6 @@ function updateProgress() {
   paintQnum(pos, total);
   const catEl = document.querySelector('.learn-category-value');
   if (catEl) catEl.textContent = state.category || '';
-  const next = state.questions[state.currentIndex + 1];
-  if (next) preloadMedia(next);
 }
 
 function restoreQnum() {
@@ -588,7 +573,7 @@ function showLearnQuestion() {
   if (!q) return;
 
   updateProgress();
-  renderQuestion(q, document.querySelector('.question-card'));
+  renderQuestion(q, document.querySelector('.question-card'), { categoryId: state.category });
   restoreSessionAnswer(q);
 }
 
@@ -675,7 +660,7 @@ export function refreshLearnQuestion() {
   if (!state) return;
   const q = getCurrentQuestion();
   if (!q) return;
-  renderQuestion(q, document.querySelector('.question-card'));
+  renderQuestion(q, document.querySelector('.question-card'), { categoryId: state.category });
   restoreSessionAnswer(q);
   updateLearnStats();
 }

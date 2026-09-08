@@ -39,5 +39,9 @@ playwright-report/
 .codex/
 
 # Local-only flags (never GitHub / Pages). On the live server: src/local.json
-# { "learnQuestionJump": true } — honored only on localhost.
+# Honored only on localhost. Example:
+# { "learnQuestionJump": true, "mediaBase": "media", "offlineDownload": "packs" }
+# mediaBase: "media" = src/media; "cdn" = Backblaze stream (like github.io).
+# offlineDownload: "packs" = R2 zips; "files" = old per-file B2 fetch.
+# packsBase: optional URL override for zip host. Omit file = github.io defaults.
 src/local.json

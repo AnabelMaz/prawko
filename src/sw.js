@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'prawko-v70';
+const CACHE_VERSION = 'prawko-v83';
 const APP_SHELL_CACHE = CACHE_VERSION + '-shell';
 const DATA_CACHE = CACHE_VERSION + '-data';
 const MEDIA_CACHE = CACHE_VERSION + '-media';
@@ -19,6 +19,7 @@ const APP_SHELL = [
   './js/profiles.js',
   './js/i18n.js',
   './js/offline.js',
+  './js/zip.js',
   './js/scale.js',
   './js/scale-boot.js',
   './data/meta.json',
@@ -36,29 +37,78 @@ self.addEventListener('install', (event) => {
 
 let activatedAt = Date.now();
 
+let offlineMediaUrls = new Set();
+let offlineMediaByTail = new Map();
+
+function mediaPathTail(href) {
+  try {
+    const u = new URL(href, self.location.href);
+    const m = u.pathname.match(/\/(vid|img)\/[^/]+$/i);
+    return m ? m[0].toLowerCase() : '';
+  } catch {
+    return '';
+  }
+}
+
+function remoteMediaCached(href) {
+  if (offlineMediaUrls.has(href)) return true;
+  try {
+    const u = new URL(href);
+    if (offlineMediaUrls.has(u.origin + u.pathname)) return true;
+  } catch { /* ignore */ }
+  const tail = mediaPathTail(href);
+  return Boolean(tail && offlineMediaByTail.has(tail));
+}
+
+async function rebuildOfflineMediaIndex() {
+  const cache = await caches.open(OFFLINE_MEDIA_CACHE);
+  const keys = await cache.keys();
+  const urls = new Set();
+  const byTail = new Map();
+  for (const req of keys) {
+    urls.add(req.url);
+    try {
+      const u = new URL(req.url);
+      urls.add(u.origin + u.pathname);
+    } catch { /* ignore bad cache keys */ }
+    const tail = mediaPathTail(req.url);
+    if (tail && !byTail.has(tail)) byTail.set(tail, req.url);
+  }
+  offlineMediaUrls = urls;
+  offlineMediaByTail = byTail;
+}
+
 self.addEventListener('activate', (event) => {
   activatedAt = Date.now();
   const currentCaches = [APP_SHELL_CACHE, DATA_CACHE, MEDIA_CACHE, OFFLINE_MEDIA_CACHE];
-  event.waitUntil(
-    caches.keys().then((names) =>
-      Promise.all(
-        names
-          .filter((name) => name.startsWith('prawko-') && !currentCaches.includes(name))
-          .map((name) => caches.delete(name))
-      )
-    )
-  );
-  self.clients.claim();
+  event.waitUntil((async () => {
+    await rebuildOfflineMediaIndex();
+    const names = await caches.keys();
+    await Promise.all(
+      names
+        .filter((name) => name.startsWith('prawko-') && !currentCaches.includes(name))
+        .map((name) => caches.delete(name))
+    );
+    await self.clients.claim();
+  })());
 });
 
 async function matchOfflineMedia(request) {
   const cache = await caches.open(OFFLINE_MEDIA_CACHE);
   const url = typeof request === 'string' ? request : request.url;
-  return (await cache.match(request))
-    || (await cache.match(url))
-    || (await cache.match(new Request(url, { mode: 'cors' })))
-    || (await cache.match(new Request(url, { mode: 'no-cors' })))
-    || (await cache.match(new Request(url, { mode: 'same-origin' })));
+  const opts = { ignoreSearch: true, ignoreVary: true };
+  const direct = (await cache.match(request, opts))
+    || (await cache.match(url, opts))
+    || (await cache.match(new Request(url, { mode: 'cors' }), opts))
+    || (await cache.match(new Request(url, { mode: 'no-cors' }), opts))
+    || (await cache.match(new Request(url, { mode: 'same-origin' }), opts));
+  if (direct) return direct;
+  const tail = mediaPathTail(url);
+  const stored = tail ? offlineMediaByTail.get(tail) : '';
+  if (!stored) return null;
+  return (await cache.match(stored, opts))
+    || (await cache.match(new Request(stored, { mode: 'cors' }), opts))
+    || (await cache.match(new Request(stored, { mode: 'same-origin' }), opts));
 }
 
 self.addEventListener('fetch', (event) => {
@@ -68,11 +118,16 @@ self.addEventListener('fetch', (event) => {
   if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
   if (url.pathname.endsWith('/sw.js')) return;
   if (url.pathname.endsWith('/local.json')) return;
-  // CDN media: serve the offline pack when present, otherwise let the
-  // browser talk to B2 itself so Range/CORS work on GitHub Pages.
+  // CDN media: intercept only when the offline pack has this file (by URL
+  // or by /vid|/img tail). Pack keys may be localhost media/… while <video>
+  // uses the B2 URL — still serve the cached blob, do not hit Backblaze.
   if (url.origin !== self.location.origin) {
     if (!/\.(mp4|webm|webp|jpg|jpeg|png|gif)(\?|$)/i.test(url.pathname)) return;
+    const indexReady = offlineMediaUrls.size > 0 || offlineMediaByTail.size > 0;
+    if (indexReady && !remoteMediaCached(url.href)) return;
     event.respondWith((async () => {
+      if (!indexReady) await rebuildOfflineMediaIndex();
+      if (!remoteMediaCached(url.href)) return fetch(event.request);
       const cached = await matchOfflineMedia(event.request);
       if (cached) return cached;
       return fetch(event.request);
@@ -138,6 +193,21 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  if (url.pathname.includes('/icons/')) {
+    event.respondWith(
+      caches.open(APP_SHELL_CACHE).then((cache) =>
+        cache.match(event.request).then((cached) => {
+          if (cached) return cached;
+          return fetch(event.request).then((response) => {
+            if (response.ok) safeCachePut(cache, event.request, response.clone());
+            return response;
+          });
+        })
+      )
+    );
+    return;
+  }
+
   // App shell — network first so a refresh actually picks up new HTML/JS/CSS.
   // Cache is the offline fallback, not the thing that hides updates.
   event.respondWith(
@@ -159,6 +229,9 @@ self.addEventListener('fetch', (event) => {
 self.addEventListener('message', (event) => {
   if (event.data?.type === 'SKIP_WAITING') {
     self.skipWaiting();
+  }
+  if (event.data?.type === 'OFFLINE_MEDIA_UPDATED') {
+    event.waitUntil(rebuildOfflineMediaIndex());
   }
 });
 

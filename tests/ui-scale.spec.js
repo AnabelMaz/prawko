@@ -775,6 +775,13 @@ test('portrait Panel learn wraps header labels and matches back to next height',
 });
 
 test('portrait Panel keeps ABC and YN in a fixed dock; filters look like dropdowns', async ({ page }) => {
+  await page.route('**/local.json', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ learnQuestionJump: true }),
+    });
+  });
   await page.setViewportSize({ width: 420, height: 900 });
   await page.goto('/');
   await page.waitForSelector('#home.active');
@@ -785,8 +792,7 @@ test('portrait Panel keeps ABC and YN in a fixed dock; filters look like dropdow
 
   const jumpTo = async (n) => {
     const input = page.locator('.learn-qnum-input');
-    await input.click();
-    await input.fill(String(n));
+    await input.fill(String(n), { force: true });
     await input.press('Enter');
     await page.waitForFunction((pos) => {
       const el = document.querySelector('.learn-qnum-input');
@@ -879,6 +885,13 @@ test('portrait Panel keeps ABC and YN in a fixed dock; filters look like dropdow
 });
 
 test('portrait Station keeps ABC and YN in a fixed dock; filters look like dropdowns', async ({ page }) => {
+  await page.route('**/local.json', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ learnQuestionJump: true }),
+    });
+  });
   await page.setViewportSize({ width: 420, height: 900 });
   await page.goto('/');
   await page.waitForSelector('#home.active');
@@ -889,8 +902,7 @@ test('portrait Station keeps ABC and YN in a fixed dock; filters look like dropd
 
   const jumpTo = async (n) => {
     const input = page.locator('.learn-qnum-input');
-    await input.click();
-    await input.fill(String(n));
+    await input.fill(String(n), { force: true });
     await input.press('Enter');
     await page.waitForFunction((pos) => {
       const el = document.querySelector('.learn-qnum-input');

@@ -3,10 +3,50 @@
 const cache = new Map();
 const inflight = new Map();
 
-// Media base URL — set to CDN origin for external media hosting
-// Falls back to local relative path for development
+// Media URLs. github.io uses these defaults. On localhost, src/local.json
+// can override them (that file is not in git).
 export const MEDIA_CDN = 'https://f003.backblazeb2.com/file/prawko-maz';
-export const MEDIA_BASE = MEDIA_CDN;
+export let MEDIA_BASE = MEDIA_CDN;
+export let PACKS_BASE = 'https://pub-e8e3a36b9ab44034913636d87ee3f0ee.r2.dev';
+export let OFFLINE_DOWNLOAD = 'packs';
+
+function isLocalDevHost() {
+  if (typeof location === 'undefined') return false;
+  const host = location.hostname;
+  return host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
+}
+
+function applyLocalConfig(data) {
+  if (!data || typeof data !== 'object') return;
+  if (data.mediaBase === 'media') MEDIA_BASE = 'media';
+  else if (data.mediaBase === 'cdn') MEDIA_BASE = MEDIA_CDN;
+  if (typeof data.packsBase === 'string' && data.packsBase.trim()) {
+    PACKS_BASE = data.packsBase.trim().replace(/\/+$/, '');
+  }
+  if (data.offlineDownload === 'files' || data.offlineDownload === 'packs') {
+    OFFLINE_DOWNLOAD = data.offlineDownload;
+  }
+}
+
+let localConfigPromise = null;
+
+export function loadLocalConfig() {
+  if (!localConfigPromise) {
+    localConfigPromise = (async () => {
+      if (!isLocalDevHost()) return {};
+      try {
+        const res = await fetch(new URL('local.json', document.baseURI), { cache: 'no-store' });
+        if (!res.ok) return {};
+        const data = await res.json();
+        applyLocalConfig(data);
+        return data && typeof data === 'object' ? data : {};
+      } catch {
+        return {};
+      }
+    })();
+  }
+  return localConfigPromise;
+}
 
 export function isRemoteMediaBase(base = MEDIA_BASE) {
   return /^https?:\/\//i.test(String(base || ''));
