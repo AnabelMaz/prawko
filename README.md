@@ -4,7 +4,7 @@ Aplikacja PWA do nauki i symulacji egzaminu teoretycznego na prawo jazdy w Polsc
 
 To **fork** projektu [szkocot/prawko](https://github.com/szkocot/prawko) (demo źródła: https://szkocot.github.io/prawko/). Ta kopia: repozytorium [AnabelMaz/prawko](https://github.com/AnabelMaz/prawko), podgląd w przeglądarce [anabelmaz.github.io/prawko](https://anabelmaz.github.io/prawko/). Trzyma układ stacji WORD, skórki Panel/Stacja, profile lokalne i przebudowany tryb nauki. Małe, samodzielne łatki mogą iść do repozytorium źródłowego; tutaj zostaje pełna wersja na **Windows**, **macOS** i **Linux**.
 
-Baza w repozytorium to JSON z katalogu Ministerstwa Infrastruktury (**3518** unikalnych pytań). Zdjęcia i filmy nie są w gicie — domyślnie z publicznego CDN. Publiczny katalog na [gov.pl](https://www.gov.pl/web/infrastruktura/prawo-jazdy): **lipiec 2026** (`KATALOG_dla_kandydatów_na_kierowców_072026.xlsx`).
+Baza w repozytorium to JSON z katalogu Ministerstwa Infrastruktury (**3518** unikalnych pytań). Zdjęcia i filmy nie są w gicie: **oglądanie** z Backblaze, **„Pobierz offline”** to zipy z Cloudflare R2. Publiczny katalog na [gov.pl](https://www.gov.pl/web/infrastruktura/prawo-jazdy): **lipiec 2026** (`KATALOG_dla_kandydatów_na_kierowców_072026.xlsx`).
 
 [Polski](#instalacja-na-windows) · [macOS](#instalacja-na-macos) · [Linux](#instalacja-na-linuxie) · [English](#install-on-windows)
 
@@ -23,7 +23,7 @@ Docelowe środowisko to **Windows 10/11**. Python nie jest potrzebny — ani do 
 | System | Windows 10 lub 11 |
 | Powłoka | Windows PowerShell 5.1 albo nowszy |
 | Uprawnienia | Pierwsza instalacja wymaga **administratora** (Node.js, NSSM, usługa Windows) |
-| Sieć | GitHub (ZIP aplikacji i narzędzia). Media lecą z CDN, chyba że włączysz lokalną paczkę MI |
+| Sieć | GitHub (ZIP aplikacji i narzędzia). Oglądanie z Backblaze, paczki offline z Cloudflare; lokalna paczka MI jest opcjonalna |
 | Git | **Nie** — tylko przy `-Dev` |
 | Python | **Nie** |
 
@@ -81,7 +81,7 @@ Jedyna powtórka przy `-InstallGov`: archiwum ZIP + rozpakowane JPG/WMV (cache, 
 
 | Przełącznik | Działanie |
 |---|---|
-| *(brak)* | Instalacja serwera, pytania z repo, media z CDN |
+| *(brak)* | Instalacja serwera, pytania z repo; oglądanie z Backblaze, offline z Cloudflare |
 | `-InstallGov` | Excel + ZIP multimediów sytuacyjnych z gov.pl; konwersja WebP/MP4 na serwer. **Nie** pobiera tłumaczeń migowych (PJM, ~10 GB) |
 | `-GovQuestions` | Tylko katalog pytań (Excel → JSON na serwerze). Nie rusza mediów ani CDN |
 | `-DropMissingMedia` | Tylko z `-InstallGov`: wykreśla z JSON media, których nie ma w lokalnym raw. **Domyślnie wyłączone** — nazwa z Excela zostaje (CDN) |
@@ -110,9 +110,9 @@ Administrator tylko przy **pierwszej instalacji serwera** albo `-Uninstall`.
 
 ### Lokalna paczka ministerstwa (opcjonalnie, kilka GB)
 
-Domyślna instalacja **wystarcza do nauki i egzaminu**. JSON jest w repo, media na CDN.
+Domyślna instalacja **wystarcza do nauki i egzaminu**. JSON jest w repo; oglądanie z Backblaze, „Pobierz offline” z Cloudflare.
 
-Lokalne WebP/MP4 (offline bez CDN, albo własna kopia):
+Lokalne WebP/MP4 (na dysku serwera, bez B2/R2, albo własna kopia):
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -InstallGov
@@ -216,7 +216,7 @@ Gdy usługa już stoi, ponowne odpalenie **bez przełączników nic nie nadpisuj
 
 | macOS | Windows | Działanie |
 |---|---|---|
-| *(brak)* | *(brak)* | Serwer, pytania z repo, media z CDN |
+| *(brak)* | *(brak)* | Serwer, pytania z repo; oglądanie z Backblaze, offline z Cloudflare |
 | `--install-gov` | `-InstallGov` | Excel + ZIP z gov.pl; WebP/MP4 na serwer. **Nie** pobiera PJM |
 | `--gov-questions` | `-GovQuestions` | Tylko Excel → JSON na serwerze |
 | `--drop-missing-media` | `-DropMissingMedia` | Tylko z `--install-gov`; domyślnie **wyłączone** |
@@ -320,7 +320,7 @@ bash Install_Prawko.linux.sh --uninstall
 - **Symulacja egzaminu** — 32 pytania, 25 minut, punktacja jak na egzaminie
 - **12 kategorii** — A, A1, A2, AM, B, B1, C, C1, D, D1, PT, T
 - **Skórki** — Panel i Stacja
-- **Multimedia** — zdjęcia i filmy z oficjalnej bazy (stream z Backblaze, albo lokalnie po `-InstallGov`)
+- **Multimedia** — zdjęcia i filmy z oficjalnej bazy (stream z Backblaze, paczki offline z Cloudflare, albo lokalnie po `-InstallGov`)
 - **Języki** — PL, EN, DE, UA (interfejs i treść pytań)
 - **Tryb ciemny / jasny** — zapisany w przeglądarce
 - **Profile lokalne** — postęp na tym komputerze
@@ -458,7 +458,7 @@ A PWA for learning and simulating the Polish theoretical driving test.
 
 This is a **fork** of [szkocot/prawko](https://github.com/szkocot/prawko) (upstream demo: https://szkocot.github.io/prawko/). This copy: repository [AnabelMaz/prawko](https://github.com/AnabelMaz/prawko), browser preview [anabelmaz.github.io/prawko](https://anabelmaz.github.io/prawko/). It keeps a WORD station layout, Panel/Station skins, local profiles, and a rebuilt learn mode. Small standalone fixes can still go upstream; this repository holds the full **Windows**, **macOS**, and **Linux** product.
 
-The repo JSON has **3518** unique ministry questions. Photos and films are not in git — they come from a public CDN by default. The public catalogue on [gov.pl](https://www.gov.pl/web/infrastruktura/prawo-jazdy) is **July 2026** (`KATALOG_dla_kandydatów_na_kierowców_072026.xlsx`).
+The repo JSON has **3518** unique ministry questions. Photos and films are not in git: **playback** is Backblaze, **Download offline** is zip packs from Cloudflare R2. The public catalogue on [gov.pl](https://www.gov.pl/web/infrastruktura/prawo-jazdy) is **July 2026** (`KATALOG_dla_kandydatów_na_kierowców_072026.xlsx`).
 
 ## Install on Windows
 
@@ -473,7 +473,7 @@ The Windows installer is **`Install_Prawko.windows.ps1`** (same naming scheme as
 | OS | Windows 10 or 11 |
 | Shell | Windows PowerShell 5.1 or later |
 | Privileges | First install needs **Administrator** (Node.js, NSSM, Windows service) |
-| Network | GitHub (app ZIP and tools). Media uses the CDN unless you enable the local ministry pack |
+| Network | GitHub (app ZIP and tools). Playback from Backblaze, offline packs from Cloudflare; the local ministry pack is optional |
 | Git | **No** — only with `-Dev` |
 | Python | **Not used** |
 
@@ -531,7 +531,7 @@ The only duplication with `-InstallGov` is ZIP + unpacked JPG/WMV (download cach
 
 | Switch | Effect |
 |---|---|
-| *(none)* | Server install, repo questions, CDN media |
+| *(none)* | Server install, repo questions; playback from Backblaze, offline from Cloudflare |
 | `-InstallGov` | Excel + situational media ZIPs from gov.pl; WebP/MP4 on the server. Does **not** download sign-language packs (PJM, ~10 GB) |
 | `-GovQuestions` | Question catalogue only (Excel → JSON on the server). Leaves media and the CDN alone |
 | `-DropMissingMedia` | With `-InstallGov` only: clear JSON media names whose files are missing from local raw. **Off by default** — Excel names stay (CDN) |
@@ -560,9 +560,9 @@ Administrator only for the **first server install** or `-Uninstall`.
 
 ### Optional local ministry pack (several GB)
 
-The default install is enough to study and sit a mock exam. JSON is in the repo; media is on the CDN.
+The default install is enough to study and sit a mock exam. JSON is in the repo; playback is Backblaze, Download offline is Cloudflare.
 
-Local WebP/MP4 (offline without CDN, or your own copy):
+Local WebP/MP4 (on the server disk, no B2/R2, or your own copy):
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -InstallGov
@@ -666,7 +666,7 @@ If the service is already running, a second run **with no switches does not over
 
 | macOS | Windows | Effect |
 |---|---|---|
-| *(none)* | *(none)* | Server, repo questions, CDN media |
+| *(none)* | *(none)* | Server, repo questions; playback from Backblaze, offline from Cloudflare |
 | `--install-gov` | `-InstallGov` | Excel + ZIPs from gov.pl; WebP/MP4 on the server. No PJM |
 | `--gov-questions` | `-GovQuestions` | Excel → JSON on the server only |
 | `--drop-missing-media` | `-DropMissingMedia` | With `--install-gov` only; **off** by default |
@@ -767,7 +767,7 @@ bash Install_Prawko.linux.sh --uninstall
 - **Exam simulation** — 32 questions, 25 minutes, official scoring
 - **12 categories** — A, A1, A2, AM, B, B1, C, C1, D, D1, PT, T
 - **Skins** — Panel and Station
-- **Media** — official photos and films (Backblaze stream, or local after `-InstallGov`)
+- **Media** — official photos and films (Backblaze stream, Cloudflare offline packs, or local after `-InstallGov`)
 - **Languages** — PL, EN, DE, UA (UI and question text)
 - **Dark / light theme** — persisted in the browser
 - **Local profiles** — progress on this machine
