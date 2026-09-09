@@ -5,10 +5,12 @@
 # Input is JSON after parse-excel (WebP/MP4 names), not the Excel. Excel still
 # needs parse-excel.ps1 — packs only group files the app already references.
 #
-# Pipeline:
+# Pipeline (two public hosts — treat buckets as empty):
 #   1. Install_Prawko.windows.ps1 -InstallGov   → Excel, convert-media, JSON
-#   2. scripts/build-media-packs.ps1    → zip + manifest (this script)
-#   3. scripts/upload-packs.ps1         → few zip objects to the pack host
+#   2. scripts/upload-media.ps1         → B2 prawko-maz img/ + vid/ (online play)
+#   3. scripts/build-media-packs.ps1    → zip + manifest (this script)
+#   4. Cloudflare R2 dashboard          → prawko-packs (public PACKS_BASE)
+#   5. optional scripts/upload-packs.ps1 → archive copy of zips on B2 (not the app host)
 #
 # powershell -ExecutionPolicy Bypass -File scripts/build-media-packs.ps1
 # powershell -ExecutionPolicy Bypass -File scripts/build-media-packs.ps1 -MaxZipMiB 250

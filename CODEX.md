@@ -19,8 +19,9 @@ Day-to-day product is the local service at http://localhost:5173 (`C:\ProgramDat
 - Per-question timers: basic 20s, specialist 50s (shown separately from total timer with labels)
 - JSON files per category, loaded on demand
 - Media file names from Excel stay in JSON by default (CDN); `-DropMissingMedia` only when asked
-- Media for **online play**: Backblaze B2 (`img/` `vid/`), not in git
-- Offline **zip packs**: Cloudflare R2 (`PACKS_BASE`); `r2.dev` is the public URL (no paid domain)
+- Media for **online play**: Backblaze B2 `prawko-maz` (`img/` `vid/`), not in git. `upload-media.ps1` / `.py` (`b2 sync --skipNewer`; empty bucket = full upload). Defaults to the same folder as convert-media (ProgramData / `/usr/local/prawko` / `/opt/prawko`), not empty git `src/media`
+- Offline **zip packs**: Cloudflare R2 `prawko-packs` (`PACKS_BASE`, `r2.dev`). Build with `build-media-packs`; **upload in the R2 dashboard** (no wrangler script). `upload-packs.ps1` / `.py` is an optional B2 archive of those zips, not the app host
+- Installer `-InstallGov` does **not** upload to B2 or R2
 - `MEDIA_BASE` in data.js; on a server that has local `src/media/img` or `media/vid`, `local.json` sets `mediaBase` to `'media'`
 - Learning: default filter unknown + random order; catalog number in the blue counter jumps within the current sequential list only when `local.json` has `learnQuestionJump`
 - Skins: Panel (WORD OSK layout) and Stacja; Panel question/ABC copy is fitted into fixed slots (`fit-text.js`)
@@ -51,6 +52,8 @@ powershell -File scripts/merge-gov.ps1
 powershell -File scripts/filter-no-media.ps1
 powershell -File scripts/upload-media.ps1
 powershell -File scripts/build-media-packs.ps1
+# R2 dashboard: upload packs\manifest.json + zips (public PACKS_BASE)
+# optional: powershell -File scripts/upload-packs.ps1   # B2 archive only
 
 # macOS / Linux
 python3 scripts/parse-excel.py
@@ -59,6 +62,8 @@ python3 scripts/filter-no-media.py
 python3 scripts/merge-gov.py --gov-dir DIR --out-dir DIR
 python3 scripts/upload-media.py
 python3 scripts/build-media-packs.py
+# R2 dashboard: same as Windows
+# optional: python3 scripts/upload-packs.py
 ```
 
 Media conversion entry points: `convert-media.ps1` (Windows) and `convert-media.py` (macOS/Linux). Windows `-Merge` calls `merge-gov.ps1`; unix `--merge` calls `merge-gov.py`.

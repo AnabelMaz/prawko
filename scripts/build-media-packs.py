@@ -10,8 +10,9 @@ when Jaccard(support) is high enough and per-category surplus stays under
 --margin. Oversized packs are split into similar-weight parts (same support:
 zero extra waste). Pack ids are derived only from the support set + part index.
 
-Writes packs/manifest.json and optional zips. The app (later) downloads
-categories[id] from that manifest.
+Writes packs/manifest.json and optional zips. Public host is Cloudflare R2
+(dashboard upload). upload-packs.py is only a B2 archive copy. Online play
+files still go through upload-media.py to B2 img/ and vid/.
 
   python3 scripts/build-media-packs.py
   python3 scripts/build-media-packs.py --max-zip-mib 250

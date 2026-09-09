@@ -8,15 +8,35 @@
 # 4. Copy scripts/b2env.example to .b2env in the repo root and fill it in
 # 5. powershell -ExecutionPolicy Bypass -File scripts/upload-media.ps1
 #
+# Syncs local img/ + vid/ to B2 (online play). Cloudflare zip packs are a separate
+# step (build-media-packs + R2 dashboard). --skipNewer: files already on B2 are
+# skipped; an empty bucket still gets a full upload.
+# Default media folder matches convert-media.ps1 (ProgramData, then LocalAppData,
+# then repo src\media). Override: -MediaDir.
+#
 # After the first upload, set MEDIA_CDN in src/js/data.js to the URL this script prints.
 # CORS for GitHub Pages / localhost: scripts/b2-cors.json (applied at the end of this script).
+
+param(
+    [string]$MediaDir
+)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$mediaDir = Join-Path $repoRoot "src\media"
 $envFile = Join-Path $repoRoot ".b2env"
+
+function Get-DefaultUploadMediaDir {
+    $server = "C:\ProgramData\prawko\src\media"
+    if ((Test-Path (Join-Path $server "img")) -or (Test-Path (Join-Path $server "vid"))) { return $server }
+    $local = Join-Path $env:LOCALAPPDATA "prawko\media"
+    if ((Test-Path (Join-Path $local "img")) -or (Test-Path (Join-Path $local "vid"))) { return $local }
+    return (Join-Path $repoRoot "src\media")
+}
+
+if (-not $MediaDir) { $MediaDir = Get-DefaultUploadMediaDir }
+$mediaDir = $MediaDir
 
 function Read-DotEnv ([string]$Path) {
     if (-not (Test-Path -LiteralPath $Path)) { return }
@@ -63,6 +83,7 @@ if (-not $b2) {
     throw "b2 command not found. Add Python's Scripts directory to PATH and try again."
 }
 
+Write-Host "Media: $mediaDir" -ForegroundColor Gray
 Write-Host "Signing in to B2..." -ForegroundColor Cyan
 & b2 account authorize $keyId $appKey
 if ($LASTEXITCODE -ne 0) {

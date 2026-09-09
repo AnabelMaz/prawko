@@ -2,8 +2,13 @@
 """Upload src/media to a public Backblaze B2 bucket (macOS/Linux).
 
 Same job as scripts/upload-media.ps1. Keys from .b2env at the repo root.
+Syncs local img/ + vid/ to B2 (online play). R2 zip packs are a separate step.
+b2 sync --skipNewer skips files already on B2; an empty bucket still gets a full
+upload. Default media dir matches convert-media.py (server src/media, then
+gov-data parent/media, then repo src/media). Override: --media-dir.
 
   python3 scripts/upload-media.py
+  python3 scripts/upload-media.py --media-dir /usr/local/prawko/src/media
 """
 
 from __future__ import annotations
@@ -51,14 +56,32 @@ def find_b2() -> str:
     raise AssertionError
 
 
+def default_media_dir(root: Path) -> Path:
+    for d in (Path("/opt/prawko/src/media"), Path("/usr/local/prawko/src/media")):
+        if (d / "img").is_dir() or (d / "vid").is_dir():
+            return d
+    mac = Path.home() / "Library" / "Application Support" / "prawko" / "media"
+    linux = Path.home() / ".local" / "share" / "prawko" / "media"
+    for d in (mac, linux):
+        if (d / "img").is_dir() or (d / "vid").is_dir():
+            return d
+    return root / "src" / "media"
+
+
 def main() -> None:
+    import argparse
+
     root = repo_root()
     read_dotenv(root / ".b2env")
+    ap = argparse.ArgumentParser(description="Upload src/media img+vid to Backblaze B2")
+    ap.add_argument("--media-dir", dest="media_dir")
+    args = ap.parse_args()
     key_id = os.environ.get("B2_APPLICATION_KEY_ID") or os.environ.get("B2_KEY_ID")
     app_key = os.environ.get("B2_APPLICATION_KEY") or os.environ.get("B2_APP_KEY")
     bucket = os.environ.get("B2_BUCKET")
-    img = root / "src" / "media" / "img"
-    vid = root / "src" / "media" / "vid"
+    media = Path(args.media_dir) if args.media_dir else default_media_dir(root)
+    img = media / "img"
+    vid = media / "vid"
     if not img.is_dir() or not vid.is_dir():
         die(f"Missing {img} or {vid}. Convert a local pack from gov.pl first.")
     if not key_id or not app_key or not bucket:
@@ -67,6 +90,7 @@ def main() -> None:
             "B2_APPLICATION_KEY_ID, B2_APPLICATION_KEY, B2_BUCKET."
         )
     b2 = find_b2()
+    print(f"Media: {media}")
     print("Signing in to B2...")
     rc = subprocess.call([b2, "account", "authorize", key_id, app_key])
     if rc != 0:

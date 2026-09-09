@@ -359,6 +359,26 @@ Czysty clone **nie wymaga** `-InstallGov`. JSON jest w `src/data`. Domyślnie (g
 
 R2 zostaje na publicznym adresie testowym `r2.dev` (bez płatnej domeny). Własna domena na kubeł nie jest wymagana. Stary fetch plik-po-pliku z B2 zostaje w kodzie (`OFFLINE_DOWNLOAD = 'files'`).
 
+**Dwa hosty, zawsze oba** — jakby kubełki były puste. Instalator (`-InstallGov`) robi tylko dysk lokalny (kroki 1–3). **Nie** wgrywa nic na B2 ani R2.
+
+### Od gov.pl do chmury (kolejność)
+
+PJM (tłumaczenia migowe) na gov.pl jest **wylistywane, nie pobierane**.
+
+| Krok | Skąd | Co | Dokąd | Narzędzie |
+|---|---|---|---|---|
+| 1 | [gov.pl — prawo jazdy](https://www.gov.pl/web/infrastruktura/prawo-jazdy) | Excel + ZIP-y JPG/WMV (sytuacyjne) | `%LOCALAPPDATA%\prawko\gov-data` (`baza_pytan.xlsx`, `raw\`, `cache\`) | `download-gov.ps1` albo `-InstallGov` |
+| 2 | `gov-data\raw` | JPG → WebP, WMV → MP4 | `C:\ProgramData\prawko\src\media\img` i `vid` (bez serwera: `%LOCALAPPDATA%\prawko\media`) | `convert-media.ps1` |
+| 3 | Excel | JSON pytań (nazwy plików mediów) | `src\data\` (i kopia na serwerze) | `parse-excel.ps1` |
+| 4 | `src\media` z kroku 2 | pojedyncze WebP i MP4 | Backblaze B2 `prawko-maz` → `img/` i `vid/` (oglądanie online, `MEDIA_CDN`) | `upload-media.ps1` (`.b2env`; `b2 sync --skipNewer`) |
+| 5 | JSON + te same `img/` `vid/` | zipy kategorii + `manifest.json` | `%LOCALAPPDATA%\prawko\packs` | `build-media-packs.ps1` |
+| 6 | ten folder `packs` | zipy + `manifest.json` | Cloudflare R2 `prawko-packs` (publiczny `PACKS_BASE`, `r2.dev`) | **ręcznie** panel Cloudflare → Objects → Upload (brak skryptu / wranglera) |
+| 7 | opcjonalnie ten sam `packs` | kopia zipów | B2 `prawko-maz` → `packs/` | `upload-packs.ps1` — **nie** host aplikacji; B2 tnie duże zipy |
+
+Kolejność 1 → 2 → 3 → 4 i 5 → 6. Krok 4 i 5 mogą iść równolegle (oba czytają skonwertowane media). 6 po 5. 7 na końcu, jeśli chcesz archiwum na B2.
+
+Na macOS/Linux ta sama kolejność: `download-gov.py` → `convert-media.py` → `parse-excel.py` → `upload-media.py` / `build-media-packs.py` → panel R2. Ścieżki: `~/Library/Application Support/prawko/gov-data` albo `~/.local/share/prawko/gov-data`; media serwera `/usr/local/prawko/src/media` albo `/opt/prawko/src/media`.
+
 Na **localhost** przeglądarka czyta `src/local.json` (gitignore, nie ma go na github.io). Klucze: `learnQuestionJump`, `mediaBase` (`media` / `cdn`), `offlineDownload` (`packs` / `files`), `packsBase` (nadpisuje host zipów).
 
 W paczce MI brakuje pliku `!RS_Parking zastrzeżony.webp`. Parser **nie wycina** przez to pytania — nazwa z Excela zostaje, żeby zadziałał CDN albo późniejsze uzupełnienie.
@@ -380,9 +400,9 @@ Wymagania poza instalatorem: przy konwersji mediów **FFmpeg** i **cwebp** (inst
 | `scripts/convert-media.ps1` | JPG → WebP, WMV → MP4 (nie rusza PJM) |
 | `scripts/merge-gov.ps1` | Dopisywanie braków MI (`-Merge`); też `. scripts\merge-gov.ps1 -LibraryOnly` |
 | `scripts/filter-no-media.ps1` | **Raport** pytań z `media: null`. Kasowanie wierszy tylko z `-Remove` |
-| `scripts/upload-media.ps1` | Upload `src/media` (`img/` `vid/`) na Backblaze B2 (klucze w `.b2env`, nie w gicie) |
+| `scripts/upload-media.ps1` | Sync `img/` `vid/` na B2 `prawko-maz` (online). Domyślnie ProgramData / LocalAppData / repo; `-MediaDir`. `--skipNewer` |
 | `scripts/build-media-packs.ps1` | Zipy + `manifest.json` → `%LOCALAPPDATA%\prawko\packs` (nie git) |
-| `scripts/upload-packs.ps1` | Archiwum zipów na B2 — **nie** publiczny host aplikacji |
+| `scripts/upload-packs.ps1` | Opcjonalne archiwum zipów na B2 — **nie** host „Pobierz offline” |
 
 Przykład — JSON z Excela już leżącego na dysku:
 
@@ -406,9 +426,18 @@ Raport mediów (nic nie kasuje):
 powershell -ExecutionPolicy Bypass -File .\scripts\filter-no-media.ps1
 ```
 
-Upload streamu na B2: skopiuj `scripts/b2env.example` do `.b2env` w katalogu głównym repo, uzupełnij klucze, potem `scripts/upload-media.ps1`. Po pierwszym wgraniu ustaw `MEDIA_CDN` w `src/js/data.js` na URL wypisany przez skrypt.
+Zimny start (B2 + R2, dwa osobne wrzucenia):
 
-Paczki offline: `scripts/build-media-packs.ps1` (JSON + lokalne `img/` `vid/`). Wynik wrzuć do kubełka R2 **prawko-packs** w panelu Cloudflare (Objects → Upload: `manifest.json` i zipy). Aplikacja czyta `PACKS_BASE`. **Nie** wgrywaj zipów na Backblaze jako źródła „Pobierz offline” — B2 tnie duże pobrania. `upload-packs.ps1` zostaje tylko jako kopia archiwalna na B2.
+```powershell
+# .b2env w katalogu repo (szablon: scripts/b2env.example)
+powershell -ExecutionPolicy Bypass -File .\scripts\upload-media.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\build-media-packs.ps1
+# R2 prawko-packs: panel Cloudflare → Objects → Upload (manifest.json + zipy)
+# opcjonalnie kopia zipów na B2:
+# powershell -ExecutionPolicy Bypass -File .\scripts\upload-packs.ps1
+```
+
+Po pierwszym syncu B2 ustaw `MEDIA_CDN` w `src/js/data.js` na URL wypisany przez `upload-media.ps1`. `PACKS_BASE` to publiczny URL R2 (`r2.dev`), nie B2.
 
 Zwykła aktualizacja pytań na już stojącym serwerze: `Install_Prawko.windows.ps1 -GovQuestions` albo `-InstallGov`. Nie odpalaj pełnego instalatora „dla pewności”, jeśli serwer już działa.
 
@@ -425,9 +454,9 @@ Instalator to **`.sh`**. Reszta pipeline to **Python** (`python3`), bez Node i b
 | `scripts/convert-media.py` | JPG → WebP, WMV → MP4 (VideoToolbox, gdy jest; nie rusza PJM) |
 | `scripts/filter-no-media.py` | Raport; kasowanie tylko z `--remove` |
 | `scripts/merge-gov.py` | Dopisywanie braków MI (`--merge`) |
-| `scripts/upload-media.py` | Upload `src/media` na B2 (klucze w `.b2env`) |
+| `scripts/upload-media.py` | Sync `img/` `vid/` na B2 (online). `--skipNewer`. `--media-dir` |
 | `scripts/build-media-packs.py` | To samo co `build-media-packs.ps1` (zipy + manifest) |
-| `scripts/upload-packs.py` | Archiwum zipów na B2 — nie publiczny host |
+| `scripts/upload-packs.py` | Opcjonalne archiwum zipów na B2 — nie host „Pobierz offline” |
 
 ```bash
 python3 scripts/download-gov.py --excel-only
@@ -435,6 +464,9 @@ python3 scripts/parse-excel.py \
   --excel "$HOME/Library/Application Support/prawko/gov-data/baza_pytan.xlsx" \
   --out-dir src/data
 python3 scripts/convert-media.py
+# python3 scripts/upload-media.py
+# python3 scripts/build-media-packs.py
+# R2 dashboard: Objects → Upload (manifest.json + zips)
 ```
 
 ---
@@ -808,6 +840,26 @@ A clean clone does **not** need `-InstallGov`. JSON is in `src/data`. Defaults (
 
 Packs stay on the free `r2.dev` public development URL (no paid custom domain). The old per-file B2 fetch remains in code (`OFFLINE_DOWNLOAD = 'files'`).
 
+**Two hosts, always both** — treat the buckets as empty. The installer (`-InstallGov`) only fills the local disk (steps 1–3). It does **not** upload to B2 or R2.
+
+### From gov.pl to the cloud (order)
+
+PJM (sign-language) links on gov.pl are **listed, not downloaded**.
+
+| Step | From | What | To | Tool |
+|---|---|---|---|---|
+| 1 | [gov.pl — driving licence](https://www.gov.pl/web/infrastruktura/prawo-jazdy) | Excel + JPG/WMV ZIPs (situational) | `%LOCALAPPDATA%\prawko\gov-data` (`baza_pytan.xlsx`, `raw\`, `cache\`) | `download-gov.ps1` or `-InstallGov` |
+| 2 | `gov-data\raw` | JPG → WebP, WMV → MP4 | `C:\ProgramData\prawko\src\media\img` and `vid` (no server: `%LOCALAPPDATA%\prawko\media`) | `convert-media.ps1` |
+| 3 | Excel | question JSON (media file names) | `src\data\` (and the server copy) | `parse-excel.ps1` |
+| 4 | `src\media` from step 2 | individual WebP and MP4 | Backblaze B2 `prawko-maz` → `img/` and `vid/` (online play, `MEDIA_CDN`) | `upload-media.ps1` (`.b2env`; `b2 sync --skipNewer`) |
+| 5 | JSON + the same `img/` `vid/` | category zips + `manifest.json` | `%LOCALAPPDATA%\prawko\packs` | `build-media-packs.ps1` |
+| 6 | that `packs` folder | zips + `manifest.json` | Cloudflare R2 `prawko-packs` (public `PACKS_BASE`, `r2.dev`) | **manually** Cloudflare dashboard → Objects → Upload (no script / wrangler) |
+| 7 | optionally the same `packs` | zip archive | B2 `prawko-maz` → `packs/` | `upload-packs.ps1` — **not** the app host; B2 throttles large zips |
+
+Order: 1 → 2 → 3 → 4 and 5 → 6. Steps 4 and 5 can run in parallel (both read converted media). 6 after 5. 7 last, if you want a B2 archive.
+
+On macOS/Linux the same order: `download-gov.py` → `convert-media.py` → `parse-excel.py` → `upload-media.py` / `build-media-packs.py` → R2 dashboard. Paths: `~/Library/Application Support/prawko/gov-data` or `~/.local/share/prawko/gov-data`; server media `/usr/local/prawko/src/media` or `/opt/prawko/src/media`.
+
 On **localhost** the browser reads `src/local.json` (gitignored; github.io does not have it). Keys: `learnQuestionJump`, `mediaBase` (`media` / `cdn`), `offlineDownload` (`packs` / `files`), `packsBase` (overrides the zip host).
 
 The ministry pack is missing `!RS_Parking zastrzeżony.webp`. The parser does **not** drop that question — the Excel file name stays so the CDN or a later file can fill it.
@@ -829,9 +881,9 @@ Besides the installer: media conversion needs **FFmpeg** and **cwebp** (`-Instal
 | `scripts/convert-media.ps1` | JPG → WebP, WMV → MP4 (does not touch PJM) |
 | `scripts/merge-gov.ps1` | Append missing ministry rows (`-Merge`); also `. scripts\merge-gov.ps1 -LibraryOnly` |
 | `scripts/filter-no-media.ps1` | **Report** questions with `media: null`. Drops rows only with `-Remove` |
-| `scripts/upload-media.ps1` | Upload `src/media` (`img/` `vid/`) to Backblaze B2 (keys in `.b2env`, not in git) |
+| `scripts/upload-media.ps1` | Sync `img/` `vid/` to B2 `prawko-maz` (online). Default ProgramData / LocalAppData / repo; `-MediaDir`. `--skipNewer` |
 | `scripts/build-media-packs.ps1` | Zips + `manifest.json` → `%LOCALAPPDATA%\prawko\packs` (not git) |
-| `scripts/upload-packs.ps1` | Archive copy of zips to B2 — **not** the app’s public pack host |
+| `scripts/upload-packs.ps1` | Optional zip archive on B2 — **not** the “Download offline” host |
 
 Parse an Excel file already on disk:
 
@@ -855,9 +907,18 @@ Report only (does not delete questions):
 powershell -ExecutionPolicy Bypass -File .\scripts\filter-no-media.ps1
 ```
 
-B2 stream upload: copy `scripts/b2env.example` to `.b2env` at the repo root, fill in the keys, then run `scripts/upload-media.ps1`. After the first upload, set `MEDIA_CDN` in `src/js/data.js` to the URL the script prints.
+Cold start (B2 + R2, two separate uploads):
 
-Offline packs: `scripts/build-media-packs.ps1` (JSON + local `img/` `vid/`). Upload the result to the R2 bucket **prawko-packs** in the Cloudflare dashboard (Objects → Upload: `manifest.json` and the zips). The app reads `PACKS_BASE`. **Do not** serve those zips from Backblaze — B2 throttles large downloads. `upload-packs.ps1` is only an archive copy on B2.
+```powershell
+# .b2env at the repo root (template: scripts/b2env.example)
+powershell -ExecutionPolicy Bypass -File .\scripts\upload-media.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\build-media-packs.ps1
+# R2 prawko-packs: Cloudflare dashboard → Objects → Upload (manifest.json + zips)
+# optional zip archive on B2:
+# powershell -ExecutionPolicy Bypass -File .\scripts\upload-packs.ps1
+```
+
+After the first B2 sync, set `MEDIA_CDN` in `src/js/data.js` to the URL `upload-media.ps1` prints. `PACKS_BASE` is the public R2 URL (`r2.dev`), not B2.
 
 To refresh questions on a running server, use `Install_Prawko.windows.ps1 -GovQuestions` or `-InstallGov`. Do not re-run a full install “just in case” if the service is already up.
 
@@ -874,9 +935,9 @@ The installer is **`.sh`**. The rest of the pipeline is **Python** (`python3`), 
 | `scripts/convert-media.py` | JPG → WebP, WMV → MP4 (VideoToolbox when available; skips PJM) |
 | `scripts/filter-no-media.py` | Report; delete rows only with `--remove` |
 | `scripts/merge-gov.py` | Add missing ministry rows (`--merge`) |
-| `scripts/upload-media.py` | Upload `src/media` to B2 (keys in `.b2env`) |
+| `scripts/upload-media.py` | Sync `img/` `vid/` to B2 (online). `--skipNewer`. `--media-dir` |
 | `scripts/build-media-packs.py` | Same job as `build-media-packs.ps1` (zips + manifest) |
-| `scripts/upload-packs.py` | Archive copy of zips to B2 — not the app’s public pack host |
+| `scripts/upload-packs.py` | Optional zip archive on B2 — not the “Download offline” host |
 
 ```bash
 python3 scripts/download-gov.py --excel-only
@@ -884,6 +945,9 @@ python3 scripts/parse-excel.py \
   --excel "$HOME/Library/Application Support/prawko/gov-data/baza_pytan.xlsx" \
   --out-dir src/data
 python3 scripts/convert-media.py
+# python3 scripts/upload-media.py
+# python3 scripts/build-media-packs.py
+# R2 dashboard: Objects → Upload (manifest.json + zips)
 ```
 
 ---
