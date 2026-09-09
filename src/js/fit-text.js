@@ -1,15 +1,19 @@
-// fit-text.js — Panel dock: grow or shrink question and ABC copy so each
-// slot holds its text. Question scales alone; A/B/C share the smallest size
-// that still fits the longest option on that question.
+// fit-text.js — Panel: scale question and ABC copy to the slot.
+// Runs only when a question is shown and when the window scale/layout
+// updates. Does not hide text and does not watch the dock for its own
+// font-size writes (that looped 7px ↔ 32px and blanked the copy).
+//
+// Fit rule: wrap at the slot width, then check that the resulting 1–n
+// lines fit in the slot height. Question scales alone; A/B/C share the
+// smallest size that still fits the longest option.
 
 const MIN_PX = 7;
 const MAX_PX = 32;
 const PRECISION = 0.25;
 
-let probe = null;
-let observer = null;
+let measureCtx = null;
 let fitGen = 0;
-let observingDock = null;
+let retrying = false;
 
 function isPanelFit() {
   const root = document.documentElement;
@@ -21,26 +25,11 @@ function quizDock() {
   return document.querySelector('#quiz.active:is(.exam-active, .learn-active) .quiz-dock');
 }
 
-function getProbe() {
-  if (probe?.isConnected) return probe;
-  probe = document.createElement('div');
-  probe.setAttribute('aria-hidden', 'true');
-  probe.style.cssText = [
-    'position:absolute',
-    'left:-99999px',
-    'top:0',
-    'visibility:hidden',
-    'pointer-events:none',
-    'z-index:-1',
-    'margin:0',
-    'padding:0',
-    'border:0',
-    'overflow:visible',
-    'white-space:normal',
-    'overflow-wrap:break-word',
-  ].join(';');
-  document.body.appendChild(probe);
-  return probe;
+function getCtx() {
+  if (measureCtx) return measureCtx;
+  const canvas = document.createElement('canvas');
+  measureCtx = canvas.getContext('2d');
+  return measureCtx;
 }
 
 function lineHeightRatio(cs) {
@@ -57,18 +46,11 @@ function lineHeightRatio(cs) {
 
 function fontMetrics(el) {
   const cs = getComputedStyle(el);
-  const ratio = lineHeightRatio(cs);
   return {
     fontFamily: cs.fontFamily,
     fontWeight: cs.fontWeight,
     fontStyle: cs.fontStyle,
-    lineHeight: String(ratio),
-    letterSpacing: cs.letterSpacing,
-    wordSpacing: cs.wordSpacing,
-    whiteSpace: cs.whiteSpace,
-    overflowWrap: cs.overflowWrap,
-    wordBreak: cs.wordBreak,
-    ratio,
+    ratio: lineHeightRatio(cs),
   };
 }
 
@@ -101,83 +83,119 @@ function answerBox(el) {
   };
 }
 
-function cssMaxPx(el) {
-  const prev = el.style.fontSize;
-  el.style.fontSize = '';
-  const maxPx = parseFloat(getComputedStyle(el).fontSize);
-  el.style.fontSize = prev;
-  return Number.isFinite(maxPx) && maxPx > 0 ? maxPx : 16;
+function setMeasureFont(ctx, box, px) {
+  ctx.font = `${box.fontStyle || 'normal'} ${box.fontWeight || '400'} ${px}px ${box.fontFamily}`;
 }
 
-function slotMaxPx(box, cssMax) {
-  const fill = box.height / (box.ratio || 1.25);
-  return Math.min(MAX_PX, Math.max(cssMax, fill));
-}
+function wrappedLineCount(ctx, text, maxW) {
+  const words = String(text).trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return 1;
+  if (maxW < 1) return Infinity;
+  const spaceW = ctx.measureText(' ').width;
+  let lines = 1;
+  let lineW = 0;
 
-function largestFit(text, box, maxPx) {
-  const raw = String(text ?? '');
-  if (!raw || box.width < 4 || box.height < 4) return maxPx;
-  const node = getProbe();
-  node.textContent = raw;
-  node.style.width = `${box.width}px`;
-  node.style.fontFamily = box.fontFamily;
-  node.style.fontWeight = box.fontWeight;
-  node.style.fontStyle = box.fontStyle;
-  node.style.lineHeight = box.lineHeight;
-  node.style.letterSpacing = box.letterSpacing;
-  node.style.wordSpacing = box.wordSpacing;
-  node.style.whiteSpace = box.whiteSpace || 'normal';
-  node.style.overflowWrap = box.overflowWrap || 'break-word';
-  node.style.wordBreak = box.wordBreak || 'normal';
-  const hiStart = Math.max(MIN_PX, maxPx);
-  node.style.fontSize = `${hiStart}px`;
-  if (node.scrollHeight <= box.height + 0.75 && node.scrollWidth <= box.width + 0.75) {
-    return hiStart;
+  const startLine = (width) => {
+    lines += 1;
+    lineW = width;
+  };
+
+  const addToLine = (width) => {
+    if (lineW === 0) {
+      lineW = width;
+      return;
+    }
+    if (lineW + spaceW + width <= maxW) {
+      lineW += spaceW + width;
+      return;
+    }
+    startLine(width);
+  };
+
+  const charsThatFit = (str, budget) => {
+    if (ctx.measureText(str).width <= budget) return str.length;
+    let lo = 1;
+    let hi = str.length;
+    while (lo < hi) {
+      const mid = Math.ceil((lo + hi) / 2);
+      if (ctx.measureText(str.slice(0, mid)).width <= budget) lo = mid;
+      else hi = mid - 1;
+    }
+    return Math.max(1, lo);
+  };
+
+  for (const word of words) {
+    let rest = word;
+    while (rest) {
+      const wordW = ctx.measureText(rest).width;
+      if (wordW <= maxW) {
+        addToLine(wordW);
+        break;
+      }
+      if (lineW > 0) startLine(0);
+      const take = charsThatFit(rest, maxW);
+      addToLine(ctx.measureText(rest.slice(0, take)).width);
+      rest = rest.slice(take);
+      if (rest) startLine(0);
+    }
   }
+  return lines;
+}
+
+function textFits(text, box, px) {
+  const ctx = getCtx();
+  setMeasureFont(ctx, box, px);
+  const lines = wrappedLineCount(ctx, text, box.width);
+  return lines * px * (box.ratio || 1.25) <= box.height + 0.75;
+}
+
+function largestFit(text, box) {
+  const raw = String(text ?? '').trim();
+  if (!raw) return MAX_PX;
+  if (box.width < 4 || box.height < 4) return null;
+  const cap = Math.min(MAX_PX, box.height / (box.ratio || 1.25));
+  const hiStart = Math.max(MIN_PX, cap);
+  if (textFits(raw, box, hiStart)) return hiStart;
   let lo = MIN_PX;
   let hi = hiStart;
   let best = MIN_PX;
   for (let i = 0; i < 18 && hi - lo > PRECISION; i++) {
     const mid = (lo + hi) / 2;
-    node.style.fontSize = `${mid}px`;
-    const fits = node.scrollHeight <= box.height + 0.75
-      && node.scrollWidth <= box.width + 0.75;
-    if (fits) {
+    if (textFits(raw, box, mid)) {
       best = mid;
       lo = mid;
     } else {
       hi = mid;
     }
   }
-  node.style.fontSize = `${best}px`;
-  if (node.scrollHeight > box.height + 0.75 || node.scrollWidth > box.width + 0.75) {
-    return MIN_PX;
-  }
   return best;
 }
 
 function applySize(el, px) {
+  if (px == null) return;
   el.style.fontSize = `${px}px`;
 }
 
 function fitQuestion(dock) {
   const el = dock.querySelector('.question-text');
-  if (!el) return;
-  const box = questionBox(el);
-  applySize(el, largestFit(el.textContent, box, slotMaxPx(box, cssMaxPx(el))));
+  if (!el) return true;
+  const px = largestFit(el.textContent, questionBox(el));
+  if (px == null) return false;
+  applySize(el, px);
+  return true;
 }
 
 function fitAnswers(dock) {
   const texts = [...dock.querySelectorAll('.abc-answers .answer-text')];
-  if (!texts.length) return;
-  const cssMax = Math.min(...texts.map(cssMaxPx));
-  let shared = MAX_PX;
+  if (!texts.length) return true;
+  let shared = null;
   for (const el of texts) {
-    const box = answerBox(el);
-    const need = largestFit(el.textContent, box, slotMaxPx(box, cssMax));
-    if (need < shared) shared = need;
+    const px = largestFit(el.textContent, answerBox(el));
+    if (px == null) return false;
+    if (shared == null || px < shared) shared = px;
   }
   for (const el of texts) applySize(el, shared);
+  return true;
 }
 
 function clearInlineSizes(dock) {
@@ -187,39 +205,23 @@ function clearInlineSizes(dock) {
   });
 }
 
-function ensureObserver(dock) {
-  if (typeof ResizeObserver === 'undefined') return;
-  if (!observer) {
-    let timer = 0;
-    observer = new ResizeObserver(() => {
-      clearTimeout(timer);
-      timer = setTimeout(() => scheduleFitQuizDockText(), 40);
-    });
-  }
-  if (observingDock === dock) return;
-  if (observingDock) observer.unobserve(observingDock);
-  observer.observe(dock);
-  observingDock = dock;
-}
-
 export function fitQuizDockText() {
   const dock = quizDock();
   if (!dock || !isPanelFit()) {
-    if (dock) {
-      dock.classList.remove('is-fitting');
-      clearInlineSizes(dock);
-    }
+    if (dock) clearInlineSizes(dock);
     return;
   }
-  ensureObserver(dock);
-  fitQuestion(dock);
-  if (dock.querySelector('.abc-answers')) fitAnswers(dock);
-  dock.classList.remove('is-fitting');
+  const ready = fitQuestion(dock)
+    && (!dock.querySelector('.abc-answers') || fitAnswers(dock));
+  if (ready || retrying) return;
+  retrying = true;
+  requestAnimationFrame(() => {
+    retrying = false;
+    fitQuizDockText();
+  });
 }
 
 export function scheduleFitQuizDockText() {
-  const dock = quizDock();
-  if (dock && isPanelFit()) dock.classList.add('is-fitting');
   const gen = ++fitGen;
   requestAnimationFrame(() => {
     if (gen !== fitGen) return;

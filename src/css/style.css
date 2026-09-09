@@ -5583,11 +5583,6 @@ html[data-exam-skin="panel"][data-ui-mode="fit"] #quiz.active:is(.exam-active, .
   grid-template-rows: minmax(0, 36%) minmax(0, 64%);
 }
 
-html[data-exam-skin="panel"][data-ui-mode="fit"] #quiz.active:is(.exam-active, .learn-active) .quiz-dock.is-fitting .question-text,
-html[data-exam-skin="panel"][data-ui-mode="fit"] #quiz.active:is(.exam-active, .learn-active) .quiz-dock.is-fitting .answer-text {
-  visibility: hidden;
-}
-
 html[data-exam-skin="panel"][data-ui-mode="fit"] #quiz.active:is(.exam-active, .learn-active) .quiz-dock .question-text {
   flex: 1 1 auto;
   min-height: 0;

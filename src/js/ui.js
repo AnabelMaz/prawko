@@ -3,7 +3,7 @@
 import { t, getLang, translateQuestion } from './i18n.js';
 import { getCategoryStats, getLearnProgress, loadHistory, getLearnTouchedCategories, getLearnCategoryBreakdown, getLearnUniqueFilterCounts } from './stats.js';
 import { getMediaUrls, fetchCategory, usesLocalMedia } from './data.js';
-import { getCategoryMediaAccess, getCategoriesOfflineCoverage, getDownloadedCategories, offlineCoverageHue } from './offline.js';
+import { getCategoryMediaAccess, getCategoriesOfflineCoverage, getDownloadedCategories, getActiveDownloadProgress, isAppOnline, offlineCoverageHue, resolvePlayableMediaUrl } from './offline.js';
 import { refitUiScale, layoutCategoryGrid } from './scale.js';
 import { scheduleFitQuizDockText } from './fit-text.js';
 
@@ -199,7 +199,18 @@ function clampCoveragePct(pct) {
 }
 
 function paintOfflineButton(dlBtn, access, coverage) {
-  if (!dlBtn || dlBtn.classList.contains('downloading')) return;
+  if (!dlBtn) return;
+  const active = getActiveDownloadProgress(dlBtn.dataset.category);
+  if (active) {
+    const pct = Math.max(0, Math.min(99, Math.round((active.done / Math.max(1, active.total)) * 100)));
+    dlBtn.classList.add('downloading');
+    dlBtn.classList.remove('downloaded', 'unavailable', 'partial');
+    dlBtn.style.setProperty('--dl-progress', String(pct));
+    dlBtn.style.setProperty('--offline-hue', String(offlineCoverageHue(pct)));
+    dlBtn.textContent = `\u2193 ${pct}%`;
+    return;
+  }
+  dlBtn.classList.remove('downloading');
   const pct = clampCoveragePct(coverage?.pct);
   const showPct = !access.offlineReady && pct >= 1 && pct <= 99;
 
@@ -241,6 +252,13 @@ export function applyOfflineCoverageToButtons(coverageMap, downloadedSet = new S
   }
   coverageScanId += 1;
   paintCoverageMap(coverageMap, downloadedSet);
+}
+
+export async function refreshOfflineCoverage(meta, downloadedSet = new Set()) {
+  const ids = (meta?.categories || []).map((cat) => cat.id);
+  if (!ids.length) return;
+  const map = await getCategoriesOfflineCoverage(ids);
+  applyOfflineCoverageToButtons(map, downloadedSet);
 }
 
 function scheduleCoverageScan(meta, downloadedSet) {
@@ -348,6 +366,15 @@ function lockVideoChrome(video) {
   video.addEventListener('contextmenu', (e) => e.preventDefault());
 }
 
+let mediaLoadGen = 0;
+let playableBlobUrl = '';
+
+function revokePlayableBlob() {
+  if (!playableBlobUrl) return;
+  URL.revokeObjectURL(playableBlobUrl);
+  playableBlobUrl = '';
+}
+
 export function renderQuestion(question, container, options = {}) {
   const examMedia = options.examMedia === true;
   const q = translateQuestion(question);
@@ -362,6 +389,8 @@ export function renderQuestion(question, container, options = {}) {
   const oldVideo = mediaArea.querySelector('video');
   if (oldVideo) { oldVideo.pause(); oldVideo.removeAttribute('src'); oldVideo.load(); }
   mediaArea.innerHTML = '';
+  revokePlayableBlob();
+  const mediaGen = ++mediaLoadGen;
   mediaArea.onclick = null;
   mediaArea.classList.remove('has-media', 'loading', 'has-learn-video', 'exam-film-pending', 'media-empty');
   mediaArea.removeAttribute('aria-hidden');
@@ -374,12 +403,26 @@ export function renderQuestion(question, container, options = {}) {
     const mediaCandidates = getMediaUrls(q.media, q.mediaType);
 
     let candidateIndex = 0;
+    let triedStored = false;
     const getNextMediaUrl = () => {
       if (candidateIndex >= mediaCandidates.length) return null;
       const url = mediaCandidates[candidateIndex];
       candidateIndex += 1;
       return url;
     };
+    const nextPlayableUrl = async () => {
+      if (!triedStored) {
+        triedStored = true;
+        const stored = await resolvePlayableMediaUrl(q.media, q.mediaType);
+        if (stored) {
+          playableBlobUrl = stored;
+          return stored;
+        }
+      }
+      if (!isAppOnline()) return null;
+      return getNextMediaUrl();
+    };
+    const stillCurrent = () => mediaGen === mediaLoadGen;
 
     const showMediaFallback = (onRetry) => {
       mediaArea.classList.remove('loading');
@@ -428,127 +471,135 @@ export function renderQuestion(question, container, options = {}) {
 
     if (q.mediaType === 'video') {
       const loadVideo = () => {
-        const mediaUrl = getNextMediaUrl();
-        if (!mediaUrl) {
-          showMediaFallback(() => {
-            candidateIndex = 0;
-            loadVideo();
-          });
-          return;
-        }
-
-        mediaArea.classList.add('loading');
-        mediaArea.innerHTML = '';
-
-        const video = document.createElement('video');
-        lockVideoChrome(video);
-        video.preload = 'auto';
-        video.onerror = () => loadVideo();
-        if (examMedia) {
-          video.autoplay = false;
-          video.muted = false;
-          video.tabIndex = -1;
-          video.draggable = false;
-          video.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-          });
-          video.addEventListener('ended', () => {
-            video.pause();
-            video.dataset.examEnded = '1';
-          });
-          const hideFilm = Boolean(options.hideFilm);
-          if (hideFilm) {
-            mediaArea.classList.add('exam-film-pending');
-            const placeholder = document.createElement('div');
-            placeholder.className = 'exam-film-placeholder';
-            placeholder.setAttribute('aria-hidden', 'true');
-            placeholder.innerHTML = '<svg viewBox="0 0 128 96" aria-hidden="true"><circle cx="42" cy="26" r="18"/><circle cx="78" cy="26" r="18"/><rect x="26" y="38" width="68" height="32"/><rect x="94" y="46" width="20" height="16"/><rect x="58" y="70" width="10" height="6"/><path d="M63 76L34 96h14l15-12 15 12h14z"/></svg>';
-            mediaArea.appendChild(placeholder);
+        void (async () => {
+          const mediaUrl = await nextPlayableUrl();
+          if (!stillCurrent()) return;
+          if (!mediaUrl) {
+            showMediaFallback(() => {
+              candidateIndex = 0;
+              triedStored = false;
+              loadVideo();
+            });
+            return;
           }
-          const pinStartFrame = () => {
-            if (!mediaArea.classList.contains('exam-film-pending')) return;
-            video.pause();
-            try {
-              if (video.currentTime !== 0) video.currentTime = 0;
-            } catch {}
-          };
-          video.addEventListener('loadedmetadata', pinStartFrame);
-          video.onloadeddata = () => {
-            mediaArea.classList.remove('loading');
-            pinStartFrame();
-          };
-          video.src = mediaUrl;
-          if (hideFilm) mediaArea.classList.remove('loading');
-          mediaArea.appendChild(video);
-        } else {
-          video.muted = true;
-          video.autoplay = true;
-          video.onloadeddata = () => mediaArea.classList.remove('loading');
 
-          const replay = document.createElement('button');
-          replay.type = 'button';
-          replay.className = 'media-replay-btn';
-          replay.hidden = true;
-          replay.setAttribute('aria-label', t('replayMedia'));
-          replay.title = t('replayMedia');
-          replay.innerHTML = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M12 5V1L7 6l5 5V7c3.3 0 6 2.7 6 6s-2.7 6-6 6-6-2.7-6-6H4c0 4.4 3.6 8 8 8s8-3.6 8-8-3.6-8-8-8z"/></svg>';
-          const setReplayVisible = (visible) => {
-            replay.hidden = !visible;
-            mediaArea.classList.toggle('is-replayable', visible);
-          };
-          replay.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            video.currentTime = 0;
+          mediaArea.classList.add('loading');
+          mediaArea.innerHTML = '';
+
+          const video = document.createElement('video');
+          lockVideoChrome(video);
+          video.preload = 'auto';
+          video.onerror = () => loadVideo();
+          if (examMedia) {
+            video.autoplay = false;
             video.muted = false;
-            setReplayVisible(false);
-            setLearnMediaMarkHidden(true);
-            video.play();
-          });
-          video.addEventListener('play', () => setReplayVisible(false));
-          video.addEventListener('ended', () => {
-            setReplayVisible(true);
-            setLearnMediaMarkHidden(false);
-          });
+            video.tabIndex = -1;
+            video.draggable = false;
+            video.addEventListener('click', (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            });
+            video.addEventListener('ended', () => {
+              video.pause();
+              video.dataset.examEnded = '1';
+            });
+            const hideFilm = Boolean(options.hideFilm);
+            if (hideFilm) {
+              mediaArea.classList.add('exam-film-pending');
+              const placeholder = document.createElement('div');
+              placeholder.className = 'exam-film-placeholder';
+              placeholder.setAttribute('aria-hidden', 'true');
+              placeholder.innerHTML = '<svg viewBox="0 0 128 96" aria-hidden="true"><circle cx="42" cy="26" r="18"/><circle cx="78" cy="26" r="18"/><rect x="26" y="38" width="68" height="32"/><rect x="94" y="46" width="20" height="16"/><rect x="58" y="70" width="10" height="6"/><path d="M63 76L34 96h14l15-12 15 12h14z"/></svg>';
+              mediaArea.appendChild(placeholder);
+            }
+            const pinStartFrame = () => {
+              if (!mediaArea.classList.contains('exam-film-pending')) return;
+              video.pause();
+              try {
+                if (video.currentTime !== 0) video.currentTime = 0;
+              } catch {}
+            };
+            video.addEventListener('loadedmetadata', pinStartFrame);
+            video.onloadeddata = () => {
+              mediaArea.classList.remove('loading');
+              pinStartFrame();
+            };
+            video.src = mediaUrl;
+            if (hideFilm) mediaArea.classList.remove('loading');
+            mediaArea.appendChild(video);
+          } else {
+            video.muted = true;
+            video.autoplay = true;
+            video.onloadeddata = () => mediaArea.classList.remove('loading');
 
-          mediaArea.classList.add('has-learn-video');
-          video.src = mediaUrl;
-          mediaArea.append(video, replay);
-        }
+            const replay = document.createElement('button');
+            replay.type = 'button';
+            replay.className = 'media-replay-btn';
+            replay.hidden = true;
+            replay.setAttribute('aria-label', t('replayMedia'));
+            replay.title = t('replayMedia');
+            replay.innerHTML = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M12 5V1L7 6l5 5V7c3.3 0 6 2.7 6 6s-2.7 6-6 6-6-2.7-6-6H4c0 4.4 3.6 8 8 8s8-3.6 8-8-3.6-8-8-8z"/></svg>';
+            const setReplayVisible = (visible) => {
+              replay.hidden = !visible;
+              mediaArea.classList.toggle('is-replayable', visible);
+            };
+            replay.addEventListener('click', (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              video.currentTime = 0;
+              video.muted = false;
+              setReplayVisible(false);
+              setLearnMediaMarkHidden(true);
+              video.play();
+            });
+            video.addEventListener('play', () => setReplayVisible(false));
+            video.addEventListener('ended', () => {
+              setReplayVisible(true);
+              setLearnMediaMarkHidden(false);
+            });
+
+            mediaArea.classList.add('has-learn-video');
+            video.src = mediaUrl;
+            mediaArea.append(video, replay);
+          }
+        })();
       };
       loadVideo();
     } else if (q.mediaType === 'image') {
       const loadImage = () => {
-        const mediaUrl = getNextMediaUrl();
-        if (!mediaUrl) {
-          showMediaFallback(() => {
-            candidateIndex = 0;
-            loadImage();
-          });
-          return;
-        }
+        void (async () => {
+          const mediaUrl = await nextPlayableUrl();
+          if (!stillCurrent()) return;
+          if (!mediaUrl) {
+            showMediaFallback(() => {
+              candidateIndex = 0;
+              triedStored = false;
+              loadImage();
+            });
+            return;
+          }
 
-        mediaArea.classList.add('loading');
-        mediaArea.innerHTML = '';
+          mediaArea.classList.add('loading');
+          mediaArea.innerHTML = '';
 
-        const img = document.createElement('img');
-        img.onload = () => mediaArea.classList.remove('loading');
-        img.onerror = () => loadImage();
-        img.src = mediaUrl;
-        img.alt = t('imgAlt');
-        img.loading = 'lazy';
-        img.decoding = 'async';
-        img.width = 1280;
-        img.height = 720;
-        if (examMedia) {
-          img.draggable = false;
-          img.tabIndex = -1;
-          img.addEventListener('mousedown', (e) => e.preventDefault());
-          img.addEventListener('click', (e) => e.preventDefault());
-          img.addEventListener('contextmenu', (e) => e.preventDefault());
-        }
-        mediaArea.appendChild(img);
+          const img = document.createElement('img');
+          img.onload = () => mediaArea.classList.remove('loading');
+          img.onerror = () => loadImage();
+          img.src = mediaUrl;
+          img.alt = t('imgAlt');
+          img.loading = 'lazy';
+          img.decoding = 'async';
+          img.width = 1280;
+          img.height = 720;
+          if (examMedia) {
+            img.draggable = false;
+            img.tabIndex = -1;
+            img.addEventListener('mousedown', (e) => e.preventDefault());
+            img.addEventListener('click', (e) => e.preventDefault());
+            img.addEventListener('contextmenu', (e) => e.preventDefault());
+          }
+          mediaArea.appendChild(img);
+        })();
       };
       loadImage();
     }

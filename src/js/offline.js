@@ -1,16 +1,51 @@
 // offline.js — Offline download management
 
-import { fetchCategory, getMediaUrls, usesLocalMedia, PACKS_BASE, OFFLINE_DOWNLOAD } from './data.js';
+import { fetchMeta, fetchCategory, getMediaUrls, usesLocalMedia, isLoopbackHost, PACKS_BASE, OFFLINE_DOWNLOAD } from './data.js';
 import { forEachZipFile } from './zip.js';
 
 const DOWNLOAD_KEY = 'prawko_offline';
 const MANIFEST_KEY = 'prawko_offline_manifest';
 const PACKS_DONE_KEY = 'prawko_offline_packs';
 const OFFLINE_CACHE = 'prawko-offline-media-v1';
-const BATCH_SIZE = 6;
+const IDB_NAME = 'prawko-offline-media';
+const IDB_STORE = 'files';
+const BATCH_SIZE = 2;
+const FILE_TIMEOUT_MS = 120000;
+const FILE_RETRIES = 3;
 
 function getMediaRequest(url) {
-  return new Request(url, { mode: 'no-cors', cache: 'no-store' });
+  try {
+    const abs = new URL(url, typeof location !== 'undefined' ? location.href : undefined);
+    if (typeof location !== 'undefined' && abs.origin === location.origin) {
+      return new Request(abs.href, { cache: 'no-store' });
+    }
+    return new Request(abs.href, { mode: 'no-cors', cache: 'no-store' });
+  } catch {
+    return new Request(url, { mode: 'no-cors', cache: 'no-store' });
+  }
+}
+
+async function fetchMediaResponse(request, userSignal) {
+  let lastErr = null;
+  for (let attempt = 0; attempt < FILE_RETRIES; attempt++) {
+    if (userSignal?.aborted) throw userSignal.reason || new DOMException('Aborted', 'AbortError');
+    const timeoutCtrl = new AbortController();
+    const timer = setTimeout(() => timeoutCtrl.abort(), FILE_TIMEOUT_MS);
+    const onUserAbort = () => timeoutCtrl.abort();
+    userSignal?.addEventListener('abort', onUserAbort);
+    try {
+      const response = await fetch(request, { signal: timeoutCtrl.signal });
+      clearTimeout(timer);
+      userSignal?.removeEventListener('abort', onUserAbort);
+      return response;
+    } catch (err) {
+      clearTimeout(timer);
+      userSignal?.removeEventListener('abort', onUserAbort);
+      if (userSignal?.aborted) throw err;
+      lastErr = err;
+    }
+  }
+  throw lastErr || new Error('media fetch failed');
 }
 
 function notifyServiceWorkerOfflineMedia() {
@@ -25,11 +60,12 @@ export function isAppOnline() {
 
 export function getCategoryMediaAccess(categoryId, downloadedSet = new Set(), options = {}) {
   const localMedia = options.localMedia ?? usesLocalMedia();
+  const loopback = options.loopback ?? isLoopbackHost();
   const online = options.online ?? isAppOnline();
   const downloaded = Boolean(categoryId) && downloadedSet.has(categoryId);
   const completeCoverage = Number(options.coveragePct) >= 100;
 
-  if (localMedia || downloaded || completeCoverage) {
+  if ((localMedia && loopback) || downloaded || completeCoverage) {
     return { available: true, offlineReady: true, canDownload: false };
   }
   if (online) {
@@ -45,9 +81,22 @@ export function offlineCoverageHue(pct) {
   return Math.round(clamped * 1.2);
 }
 
+function mediaPathTail(href) {
+  try {
+    const base = typeof location !== 'undefined' ? location.href : 'https://example.invalid/';
+    const u = new URL(href, base);
+    const m = u.pathname.match(/\/(vid|img)\/[^/]+$/i);
+    return m ? m[0].toLowerCase() : '';
+  } catch {
+    return '';
+  }
+}
+
 function addMediaCacheKeys(set, url) {
   if (!url) return;
   set.add(url);
+  const tail = mediaPathTail(url);
+  if (tail) set.add(tail);
   try {
     const base = typeof location !== 'undefined' ? location.href : 'https://example.invalid/';
     const u = new URL(url, base);
@@ -61,6 +110,255 @@ function addMediaCacheKeys(set, url) {
     const file = String(url).split('/').pop();
     if (file) set.add(file);
   }
+}
+
+function urlIsCached(url, cachedSet) {
+  if (!url || !cachedSet) return false;
+  const keys = new Set();
+  addMediaCacheKeys(keys, url);
+  for (const key of keys) {
+    if (cachedSet.has(key)) return true;
+  }
+  return false;
+}
+
+function mediaCacheIsPersistent() {
+  return typeof isSecureContext === 'undefined' || isSecureContext !== false;
+}
+
+async function openOfflineCache() {
+  if (!mediaCacheIsPersistent()) return null;
+  if (typeof caches === 'undefined') return null;
+  try {
+    return await caches.open(OFFLINE_CACHE);
+  } catch {
+    return null;
+  }
+}
+
+function openMediaDb() {
+  return new Promise((resolve, reject) => {
+    if (typeof indexedDB === 'undefined') {
+      reject(new Error('IndexedDB is not available'));
+      return;
+    }
+    const req = indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = () => {
+      if (!req.result.objectStoreNames.contains(IDB_STORE)) {
+        req.result.createObjectStore(IDB_STORE);
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error || new Error('IndexedDB open failed'));
+  });
+}
+
+function copyIdbValue(value) {
+  if (!(value instanceof Blob)) return Promise.resolve(value);
+  const type = value.type || 'application/octet-stream';
+  return value.arrayBuffer().then((buf) => new Blob([buf], { type }));
+}
+
+function idbRequest(mode, run) {
+  return openMediaDb().then((db) => new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, mode);
+    const req = run(tx.objectStore(IDB_STORE));
+    let settled = false;
+    let txDone = false;
+    let copyDone = false;
+    let copiedValue;
+    const closeDb = () => {
+      try { db.close(); } catch { /* already closed */ }
+    };
+    const fail = (err) => {
+      if (settled) return;
+      settled = true;
+      closeDb();
+      reject(err);
+    };
+    const tryFinish = () => {
+      if (settled || !txDone || !copyDone) return;
+      settled = true;
+      closeDb();
+      resolve(copiedValue);
+    };
+    req.onsuccess = () => {
+      copyIdbValue(req.result).then((value) => {
+        copiedValue = value;
+        copyDone = true;
+        tryFinish();
+      }).catch(fail);
+    };
+    req.onerror = () => fail(req.error);
+    tx.oncomplete = () => {
+      txDone = true;
+      tryFinish();
+    };
+    tx.onerror = () => fail(tx.error);
+  }));
+}
+
+function idbPut(tail, blob) {
+  return idbRequest('readwrite', (store) => store.put(blob, tail));
+}
+
+function idbGet(tail) {
+  return idbRequest('readonly', (store) => store.get(tail));
+}
+
+function idbKeys() {
+  return idbRequest('readonly', (store) => store.getAllKeys()).then((keys) => keys || []);
+}
+
+async function clonePlayableBlob(value, name) {
+  if (!value) return null;
+  const type = (value.type && String(value.type)) || mediaMime(name) || 'application/octet-stream';
+  if (value instanceof Blob) {
+    if (value.size < 1) return null;
+    const buf = await value.arrayBuffer();
+    if (!buf.byteLength) return null;
+    return new Blob([buf], { type });
+  }
+  if (value instanceof ArrayBuffer && value.byteLength > 0) {
+    return new Blob([value], { type });
+  }
+  return null;
+}
+
+function idbKeyCandidates(media, mediaType) {
+  const names = new Set();
+  const raw = String(media || '');
+  if (raw) {
+    names.add(raw);
+    names.add(raw.toLowerCase());
+    try { names.add(decodeURIComponent(raw)); } catch { /* keep raw */ }
+    try { names.add(decodeURIComponent(raw).toLowerCase()); } catch { /* keep raw */ }
+  }
+  const tails = new Set();
+  for (const url of getMediaUrls(media, mediaType)) {
+    const tail = mediaPathTail(url);
+    if (tail) tails.add(tail);
+  }
+  return { names, tails };
+}
+
+async function idbGetMediaBlob(media, mediaType) {
+  const { names, tails } = idbKeyCandidates(media, mediaType);
+  for (const tail of tails) {
+    try {
+      const blob = await clonePlayableBlob(await idbGet(tail), media);
+      if (blob) return blob;
+    } catch { /* try next */ }
+  }
+  let keys = [];
+  try {
+    keys = await idbKeys();
+  } catch {
+    return null;
+  }
+  for (const key of keys) {
+    const file = String(key).split('/').pop() || '';
+    let decoded = file;
+    try { decoded = decodeURIComponent(file); } catch { /* keep encoded */ }
+    const match = names.has(file)
+      || names.has(file.toLowerCase())
+      || names.has(decoded)
+      || names.has(decoded.toLowerCase())
+      || tails.has(String(key))
+      || tails.has(String(key).toLowerCase());
+    if (!match) continue;
+    try {
+      const blob = await clonePlayableBlob(await idbGet(key), media);
+      if (blob) return blob;
+    } catch { /* try next key */ }
+  }
+  return null;
+}
+
+export async function storeMediaBlob(url, blob) {
+  if (!blob || blob.size < 1) throw new Error('empty media blob');
+  const type = blob.type || mediaMime(url);
+  const body = blob.type === type ? blob : new Blob([await blob.arrayBuffer()], { type });
+  const abs = new URL(url, typeof location !== 'undefined' ? location.href : 'https://example.invalid/').href;
+  const tail = mediaPathTail(abs);
+  const cache = await openOfflineCache();
+  if (cache) {
+    try {
+      await cache.put(new Request(abs), new Response(body, {
+        status: 200,
+        headers: {
+          'Content-Type': type,
+          'Content-Length': String(body.size),
+        },
+      }));
+      return;
+    } catch {
+      /* Cache Storage can exist but reject puts; keep going to IndexedDB. */
+    }
+  }
+  if (!tail) throw new Error('no media storage');
+  await idbPut(tail, body);
+}
+
+async function matchCachedMediaResponse(cache, media, mediaType) {
+  const urls = getMediaUrls(media, mediaType);
+  const opts = { ignoreSearch: true, ignoreVary: true };
+  for (const url of urls) {
+    try {
+      const abs = new URL(url, location.href).href;
+      const hit = await cache.match(abs, opts)
+        || await cache.match(new Request(abs), opts)
+        || await cache.match(new Request(abs, { mode: 'cors' }), opts)
+        || await cache.match(new Request(abs, { mode: 'no-cors' }), opts);
+      if (hit) return hit;
+    } catch { /* try next alias */ }
+  }
+  const { names, tails } = idbKeyCandidates(media, mediaType);
+  let keys = [];
+  try {
+    keys = await cache.keys();
+  } catch {
+    return null;
+  }
+  for (const req of keys) {
+    const tail = mediaPathTail(req.url);
+    const file = String(req.url).split('/').pop() || '';
+    let decoded = file;
+    try { decoded = decodeURIComponent(file); } catch { /* keep encoded */ }
+    const match = (tail && tails.has(tail))
+      || names.has(file)
+      || names.has(file.toLowerCase())
+      || names.has(decoded)
+      || names.has(decoded.toLowerCase());
+    if (!match) continue;
+    try {
+      const hit = await cache.match(req, opts) || await cache.match(req);
+      if (hit) return hit;
+    } catch { /* try next key */ }
+  }
+  return null;
+}
+
+export async function getStoredMediaBlob(media, mediaType) {
+  const cache = await openOfflineCache();
+  if (cache) {
+    try {
+      const hit = await matchCachedMediaResponse(cache, media, mediaType);
+      if (hit) {
+        const blob = await clonePlayableBlob(await hit.blob(), media);
+        if (blob) return blob;
+      }
+    } catch { /* fall through to IndexedDB */ }
+  }
+  return idbGetMediaBlob(media, mediaType);
+}
+
+export async function resolvePlayableMediaUrl(media, mediaType) {
+  const blob = await getStoredMediaBlob(media, mediaType);
+  if (!blob) return null;
+  const minBytes = mediaType === 'video' ? 256 : 32;
+  if (blob.size < minBytes) return null;
+  return URL.createObjectURL(blob);
 }
 
 export function coverageFromUrls(neededUrls, cachedSet) {
@@ -84,21 +382,24 @@ export function coverageFromUrls(neededUrls, cachedSet) {
 
 export async function getCachedUrlSet() {
   const cached = new Set();
-  if (typeof caches === 'undefined') return cached;
-  try {
-    const cache = await caches.open(OFFLINE_CACHE);
-    const keys = await cache.keys();
-    for (const req of keys) addMediaCacheKeys(cached, req.url);
-  } catch {
-    return cached;
+  const cache = await openOfflineCache();
+  if (cache) {
+    try {
+      const keys = await cache.keys();
+      for (const req of keys) addMediaCacheKeys(cached, req.url);
+    } catch { /* Cache Storage can be missing on http://lan-host */ }
   }
+  try {
+    const tails = await idbKeys();
+    for (const key of tails) addMediaCacheKeys(cached, key);
+  } catch { /* IndexedDB unavailable */ }
   return cached;
 }
 
 export async function getCategoriesOfflineCoverage(categoryIds) {
   const ids = Array.isArray(categoryIds) ? categoryIds : [];
   const map = {};
-  if (usesLocalMedia()) {
+  if (usesLocalMedia() && isLoopbackHost()) {
     for (const id of ids) map[id] = { have: 1, total: 1, pct: 100 };
     return map;
   }
@@ -153,6 +454,7 @@ function getCategoryMediaUrls(categoryData) {
 }
 
 let activeController = null;
+let activeDownload = null;
 
 export function cancelDownload() {
   if (activeController) {
@@ -161,11 +463,50 @@ export function cancelDownload() {
   }
 }
 
-export async function downloadCategoryMedia(categoryId, onProgress) {
-  if (OFFLINE_DOWNLOAD === 'packs' && PACKS_BASE) {
-    return downloadCategoryMediaFromPacks(categoryId, onProgress);
+export function getActiveDownloadProgress(categoryId) {
+  if (!activeDownload || activeDownload.categoryId !== categoryId) return null;
+  return { done: activeDownload.done, total: activeDownload.total };
+}
+
+function attachDownloadProgress(categoryId, onProgress) {
+  if (!activeDownload || activeDownload.categoryId !== categoryId) return;
+  if (onProgress) {
+    activeDownload.listeners.add(onProgress);
+    onProgress(activeDownload.done, activeDownload.total);
   }
-  return downloadCategoryMediaFromFiles(categoryId, onProgress);
+}
+
+function emitDownloadProgress(done, total, extra) {
+  if (!activeDownload) return;
+  activeDownload.done = done;
+  activeDownload.total = total;
+  for (const fn of activeDownload.listeners) {
+    try { fn(done, total, extra); } catch { /* listener gone */ }
+  }
+}
+
+export async function downloadCategoryMedia(categoryId, onProgress) {
+  if (activeDownload?.promise && activeDownload.categoryId === categoryId) {
+    attachDownloadProgress(categoryId, onProgress);
+    return activeDownload.promise;
+  }
+  cancelDownload();
+  activeDownload = {
+    categoryId,
+    done: 0,
+    total: 1,
+    listeners: new Set(onProgress ? [onProgress] : []),
+    promise: null,
+  };
+  const run = (!usesLocalMedia() && OFFLINE_DOWNLOAD === 'packs' && PACKS_BASE)
+    ? downloadCategoryMediaFromPacks
+    : downloadCategoryMediaFromFiles;
+  activeDownload.promise = run(categoryId, (done, total, extra) => {
+    emitDownloadProgress(done, total, extra);
+  }).finally(() => {
+    if (activeDownload?.categoryId === categoryId) activeDownload = null;
+  });
+  return activeDownload.promise;
 }
 
 function loadPacksDone() {
@@ -240,6 +581,14 @@ async function cacheZipEntry(cache, entryName, fileBytes, cachedSet) {
   if (nameInCachedSet(file, cachedSet, mediaType)) return file;
   const type = mediaMime(file);
   const blob = new Blob([fileBytes], { type });
+  if (!mediaCacheIsPersistent()) {
+    const url = getMediaUrls(file, mediaType)[0];
+    if (!url) return null;
+    await storeMediaBlob(url, blob);
+    addMediaCacheKeys(cachedSet, url);
+    cachedSet.add(file);
+    return file;
+  }
   for (const url of getMediaUrls(file, mediaType)) {
     const request = new Request(url, { mode: /^https?:\/\//i.test(url) ? 'cors' : 'same-origin' });
     await cache.put(request, new Response(blob, { headers: { 'Content-Type': type } }));
@@ -421,42 +770,46 @@ export async function downloadCategoryMediaFromFiles(categoryId, onProgress) {
 
   const total = mediaUrls.length;
   if (total === 0) {
-    const downloaded = getDownloadedCategories();
-    const manifest = loadManifest();
-    downloaded.add(categoryId);
-    manifest[categoryId] = [];
-    saveDownloaded(downloaded);
-    saveManifest(manifest);
     activeController = null;
     onProgress?.(1, 1);
-    return { success: true, total: 0, failed: 0, cancelled: false };
+    return finishCategoryDownload(categoryId, [], false, 0);
   }
 
-  const cache = typeof caches !== 'undefined'
-    ? await caches.open(OFFLINE_CACHE)
-    : null;
-
-  let completed = 0;
+  const cached = await getCachedUrlSet();
+  const pending = mediaUrls.filter((url) => !urlIsCached(url, cached));
+  let completed = total - pending.length;
   let failed = 0;
   let cancelled = false;
+  onProgress?.(completed, total, { failed, cancelled });
 
-  for (let i = 0; i < mediaUrls.length; i += BATCH_SIZE) {
+  for (let i = 0; i < pending.length; i += BATCH_SIZE) {
     if (controller.signal.aborted) {
       cancelled = true;
       break;
     }
 
-    const batch = mediaUrls.slice(i, i + BATCH_SIZE);
+    const batch = pending.slice(i, i + BATCH_SIZE);
     const results = await Promise.allSettled(batch.map(async (url) => {
       const request = getMediaRequest(url);
-      const response = await fetch(request, { signal: controller.signal });
-      if (cache) await cache.put(request, response.clone());
+      const response = await fetchMediaResponse(request, controller.signal);
+      if (response.type === 'opaque') {
+        if (!mediaCacheIsPersistent()) throw new Error('opaque media needs a secure origin');
+        const cache = await openOfflineCache();
+        if (!cache) throw new Error('opaque media needs Cache Storage');
+        await cache.put(request, response.clone());
+      } else {
+        if (!response.ok) throw new Error(`media ${response.status}`);
+        const blob = await response.blob();
+        await storeMediaBlob(url, blob);
+      }
+      addMediaCacheKeys(cached, url);
+      addMediaCacheKeys(cached, request.url);
     }));
 
     for (const r of results) {
       if (r.status === 'fulfilled') {
         completed++;
-      } else if (r.reason?.name === 'AbortError') {
+      } else if (r.reason?.name === 'AbortError' && controller.signal.aborted) {
         cancelled = true;
       } else {
         failed++;
@@ -473,47 +826,53 @@ export async function downloadCategoryMediaFromFiles(categoryId, onProgress) {
     activeController = null;
   }
 
+  return finishCategoryDownload(categoryId, mediaUrls, cancelled, failed);
+}
+
+async function categoryIdsForReconcile() {
   const downloaded = getDownloadedCategories();
   const manifest = loadManifest();
-  if (!cancelled && failed === 0) downloaded.add(categoryId);
-  else downloaded.delete(categoryId);
-  if (!cancelled && failed === 0) manifest[categoryId] = mediaUrls;
-  else delete manifest[categoryId];
-  saveDownloaded(downloaded);
-  saveManifest(manifest);
-  notifyServiceWorkerOfflineMedia();
-
-  return { success: !cancelled && failed === 0, total, failed, cancelled };
+  const ids = new Set([...downloaded, ...Object.keys(manifest)]);
+  try {
+    const meta = await fetchMeta();
+    for (const cat of meta?.categories || []) {
+      if (cat?.id) ids.add(cat.id);
+    }
+  } catch { /* listed + downloaded is enough */ }
+  return [...ids];
 }
 
 export async function reconcileDownloadedCategories() {
   const downloaded = getDownloadedCategories();
   const manifest = loadManifest();
-  if (!downloaded.size) return downloaded;
-  if (typeof caches === 'undefined') return downloaded;
+  if (usesLocalMedia() && isLoopbackHost()) return downloaded;
 
-  const cache = await caches.open(OFFLINE_CACHE);
+  const ids = await categoryIdsForReconcile();
+  if (!ids.length) return downloaded;
+
+  const cached = await getCachedUrlSet();
   let changed = false;
 
-  for (const categoryId of [...downloaded]) {
-    const urls = manifest[categoryId];
-    if (!Array.isArray(urls)) {
-      downloaded.delete(categoryId);
-      changed = true;
-      continue;
-    }
-    let isComplete = true;
-    for (const url of urls) {
-      const cached = (await cache.match(url))
-        || (await cache.match(new Request(url, { mode: 'cors' })))
-        || (await cache.match(new Request(url, { mode: 'no-cors' })))
-        || (await cache.match(getMediaRequest(url)));
-      if (!cached) {
-        isComplete = false;
-        break;
+  for (const categoryId of ids) {
+    const listed = Array.isArray(manifest[categoryId]) ? manifest[categoryId] : null;
+    let mediaUrls = listed;
+    if (!mediaUrls) {
+      try {
+        mediaUrls = getCategoryMediaUrls(await fetchCategory(categoryId));
+      } catch {
+        continue;
       }
     }
-    if (!isComplete) {
+    const complete = coverageFromUrls(mediaUrls, cached).pct >= 100;
+    const was = downloaded.has(categoryId);
+    if (complete) {
+      if (!was) changed = true;
+      downloaded.add(categoryId);
+      if (!listed) {
+        manifest[categoryId] = mediaUrls;
+        changed = true;
+      }
+    } else if (was || listed) {
       downloaded.delete(categoryId);
       delete manifest[categoryId];
       changed = true;

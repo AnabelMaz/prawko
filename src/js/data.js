@@ -3,23 +3,34 @@
 const cache = new Map();
 const inflight = new Map();
 
-// Media URLs. github.io uses these defaults. On localhost, src/local.json
-// can override them (that file is not in git).
+// Media URLs. github.io uses B2 + R2. A self-hosted server uses same-origin
+// `media/` (and `local.json` can switch it to cdn / packs). That file is
+// gitignored — Pages 404s it; the installer writes it next to the app.
 export const MEDIA_CDN = 'https://f003.backblazeb2.com/file/prawko-maz';
-export let MEDIA_BASE = MEDIA_CDN;
-export let PACKS_BASE = 'https://pub-e8e3a36b9ab44034913636d87ee3f0ee.r2.dev';
-export let OFFLINE_DOWNLOAD = 'packs';
+export const PACKS_CDN = 'https://pub-e8e3a36b9ab44034913636d87ee3f0ee.r2.dev';
 
-function isLocalDevHost() {
+function hostedOnGitHubPages() {
   if (typeof location === 'undefined') return false;
-  const host = location.hostname;
-  return host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
+  return /(?:^|\.)github\.io$/i.test(location.hostname);
 }
+
+export let MEDIA_BASE = hostedOnGitHubPages() ? MEDIA_CDN : 'media';
+export let PACKS_BASE = PACKS_CDN;
+export let OFFLINE_DOWNLOAD = hostedOnGitHubPages() ? 'packs' : 'files';
 
 function applyLocalConfig(data) {
   if (!data || typeof data !== 'object') return;
-  if (data.mediaBase === 'media') MEDIA_BASE = 'media';
-  else if (data.mediaBase === 'cdn') MEDIA_BASE = MEDIA_CDN;
+  if (data.mediaBase === 'media') {
+    MEDIA_BASE = 'media';
+    if (data.offlineDownload !== 'packs' && data.offlineDownload !== 'files') {
+      OFFLINE_DOWNLOAD = 'files';
+    }
+  } else if (data.mediaBase === 'cdn') {
+    MEDIA_BASE = MEDIA_CDN;
+    if (data.offlineDownload !== 'packs' && data.offlineDownload !== 'files') {
+      OFFLINE_DOWNLOAD = 'packs';
+    }
+  }
   if (typeof data.packsBase === 'string' && data.packsBase.trim()) {
     PACKS_BASE = data.packsBase.trim().replace(/\/+$/, '');
   }
@@ -33,7 +44,6 @@ let localConfigPromise = null;
 export function loadLocalConfig() {
   if (!localConfigPromise) {
     localConfigPromise = (async () => {
-      if (!isLocalDevHost()) return {};
       try {
         const res = await fetch(new URL('local.json', document.baseURI), { cache: 'no-store' });
         if (!res.ok) return {};
@@ -56,14 +66,18 @@ export function usesLocalMedia(base = MEDIA_BASE) {
   return Boolean(base) && !isRemoteMediaBase(base);
 }
 
+export function isLoopbackHost() {
+  if (typeof location === 'undefined') return false;
+  const host = location.hostname;
+  return host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
+}
+
 export function getMediaUrls(media, mediaType) {
   if (!media) return [];
   const prefix = mediaType === 'video' ? 'vid' : 'img';
   const encoded = encodeURIComponent(media);
   const bases = [];
-  for (const base of [MEDIA_BASE, MEDIA_CDN]) {
-    if (base && !bases.includes(base)) bases.push(base);
-  }
+  if (MEDIA_BASE) bases.push(MEDIA_BASE);
   const urls = [];
   for (const base of bases) {
     const withEncoding = `${base}/${prefix}/${encoded}`;

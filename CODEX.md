@@ -22,10 +22,10 @@ Day-to-day product is the local service at http://localhost:5173 (`C:\ProgramDat
 - Media for **online play**: Backblaze B2 `prawko-maz` (`img/` `vid/`), not in git. `upload-media.ps1` / `.py` (`b2 sync --skipNewer`; empty bucket = full upload). Defaults to the same folder as convert-media (ProgramData / `/usr/local/prawko` / `/opt/prawko`), not empty git `src/media`
 - Offline **zip packs**: Cloudflare R2 `prawko-packs` (`PACKS_BASE`, `r2.dev`). Build with `build-media-packs`; **upload in the R2 dashboard** (no wrangler script). `upload-packs.ps1` / `.py` is an optional B2 archive of those zips, not the app host
 - Installer `-InstallGov` does **not** upload to B2 or R2
-- `MEDIA_BASE` in data.js; on a server that has local `src/media/img` or `media/vid`, `local.json` sets `mediaBase` to `'media'`
+- `MEDIA_BASE` in data.js: github.io defaults to B2+R2; a self-hosted server defaults to same-origin `media/` and reads `local.json` on every host (LAN/VM included). `mediaBase: 'cdn'` plus optional `packsBase` is the escape hatch to your own B2/R2
 - Learning: default filter unknown + random order; catalog number in the blue counter jumps within the current sequential list only when `local.json` has `learnQuestionJump`
 - Skins: Panel (WORD OSK layout) and Stacja; Panel question/ABC copy is fitted into fixed slots (`fit-text.js`)
-- PWA with service worker; “Download offline” unpacks R2 zips into Cache Storage
+- PWA with service worker; “Download offline” unpacks R2 zips into Cache Storage only when media is remote (`mediaBase: cdn`). Same-origin `media/` on **localhost** is already on disk (no download). A LAN/VM client must download those files from the host. Missing files are a config error, not a silent CDN fallback
 
 ## i18n Architecture
 - `src/js/i18n.js` — translations dict, `getLang()`, `setLang()`, `t(key)`, `translateQuestion()`

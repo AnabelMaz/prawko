@@ -1080,6 +1080,7 @@ test('Panel exam keeps time-bar space while the clip plays so chrome does not ju
   const before = await measure();
   await page.click('.exam-film-start');
   await expect.poll(() => page.evaluate(() => document.getElementById('quiz')?.getAttribute('data-exam-phase'))).toBe('watch');
+  await page.waitForSelector('#quiz video');
   const during = await measure();
   expect(during.rowDisplay).not.toBe('none');
   expect(during.rowH).toBeGreaterThan(8);
@@ -1089,8 +1090,13 @@ test('Panel exam keeps time-bar space while the clip plays so chrome does not ju
   expect(Math.abs(during.qTop - before.qTop)).toBeLessThan(4);
   expect(Math.abs(during.mediaBottom - before.mediaBottom)).toBeLessThan(4);
 
-  await page.evaluate(() => {
-    document.querySelector('#quiz video')?.dispatchEvent(new Event('ended'));
+  await page.locator('#quiz video').evaluate((video) => {
+    video.dataset.examEnded = '1';
+    try {
+      const t = Number.isFinite(video.duration) && video.duration > 0.2 ? video.duration : 1;
+      video.currentTime = t;
+    } catch { /* seek may throw before metadata */ }
+    video.dispatchEvent(new Event('ended'));
   });
   await expect.poll(() => page.evaluate(() => document.getElementById('quiz')?.getAttribute('data-exam-phase'))).toBe('answer');
   const after = await measure();

@@ -3,7 +3,7 @@
 import { fetchMeta, fetchCategory, fetchUniqueQuestionCount, loadLocalConfig } from './data.js';
 import { startExam, setupExamListeners, cleanupExam, getLastExamCategory, refreshExamQuestion } from './exam.js';
 import { startLearn, setupLearnListeners, cleanupLearn, refreshLearnQuestion, loadLearnLocalFlags } from './learn.js';
-import { showScreen, renderCategories, applyLanguage, renderHistory, renderLearnProgress, renderResults, showConfirmModal } from './ui.js';
+import { showScreen, renderCategories, applyLanguage, renderHistory, renderLearnProgress, renderResults, showConfirmModal, refreshOfflineCoverage } from './ui.js';
 import { setLang, getLang, loadQuestionTranslations, nextLang, LANG_LABELS, t } from './i18n.js';
 import { downloadCategoryMedia, getDownloadedCategories, reconcileDownloadedCategories, offlineCoverageHue } from './offline.js';
 import { getProfileSummary, loadHistory, loadLastResult, clearHistory, clearLearnProgress } from './stats.js';
@@ -298,11 +298,13 @@ async function startOfflineDownload(dlBtn) {
   try {
     const result = await downloadCategoryMedia(catId, (done, total) => {
       const pct = Math.round((done / total) * 100);
-      dlBtn.textContent = `\u2193 ${pct}%`;
-      dlBtn.style.setProperty('--dl-progress', String(pct));
-      dlBtn.style.setProperty('--offline-hue', String(offlineCoverageHue(pct)));
+      const btn = document.querySelector(`.category-grid .offline-btn[data-category="${CSS.escape(catId)}"]`) || dlBtn;
+      btn.classList.add('downloading');
+      btn.textContent = `\u2193 ${pct}%`;
+      btn.style.setProperty('--dl-progress', String(pct));
+      btn.style.setProperty('--offline-hue', String(offlineCoverageHue(pct)));
     });
-    await reconcileDownloadedCategories();
+    const verifiedSet = await reconcileDownloadedCategories();
     dlBtn.classList.remove('downloading');
     dlBtn.style.removeProperty('--dl-progress');
     if (result.success) {
@@ -312,7 +314,8 @@ async function startOfflineDownload(dlBtn) {
       dlBtn.classList.remove('downloaded');
       dlBtn.textContent = `\u2193 ${t('saveOffline')}`;
     }
-    renderCategories(meta, getDownloadedCategories());
+    renderCategories(meta, verifiedSet);
+    await refreshOfflineCoverage(meta, verifiedSet);
     syncCategoryCardVisibility();
     renderRecentCategories();
     applyCategorySearch();
@@ -320,7 +323,9 @@ async function startOfflineDownload(dlBtn) {
     dlBtn.classList.remove('downloading');
     dlBtn.style.removeProperty('--dl-progress');
     dlBtn.textContent = `\u2193 ${t('saveOffline')}`;
-    renderCategories(meta, getDownloadedCategories());
+    const verifiedSet = getDownloadedCategories();
+    renderCategories(meta, verifiedSet);
+    refreshOfflineCoverage(meta, verifiedSet).catch(() => {});
     syncCategoryCardVisibility();
     renderRecentCategories();
     applyCategorySearch();

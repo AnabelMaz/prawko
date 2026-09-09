@@ -379,7 +379,7 @@ Kolejność 1 → 2 → 3 → 4 i 5 → 6. Krok 4 i 5 mogą iść równolegle (o
 
 Na macOS/Linux ta sama kolejność: `download-gov.py` → `convert-media.py` → `parse-excel.py` → `upload-media.py` / `build-media-packs.py` → panel R2. Ścieżki: `~/Library/Application Support/prawko/gov-data` albo `~/.local/share/prawko/gov-data`; media serwera `/usr/local/prawko/src/media` albo `/opt/prawko/src/media`.
 
-Na **localhost** przeglądarka czyta `src/local.json` (gitignore, nie ma go na github.io). Klucze: `learnQuestionJump`, `mediaBase` (`media` / `cdn`), `offlineDownload` (`packs` / `files`), `packsBase` (nadpisuje host zipów).
+Na **zainstalowanym serwerze** przeglądarka czyta `src/local.json` (gitignore, nie ma go na github.io) z **tego originu** — także z VM po LAN, nie tylko z `localhost`. Klucze: `learnQuestionJump`, `mediaBase` (`media` = dysk serwera, `cdn` = B2), `offlineDownload` (`packs` / `files`), `packsBase` (własny host zipów). Bez pliku github.io idzie na B2+R2; serwer bez mediów na dysku to błąd konfiguracji, chyba że `mediaBase`/`packsBase` wskazują własne CDN.
 
 W paczce MI brakuje pliku `!RS_Parking zastrzeżony.webp`. Parser **nie wycina** przez to pytania — nazwa z Excela zostaje, żeby zadziałał CDN albo późniejsze uzupełnienie.
 
@@ -860,7 +860,7 @@ Order: 1 → 2 → 3 → 4 and 5 → 6. Steps 4 and 5 can run in parallel (both 
 
 On macOS/Linux the same order: `download-gov.py` → `convert-media.py` → `parse-excel.py` → `upload-media.py` / `build-media-packs.py` → R2 dashboard. Paths: `~/Library/Application Support/prawko/gov-data` or `~/.local/share/prawko/gov-data`; server media `/usr/local/prawko/src/media` or `/opt/prawko/src/media`.
 
-On **localhost** the browser reads `src/local.json` (gitignored; github.io does not have it). Keys: `learnQuestionJump`, `mediaBase` (`media` / `cdn`), `offlineDownload` (`packs` / `files`), `packsBase` (overrides the zip host).
+On an **installed server** the browser reads `src/local.json` (gitignored; github.io does not have it) from **that origin** — including a VM on the LAN, not only `localhost`. Keys: `learnQuestionJump`, `mediaBase` (`media` = this server’s disk, `cdn` = B2), `offlineDownload` (`packs` / `files`), `packsBase` (your zip host). Without the file github.io uses B2+R2; a server with no files on disk is a config error unless `mediaBase` / `packsBase` point at your own CDN.
 
 The ministry pack is missing `!RS_Parking zastrzeżony.webp`. The parser does **not** drop that question — the Excel file name stays so the CDN or a later file can fill it.
 

@@ -228,7 +228,7 @@ test.describe('Unavailable CDN media', () => {
       await new Promise((resolve) => setTimeout(resolve, 20000));
       await route.abort();
     });
-    await startLearnMode(page);
+    await startLearnMode(page, { localJson: { mediaBase: 'cdn' } });
     await page.evaluate(async () => {
       const { renderQuestion } = await import(new URL('./js/ui.js', location.href).href);
       renderQuestion({
@@ -884,6 +884,74 @@ test.describe('Learn catalog jump', () => {
     await page.locator('.learn-qnum-input').fill('1');
     await page.locator('.learn-qnum-input').press('Enter');
     await expect(page.locator('.question-card')).toHaveAttribute('data-question-id', catalog[0]);
+  });
+
+  test('panel ABC fit-text keeps long specialist copy readable instead of 7px', async ({ page }) => {
+    await page.setViewportSize({ width: 874, height: 580 });
+    await page.addInitScript(() => {
+      try { localStorage.setItem('prawko_exam_skin', 'panel'); } catch {}
+    });
+    await startLearnMode(page, { localJson: { learnQuestionJump: true } });
+    await expect.poll(() => page.locator('html').getAttribute('data-exam-skin')).toBe('panel');
+    await expect.poll(() => page.locator('html').getAttribute('data-ui-orient')).toBe('landscape');
+    await setLearnQueue(page, 'filter', 'all');
+    await setLearnQueue(page, 'order', 'sequential');
+    const targets = await page.evaluate(async () => {
+      const data = await fetch('data/B.json').then((res) => res.json());
+      const ids = ['7516', '11003', '11005'];
+      return ids.map((id) => {
+        const pos = data.questions.findIndex((q) => String(q.id) === id);
+        return pos >= 0 ? { id, pos: pos + 1 } : null;
+      }).filter(Boolean);
+    });
+    expect(targets.length).toBe(3);
+    const fonts = [];
+    for (const target of targets) {
+      await page.locator('.learn-qnum-input').fill(String(target.pos));
+      await page.locator('.learn-qnum-input').press('Enter');
+      await expect(page.locator('.question-card')).toHaveAttribute('data-question-id', target.id);
+      await expect.poll(() => page.evaluate(() => {
+        const q = parseFloat(document.querySelector('.question-text')?.style.fontSize || '0');
+        const a = parseFloat(document.querySelector('.abc-answers .answer-text')?.style.fontSize || '0');
+        return q >= 12 && a >= 12;
+      })).toBe(true);
+      const font = await page.evaluate(() => {
+        const q = document.querySelector('.question-text');
+        const a = document.querySelector('.abc-answers .answer-text');
+        return {
+          q: parseFloat(q.style.fontSize),
+          a: parseFloat(a.style.fontSize),
+          qH: q.clientHeight,
+          aW: a.clientWidth,
+        };
+      });
+      fonts.push(font);
+      expect(font.qH, `question slot for ${target.id}`).toBeGreaterThan(40);
+      expect(font.aW, `answer column for ${target.id}`).toBeGreaterThan(400);
+      expect(font.q, `question px for ${target.id}`).toBeGreaterThanOrEqual(12);
+      expect(font.a, `answer px for ${target.id}`).toBeGreaterThanOrEqual(12);
+      expect(font.q).toBeLessThanOrEqual(32);
+      expect(font.a).toBeLessThanOrEqual(32);
+    }
+    const short = fonts[0];
+    expect(short.a, 'short ABC answers must not hit the 7px floor').toBeGreaterThanOrEqual(16);
+    expect(Math.abs(short.q - short.a)).toBeLessThan(16);
+    expect(Math.abs(fonts[1].q - fonts[2].q)).toBeLessThan(10);
+    expect(Math.abs(fonts[1].a - fonts[2].a)).toBeLessThan(10);
+    const flicker = await page.evaluate(async () => {
+      const samples = [];
+      for (let i = 0; i < 10; i++) {
+        samples.push([
+          document.querySelector('.question-text')?.style.fontSize || '',
+          document.querySelector('.abc-answers .answer-text')?.style.fontSize || '',
+          document.querySelector('.quiz-dock')?.classList.contains('is-fitting') ? '1' : '0',
+        ].join('|'));
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      return { unique: [...new Set(samples)], samples };
+    });
+    expect(flicker.unique, `fit-text flickered: ${flicker.samples.join(' → ')}`).toHaveLength(1);
+    expect(flicker.unique[0]).not.toMatch(/\|1$/);
   });
 
   test('random walks a list shuffled once; toggling order keeps the question and its new index', async ({ page }) => {

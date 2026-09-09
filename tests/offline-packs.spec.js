@@ -10,6 +10,10 @@ async function stubPacksHost(page) {
       .replace(
         /export let MEDIA_BASE = [^;]+;/,
         "export let MEDIA_BASE = 'https://cdn.example.test/prawko';"
+      )
+      .replace(
+        /export let OFFLINE_DOWNLOAD = [^;]+;/,
+        "export let OFFLINE_DOWNLOAD = 'packs';"
       );
     await route.fulfill({
       status: 200,

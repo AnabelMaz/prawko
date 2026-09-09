@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'prawko-v92';
+const CACHE_VERSION = 'prawko-v104';
 const APP_SHELL_CACHE = CACHE_VERSION + '-shell';
 const DATA_CACHE = CACHE_VERSION + '-data';
 const MEDIA_CACHE = CACHE_VERSION + '-media';
@@ -21,6 +21,7 @@ const APP_SHELL = [
   './js/zip.js',
   './js/scale.js',
   './js/scale-boot.js',
+  './js/fit-text.js',
   './data/meta.json',
   './data/translations_en.json',
   './data/translations_de.json',
