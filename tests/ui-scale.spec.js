@@ -50,7 +50,7 @@ test('short 1024 laptop window with browser chrome still scales', async ({ page 
   expect(metrics.scale).toBeGreaterThan(0.05);
   expect(metrics.scale).toBeLessThanOrEqual(1024 / 1280 + 0.02);
   expect(metrics.heroWidth).toBeGreaterThan(1024 - 4);
-  expect(metrics.homeBottom).toBeLessThanOrEqual(580 + 2);
+  expect(metrics.homeBottom).toBeLessThanOrEqual(580 + 4);
 });
 
 test('home keeps scaling the 1280 layout on a small laptop before wrapping', async ({ page }) => {

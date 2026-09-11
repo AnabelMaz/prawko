@@ -202,26 +202,37 @@ test.describe('Learn video result mark', () => {
 
 test.describe('Media slot size', () => {
   test('empty and filled media slots stay 16:9 and the same size', async ({ page }) => {
-    await startLearnMode(page);
+    await startLearnMode(page, { localJson: { learnQuestionJump: true, mediaBase: 'cdn' } });
+    await setLearnQueue(page, 'filter', 'all');
+    await setLearnQueue(page, 'order', 'sequential');
     const area = page.locator('.media-area');
     await expect(area).toBeVisible();
+    const targets = await page.evaluate(async () => {
+      const data = await fetch('data/B.json').then((res) => res.json());
+      const empty = data.questions.findIndex((q) => !q.media);
+      const filled = data.questions.findIndex((q) => q.media && q.mediaType === 'image');
+      return {
+        emptyPos: empty >= 0 ? empty + 1 : 0,
+        filledPos: filled >= 0 ? filled + 1 : 0,
+      };
+    });
+    expect(targets.emptyPos).toBeGreaterThan(0);
+    expect(targets.filledPos).toBeGreaterThan(0);
 
-    let emptyBox = null;
-    let filledBox = null;
-    for (let i = 0; i < 50; i += 1) {
-      const hasMedia = await page.locator('.media-area img, .media-area video').count();
-      const box = await area.boundingBox();
-      expect(box).toBeTruthy();
-      expect(box.width / box.height).toBeCloseTo(16 / 9, 1);
-      if (hasMedia) filledBox = box;
-      else emptyBox = box;
-      if (emptyBox && filledBox) break;
-      await page.click('.btn-next');
-      await expect(page.locator('.question-text')).not.toBeEmpty();
-    }
+    await page.locator('.learn-qnum-input').fill(String(targets.emptyPos));
+    await page.locator('.learn-qnum-input').press('Enter');
+    await expect(area).toHaveClass(/media-empty/);
+    const emptyBox = await area.boundingBox();
+
+    await page.locator('.learn-qnum-input').fill(String(targets.filledPos));
+    await page.locator('.learn-qnum-input').press('Enter');
+    await expect(area).toHaveClass(/has-media/);
+    const filledBox = await area.boundingBox();
 
     expect(emptyBox, 'expected a question without media').toBeTruthy();
     expect(filledBox, 'expected a question with media').toBeTruthy();
+    expect(emptyBox.width / emptyBox.height).toBeCloseTo(16 / 9, 1);
+    expect(filledBox.width / filledBox.height).toBeCloseTo(16 / 9, 1);
     expect(Math.abs(emptyBox.width - filledBox.width)).toBeLessThan(2);
     expect(Math.abs(emptyBox.height - filledBox.height)).toBeLessThan(2);
   });
