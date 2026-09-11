@@ -162,14 +162,20 @@ test.describe('Learn media is only the current question', () => {
 test.describe('Learn video result mark', () => {
   test('replay hides the mark until the clip ends and leaves answer buttons', async ({ page }) => {
     await page.route(/\.(mp4|webm)(\?|$)/i, async () => {});
-    await startLearnMode(page);
+    await startLearnMode(page, {
+      localJson: { mediaBase: 'cdn', learnQuestionJump: true },
+    });
+    await setLearnQueue(page, 'filter', 'all');
+    await setLearnQueue(page, 'order', 'sequential');
+    const pos = await page.evaluate(async () => {
+      const data = await fetch('data/B.json').then((res) => res.json());
+      const i = data.questions.findIndex((q) => q.mediaType === 'video');
+      return i >= 0 ? i + 1 : 0;
+    });
+    expect(pos).toBeGreaterThan(0);
+    await page.locator('.learn-qnum-input').fill(String(pos));
+    await page.locator('.learn-qnum-input').press('Enter');
     const mediaArea = page.locator('#quiz .media-area');
-    for (let i = 0; i < 25; i += 1) {
-      if (await mediaArea.locator('video').count()) break;
-      const next = page.locator('.btn-next');
-      if (await next.isDisabled()) break;
-      await next.click();
-    }
     await expect(mediaArea.locator('video')).toHaveCount(1);
     await page.locator('.answers .answer-btn').first().click();
     const mark = page.locator('#quiz .learn-media-mark');
@@ -896,6 +902,15 @@ test.describe('Learn catalog jump', () => {
     await expect.poll(() => page.locator('html').getAttribute('data-ui-orient')).toBe('landscape');
     await setLearnQueue(page, 'filter', 'all');
     await setLearnQueue(page, 'order', 'sequential');
+    const ynPos = await page.evaluate(async () => {
+      const data = await fetch('data/B.json').then((res) => res.json());
+      const pos = data.questions.findIndex((q) => q.type === 'basic');
+      return pos >= 0 ? pos + 1 : 0;
+    });
+    expect(ynPos).toBeGreaterThan(0);
+    await page.locator('.learn-qnum-input').fill(String(ynPos));
+    await page.locator('.learn-qnum-input').press('Enter');
+    await expect(page.locator('.yn-answers .answer-btn').first()).toBeVisible();
     const targets = await page.evaluate(async () => {
       const data = await fetch('data/B.json').then((res) => res.json());
       const ids = ['7516', '11003', '11005'];
@@ -952,6 +967,33 @@ test.describe('Learn catalog jump', () => {
     });
     expect(flicker.unique, `fit-text flickered: ${flicker.samples.join(' → ')}`).toHaveLength(1);
     expect(flicker.unique[0]).not.toMatch(/\|1$/);
+
+    const pos6362 = await page.evaluate(async () => {
+      const data = await fetch('data/B.json').then((res) => res.json());
+      const pos = data.questions.findIndex((q) => String(q.id) === '6362');
+      return pos >= 0 ? pos + 1 : 0;
+    });
+    expect(pos6362).toBeGreaterThan(0);
+    await page.locator('.learn-qnum-input').fill(String(pos6362));
+    await page.locator('.learn-qnum-input').press('Enter');
+    await expect(page.locator('.question-card')).toHaveAttribute('data-question-id', '6362');
+    await expect.poll(() => page.evaluate(() => {
+      const a = parseFloat(document.querySelector('.abc-answers .answer-text')?.style.fontSize || '0');
+      return a >= 16;
+    })).toBe(true);
+    const beforeNav = await page.evaluate(() => ({
+      q: document.querySelector('.question-text')?.style.fontSize || '',
+      a: document.querySelector('.abc-answers .answer-text')?.style.fontSize || '',
+    }));
+    await page.locator('.learn-nav .btn-next').click();
+    await expect(page.locator('.question-card')).not.toHaveAttribute('data-question-id', '6362');
+    await page.locator('.learn-nav .btn-prev').click();
+    await expect(page.locator('.question-card')).toHaveAttribute('data-question-id', '6362');
+    await expect.poll(() => page.evaluate((beforeNav) => {
+      const q = document.querySelector('.question-text')?.style.fontSize || '';
+      const a = document.querySelector('.abc-answers .answer-text')?.style.fontSize || '';
+      return q === beforeNav.q && a === beforeNav.a;
+    }, beforeNav)).toBe(true);
   });
 
   test('random walks a list shuffled once; toggling order keeps the question and its new index', async ({ page }) => {

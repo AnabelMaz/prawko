@@ -5,15 +5,21 @@
 //
 // Fit rule: wrap at the slot width, then check that the resulting 1–n
 // lines fit in the slot height. Question scales alone; A/B/C share the
-// smallest size that still fits the longest option.
+// smallest size that still fits the longest option. ABC slots come from
+// the dock (36% / 64%), not from button clientHeight — that box still
+// follows leftover min-height / label layout and baked 19px vs 28px
+// on the same question after next/prev.
 
 const MIN_PX = 7;
 const MAX_PX = 32;
 const PRECISION = 0.25;
+const ABC_Q_FRAC = 0.36;
+const ABC_A_FRAC = 0.64;
 
 let measureCtx = null;
 let fitGen = 0;
-let retrying = false;
+let layoutTries = 0;
+const LAYOUT_TRIES = 6;
 
 function isPanelFit() {
   const root = document.documentElement;
@@ -54,32 +60,56 @@ function fontMetrics(el) {
   };
 }
 
-function innerSize(el) {
+function padding(el) {
   const cs = getComputedStyle(el);
-  const padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
-  const padY = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
   return {
-    width: Math.max(0, el.clientWidth - padX),
-    height: Math.max(0, el.clientHeight - padY),
+    x: parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight),
+    y: parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom),
   };
 }
 
 function questionBox(el) {
-  return { ...fontMetrics(el), ...innerSize(el) };
+  const dock = el.closest('.quiz-dock');
+  const pad = padding(el);
+  const abc = dock?.querySelector('.abc-answers');
+  return {
+    ...fontMetrics(el),
+    width: Math.max(0, el.clientWidth - pad.x),
+    height: abc && dock
+      ? Math.max(0, dock.clientHeight * ABC_Q_FRAC - pad.y)
+      : Math.max(0, el.clientHeight - pad.y),
+  };
+}
+
+function labelReserve(btn) {
+  const label = btn.querySelector('.answer-label');
+  if (!label) return 0;
+  const cs = getComputedStyle(label);
+  const specified = parseFloat(cs.minWidth) || parseFloat(cs.width) || 0;
+  return Math.max(label.offsetWidth, specified);
 }
 
 function answerBox(el) {
   const fonts = fontMetrics(el);
   const btn = el.closest('.answer-btn');
-  if (!btn) return { ...fonts, ...innerSize(el) };
-  const size = innerSize(btn);
-  const label = btn.querySelector('.answer-label');
-  const gap = parseFloat(getComputedStyle(btn).gap) || 0;
-  const labelW = label ? label.offsetWidth : 0;
+  const dock = el.closest('.quiz-dock');
+  if (!btn || !dock) {
+    const pad = padding(el);
+    return {
+      ...fonts,
+      width: Math.max(0, el.clientWidth - pad.x),
+      height: Math.max(0, el.clientHeight - pad.y),
+    };
+  }
+  const answers = dock.querySelector('.abc-answers');
+  const n = Math.max(1, answers?.querySelectorAll('.answer-btn').length || 3);
+  const gap = parseFloat(getComputedStyle(answers).rowGap || getComputedStyle(answers).gap) || 0;
+  const pad = padding(btn);
+  const btnGap = parseFloat(getComputedStyle(btn).gap) || 0;
   return {
     ...fonts,
-    width: Math.max(0, size.width - labelW - gap),
-    height: size.height,
+    width: Math.max(0, dock.clientWidth - labelReserve(btn) - btnGap - pad.x),
+    height: Math.max(0, (dock.clientHeight * ABC_A_FRAC - gap * (n - 1)) / n - pad.y),
   };
 }
 
@@ -205,20 +235,38 @@ function clearInlineSizes(dock) {
   });
 }
 
+function dockReady(dock) {
+  if (dock.clientWidth < 8 || dock.clientHeight < 40) return false;
+  const abc = dock.querySelector('.abc-answers');
+  if (abc && abc.querySelectorAll('.answer-btn').length < 3) return false;
+  return true;
+}
+
 export function fitQuizDockText() {
   const dock = quizDock();
   if (!dock || !isPanelFit()) {
     if (dock) clearInlineSizes(dock);
+    layoutTries = 0;
     return;
   }
+  clearInlineSizes(dock);
+  void dock.offsetHeight;
+  if (!dockReady(dock)) {
+    if (layoutTries >= LAYOUT_TRIES) {
+      layoutTries = 0;
+      return;
+    }
+    layoutTries += 1;
+    requestAnimationFrame(() => fitQuizDockText());
+    return;
+  }
+  layoutTries = 0;
   const ready = fitQuestion(dock)
     && (!dock.querySelector('.abc-answers') || fitAnswers(dock));
-  if (ready || retrying) return;
-  retrying = true;
-  requestAnimationFrame(() => {
-    retrying = false;
-    fitQuizDockText();
-  });
+  if (!ready && layoutTries < LAYOUT_TRIES) {
+    layoutTries += 1;
+    requestAnimationFrame(() => fitQuizDockText());
+  }
 }
 
 export function scheduleFitQuizDockText() {

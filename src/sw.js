@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'prawko-v104';
+const CACHE_VERSION = 'prawko-v106';
 const APP_SHELL_CACHE = CACHE_VERSION + '-shell';
 const DATA_CACHE = CACHE_VERSION + '-data';
 const MEDIA_CACHE = CACHE_VERSION + '-media';

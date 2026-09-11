@@ -4,8 +4,7 @@ import { t, getLang, translateQuestion } from './i18n.js';
 import { getCategoryStats, getLearnProgress, loadHistory, getLearnTouchedCategories, getLearnCategoryBreakdown, getLearnUniqueFilterCounts } from './stats.js';
 import { getMediaUrls, fetchCategory, usesLocalMedia } from './data.js';
 import { getCategoryMediaAccess, getCategoriesOfflineCoverage, getDownloadedCategories, getActiveDownloadProgress, isAppOnline, offlineCoverageHue, resolvePlayableMediaUrl } from './offline.js';
-import { refitUiScale, layoutCategoryGrid } from './scale.js';
-import { scheduleFitQuizDockText } from './fit-text.js';
+import { refitUiScale, layoutCategoryGrid, syncExamMediaAlign } from './scale.js';
 
 export function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
@@ -527,6 +526,7 @@ export function renderQuestion(question, container, options = {}) {
             video.src = mediaUrl;
             if (hideFilm) mediaArea.classList.remove('loading');
             mediaArea.appendChild(video);
+            syncExamMediaAlign();
           } else {
             video.muted = true;
             video.autoplay = true;
@@ -561,6 +561,7 @@ export function renderQuestion(question, container, options = {}) {
             mediaArea.classList.add('has-learn-video');
             video.src = mediaUrl;
             mediaArea.append(video, replay);
+            syncExamMediaAlign();
           }
         })();
       };
@@ -599,6 +600,7 @@ export function renderQuestion(question, container, options = {}) {
             img.addEventListener('contextmenu', (e) => e.preventDefault());
           }
           mediaArea.appendChild(img);
+          syncExamMediaAlign();
         })();
       };
       loadImage();
@@ -619,7 +621,7 @@ export function renderQuestion(question, container, options = {}) {
   if (questionText) questionText.textContent = q.q;
 
   fillAnswerChoices(answersDiv, q);
-  scheduleFitQuizDockText();
+  syncExamMediaAlign();
 }
 
 function fillAnswerChoices(answersDiv, q) {

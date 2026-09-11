@@ -216,7 +216,7 @@ function applyUiFitScale() {
   });
 }
 
-function syncExamMediaAlign() {
+export function syncExamMediaAlign() {
   const quiz = document.getElementById('quiz');
   const session = quiz?.classList.contains('exam-active') || quiz?.classList.contains('learn-active');
   if (!quiz?.classList.contains('active') || !session) {
@@ -229,7 +229,12 @@ function syncExamMediaAlign() {
   if (!media || !dock) return;
   const mediaBox = media.getBoundingClientRect();
   const dockBox = dock.getBoundingClientRect();
-  if (mediaBox.width < 8 || dockBox.width < 8) return;
+  if (mediaBox.width < 8 || dockBox.width < 8) {
+    quiz.style.removeProperty('--exam-media-left');
+    quiz.style.removeProperty('--exam-media-width');
+    scheduleFitQuizDockText();
+    return;
+  }
   const scaleRaw = getComputedStyle(document.documentElement).getPropertyValue('--ui-scale');
   const scale = Number(scaleRaw);
   const safeScale = Number.isFinite(scale) && scale > 0 ? scale : 1;
