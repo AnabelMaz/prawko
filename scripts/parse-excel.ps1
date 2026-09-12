@@ -240,7 +240,7 @@ function Read-XlsxSheetRows ([string]$xlsxPath) {
 }
 
 if (-not (Test-Path -LiteralPath $Excel)) {
-    throw "Excel not found: $Excel. Download the catalogue from gov.pl (or Install_Prawko.windows.ps1 -GovQuestions)."
+    throw "Excel not found: $Excel. Download the catalogue from gov.pl (or Install_Prawko.windows.ps1 -SyncGov -SyncScope Questions)."
 }
 
 $mediaLookup = $null

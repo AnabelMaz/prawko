@@ -90,11 +90,9 @@ Zwykły użytkownik **nie potrzebuje** drugiego klona gita. `-SyncGov` nie kopiu
 | `-IncludeGovCache` | Przy `-Export`: dołóż `%LOCALAPPDATA%\prawko\gov-data` (Excel, raw, cache) |
 | `-Import <ścieżka>` | Przywróć z paczki exportu (serwer musi już stać). `-ImportScope Auto\|Code\|Runtime`, `-ImportForce` |
 | `-Dev <folder>` | Tylko Git + klon. **Bez** Node i serwera |
-| `-Patch` | Overlay kodu z contrib (`src\`, bez `data\` i `media\`) |
+| `-Patch` | Overlay kodu z lokalnego klona (`-Dev`; `src\`, bez `data\` i `media\`) |
 | `-Uninstall` | Usuwa usługę i `C:\ProgramData\prawko` |
 | `-NonInteractive` / `-Help` | Bez pauzy Enter / pełna pomoc |
-
-**Legacy (nadal działają):** `-InstallGov` = `-SyncGov`, `-GovQuestions` = `-SyncGov -SyncScope Questions`, `-Merge` = `-MergeGov`.
 
 Administrator tylko przy **pierwszej instalacji serwera** albo `-Uninstall`.
 
@@ -148,13 +146,13 @@ Git doinstaluje się tylko tu. Serwera to **nie** stawia. Folder musi być **pus
 
 Oba (aplikacja + git): najpierw instalator **bez** przełączników, potem `-Dev`.
 
-Na podgląd localhost z Twojego kodu (gdy serwer już stoi):
+Podgląd własnych zmian na działającym serwerze (po `-Dev`):
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -Patch
 ```
 
-`-Patch` nakłada `src` z contrib, **bez** `data\` i `media\`. Gov ZIP-y i WebP nie idą drugi raz do folderu gita. Gdy serwer już stoi — tylko overlay. Gdy nie stoi — najpierw ZIP + usługa, potem overlay.
+`-Patch` nakłada `src` z klona, **bez** `data\` i `media\`.
 
 ### Odinstalowanie
 
@@ -224,7 +222,7 @@ Gdy usługa już stoi, ponowne odpalenie **bez przełączników nic nie nadpisuj
 
 ### Przełączniki (jak na Windowsie)
 
-Te same joby co w tabeli Windows powyżej. macOS używa `--sync-gov`, `--export`, `--import`, `--merge-gov` itd. (legacy: `--install-gov`, `--gov-questions`, `--merge`).
+Te same przełączniki co w tabeli Windows (`--sync-gov`, `--export`, `--import`, `--merge-gov` itd.).
 
 ```bash
 bash Install_Prawko.macos.sh --sync-gov
@@ -378,7 +376,7 @@ Kolejność 1 → 2 → 3 → 4 i 5 → 6. Krok 4 i 5 mogą iść równolegle (o
 
 Na macOS/Linux ta sama kolejność: `download-gov.py` → `convert-media.py` → `parse-excel.py` → `upload-media.py` / `build-media-packs.py` → panel R2. Ścieżki: `~/Library/Application Support/prawko/gov-data` albo `~/.local/share/prawko/gov-data`; media serwera `/usr/local/prawko/src/media` albo `/opt/prawko/src/media`.
 
-Na **zainstalowanym serwerze** przeglądarka czyta `src/local.json` (gitignore, nie ma go na github.io) z **tego originu** — także z VM po LAN, nie tylko z `localhost`. Klucze: `learnQuestionJump`, `mediaBase` (`media` = dysk serwera, `cdn` = B2), `offlineDownload` (`packs` / `files`), `packsBase` (własny host zipów). Bez pliku github.io idzie na B2+R2; serwer bez mediów na dysku to błąd konfiguracji, chyba że `mediaBase`/`packsBase` wskazują własne CDN.
+Na **zainstalowanym serwerze** przeglądarka pobiera opcjonalny `src/local.json` (gitignore; na github.io go nie ma) z tego samego originu co aplikacja. Klucze: `learnQuestionJump`, `mediaBase` (`media` = pliki na serwerze, `cdn` = Backblaze), `offlineDownload` (`packs` / `files`), opcjonalnie `packsBase` (własny host zipów). Bez pliku: github.io używa B2+R2; serwer bez mediów na dysku wymaga `mediaBase: "cdn"` albo `-SyncGov`.
 
 W paczce MI brakuje pliku `!RS_Parking zastrzeżony.webp`. Parser **nie wycina** przez to pytania — nazwa z Excela zostaje, żeby zadziałał CDN albo późniejsze uzupełnienie.
 
@@ -573,11 +571,9 @@ A normal user does **not** need a second git clone. `-SyncGov` does not duplicat
 | `-IncludeGovCache` | Add `%LOCALAPPDATA%\prawko\gov-data` to export |
 | `-Import <path>` | Restore from export pack (server must already be up). `-ImportScope Auto\|Code\|Runtime`, `-ImportForce` |
 | `-Dev <folder>` | Git clone only — **no** Node, **no** server |
-| `-Patch` | Overlay code from contrib (`src\`, skip `data\` and `media\`) |
+| `-Patch` | Overlay code from local clone (`-Dev`; `src\`, skip `data\` and `media\`) |
 | `-Uninstall` | Remove service and `C:\ProgramData\prawko` |
 | `-NonInteractive` / `-Help` | No Enter pause / full help |
-
-**Legacy (still work):** `-InstallGov` = `-SyncGov`, `-GovQuestions` = `-SyncGov -SyncScope Questions`, `-Merge` = `-MergeGov`.
 
 Administrator only for the **first server install** or `-Uninstall`.
 
@@ -613,13 +609,13 @@ Git is installed only here. This does **not** set up the server. The folder must
 
 Both (app + git): run the installer **with no switches** first, then `-Dev`.
 
-Preview your code on localhost (server already running):
+Preview your changes on a running server (after `-Dev`):
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -Patch
 ```
 
-`-Patch` overlays `src` from the contrib tree and **skips** `data\` and `media\`. Gov ZIPs and WebP are not copied into the git folder. If the server is already up — overlay only. If it is not — ZIP + service first, then overlay.
+`-Patch` overlays `src` from the clone and **skips** `data\` and `media\`.
 
 ### Uninstall
 
@@ -689,7 +685,7 @@ If the service is already running, a second run **with no switches does not over
 
 ### Switches (same jobs as Windows)
 
-Same flags as the Windows table above: `--sync-gov`, `--export`, `--import`, `--merge-gov`, etc. (legacy: `--install-gov`, `--gov-questions`, `--merge`).
+Same flags as the Windows table (`--sync-gov`, `--export`, `--import`, `--merge-gov`, etc.).
 
 ```bash
 bash Install_Prawko.macos.sh --sync-gov
@@ -841,7 +837,7 @@ Order: 1 → 2 → 3 → 4 and 5 → 6. Steps 4 and 5 can run in parallel (both 
 
 On macOS/Linux the same order: `download-gov.py` → `convert-media.py` → `parse-excel.py` → `upload-media.py` / `build-media-packs.py` → R2 dashboard. Paths: `~/Library/Application Support/prawko/gov-data` or `~/.local/share/prawko/gov-data`; server media `/usr/local/prawko/src/media` or `/opt/prawko/src/media`.
 
-On an **installed server** the browser reads `src/local.json` (gitignored; github.io does not have it) from **that origin** — including a VM on the LAN, not only `localhost`. Keys: `learnQuestionJump`, `mediaBase` (`media` = this server’s disk, `cdn` = B2), `offlineDownload` (`packs` / `files`), `packsBase` (your zip host). Without the file github.io uses B2+R2; a server with no files on disk is a config error unless `mediaBase` / `packsBase` point at your own CDN.
+On an **installed server** the browser fetches optional `src/local.json` (gitignored; not on github.io) from the same origin as the app. Keys: `learnQuestionJump`, `mediaBase` (`media` = files on the server, `cdn` = Backblaze), `offlineDownload` (`packs` / `files`), optional `packsBase` (your zip host). Without the file: github.io uses B2+R2; a server with no media on disk needs `mediaBase: "cdn"` or `-SyncGov`.
 
 The ministry pack is missing `!RS_Parking zastrzeżony.webp`. The parser does **not** drop that question — the Excel file name stays so the CDN or a later file can fill it.
 

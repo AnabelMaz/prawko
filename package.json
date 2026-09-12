@@ -5,6 +5,7 @@
   "scripts": {
     "test": "npx playwright test"
   },
+  "postinstall": "npx playwright install chromium",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/AnabelMaz/prawko.git"
@@ -18,6 +19,7 @@
   },
   "homepage": "https://github.com/AnabelMaz/prawko#readme",
   "devDependencies": {
-    "@playwright/test": "^1.58.2"
+    "@playwright/test": "^1.58.2",
+    "http-server": "^14.1.1"
   }
 }

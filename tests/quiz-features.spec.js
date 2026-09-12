@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { cycleLanguage, cycleSkin, learnCatalogLabel } = require('./helpers');
+const { goToCategories, cycleLanguage, cycleSkin, learnCatalogLabel } = require('./helpers');
 
 // Helper: navigate to categories and start learn mode for category B
 async function startLearnMode(page, { localJson, category = 'B' } = {}) {
@@ -15,9 +15,7 @@ async function startLearnMode(page, { localJson, category = 'B' } = {}) {
     await route.fulfill({ status: 404, body: '' });
   });
   await page.goto('/');
-  await page.waitForSelector('#home.active');
-  await page.click('[data-navigate="categories"]');
-  await page.waitForSelector('#categories.active');
+  await goToCategories(page);
   // Ensure "Nauka" mode is selected (default)
   await page.click('.mode-btn[data-mode="learn"]');
   await page.click(`.category-grid .category-card[data-category="${category}"]`);
@@ -33,9 +31,7 @@ async function setLearnQueue(page, kind, value) {
 // Helper: navigate to categories and start exam mode for category PT (smallest)
 async function startExamMode(page) {
   await page.goto('/');
-  await page.waitForSelector('#home.active');
-  await page.click('[data-navigate="categories"]');
-  await page.waitForSelector('#categories.active');
+  await goToCategories(page);
   await page.click('.mode-btn[data-mode="exam"]');
   await page.click('.category-grid .category-card[data-category="PT"]');
   await page.waitForSelector('.modal-overlay.active');
@@ -761,9 +757,7 @@ test.describe('Home and categories are not selectable', () => {
 
   test('categories copy, cards, and search cannot be selected', async ({ page }) => {
     await page.goto('/');
-    await page.waitForSelector('#home.active');
-    await page.click('[data-navigate="categories"]');
-    await page.waitForSelector('#categories.active');
+    await goToCategories(page);
     const selectors = [
       '#categories .screen-header h2',
       '#mode-description',
@@ -1387,8 +1381,7 @@ test.describe('Category card stats follow the selected mode', () => {
       ]));
     });
     await page.goto('/');
-    await page.click('[data-navigate="categories"]');
-    await page.waitForSelector('#categories.active');
+    await goToCategories(page);
     await page.click('.mode-btn[data-mode="learn"]');
     await expect(page.locator('.category-grid .category-card[data-category="B"] .exam-badge')).toHaveCount(0);
     const bank = (await page.locator('.category-grid .category-card[data-category="B"] .question-count').innerText()).match(/\d+/);

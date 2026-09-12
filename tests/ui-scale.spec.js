@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { cycleSkin, waitForExamMediaAlign } = require('./helpers');
+const { goToCategories, cycleSkin, waitForExamMediaAlign } = require('./helpers');
 
 test('landscape home scales the 1280 layout instead of wrapping', async ({ page }) => {
   await page.setViewportSize({ width: 640, height: 450 });
@@ -78,8 +78,7 @@ test('home keeps scaling the 1280 layout on a small laptop before wrapping', asy
 test('learn quiz scales fonts with the window, not only the film', async ({ page }) => {
   await page.setViewportSize({ width: 640, height: 450 });
   await page.goto('/');
-  await page.click('[data-navigate="categories"]');
-  await page.waitForSelector('#categories.active');
+  await goToCategories(page);
   await page.click('.mode-btn[data-mode="learn"]');
   await page.click('.category-card[data-category="B"]');
   await page.waitForSelector('#quiz.active');
@@ -112,8 +111,7 @@ test('learn quiz scales fonts with the window, not only the film', async ({ page
 test('learn prev/next stay inside the window', async ({ page }) => {
   await page.setViewportSize({ width: 640, height: 450 });
   await page.goto('/');
-  await page.click('[data-navigate="categories"]');
-  await page.waitForSelector('#categories.active');
+  await goToCategories(page);
   await page.click('.mode-btn[data-mode="learn"]');
   await page.click('.category-card[data-category="B"]');
   await page.waitForSelector('#quiz.active');
@@ -134,8 +132,7 @@ test('learn prev/next stay inside the window', async ({ page }) => {
 test('wrapping an ABC answer does not resize the learn media slot', async ({ page }) => {
   await page.setViewportSize({ width: 640, height: 900 });
   await page.goto('/');
-  await page.click('[data-navigate="categories"]');
-  await page.waitForSelector('#categories.active');
+  await goToCategories(page);
   await page.click('.mode-btn[data-mode="learn"]');
   await page.click('.category-card[data-category="B"]');
   await page.waitForSelector('#quiz.active');
@@ -170,8 +167,7 @@ test('wrapping an ABC answer does not resize the learn media slot', async ({ pag
 test('learn quiz answers sit under the film; nav sits in the side column', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('/');
-  await page.click('[data-navigate="categories"]');
-  await page.waitForSelector('#categories.active');
+  await goToCategories(page);
   await page.click('.mode-btn[data-mode="learn"]');
   await page.click('.category-card[data-category="B"]');
   await page.waitForSelector('#quiz.active');
@@ -195,8 +191,7 @@ test('learn quiz answers sit under the film; nav sits in the side column', async
 test('exam chrome puts the film, keys, and side counters in the WORD grid', async ({ page }) => {
   await page.setViewportSize({ width: 900, height: 900 });
   await page.goto('/');
-  await page.click('[data-navigate="categories"]');
-  await page.waitForSelector('#categories.active');
+  await goToCategories(page);
   await page.click('.mode-btn[data-mode="exam"]');
   await page.click('.category-grid .category-card[data-category="PT"]');
   await page.waitForSelector('.modal-overlay.active');
@@ -363,8 +358,7 @@ test('quiz layout uses aspect ratio, not pixel width', async ({ page }) => {
 test('short landscape learn quiz keeps the question text visible', async ({ page }) => {
   await page.setViewportSize({ width: 1100, height: 520 });
   await page.goto('/');
-  await page.click('[data-navigate="categories"]');
-  await page.waitForSelector('#categories.active');
+  await goToCategories(page);
   await page.click('.mode-btn[data-mode="learn"]');
   await page.click('.category-card[data-category="B"]');
   await page.waitForSelector('#quiz.active');
@@ -480,8 +474,7 @@ test('station-skin learn quiz keeps question text below the media on a short win
   await page.goto('/');
   await page.click('.skin-btn');
   await page.waitForFunction(() => document.documentElement.getAttribute('data-exam-skin') === 'station');
-  await page.click('[data-navigate="categories"]');
-  await page.waitForSelector('#categories.active');
+  await goToCategories(page);
   await page.click('.mode-btn[data-mode="learn"]');
   await page.click('.category-card[data-category="B"]');
   await page.waitForSelector('#quiz.active');
@@ -514,8 +507,7 @@ test('TAK/NIE centers sit on the media 1/3 and 2/3 marks in both skins', async (
   if ((await page.locator('html').getAttribute('data-exam-skin')) !== 'panel') {
     await page.click('.skin-btn');
   }
-  await page.click('[data-navigate="categories"]');
-  await page.waitForSelector('#categories.active');
+  await goToCategories(page);
   await page.click('.mode-btn[data-mode="exam"]');
   await page.click('.category-grid .category-card[data-category="B"]');
   await page.waitForSelector('.modal-overlay.active');
@@ -575,8 +567,7 @@ test('Panel learn filters match header labels and open above the film', async ({
   if ((await page.locator('html').getAttribute('data-exam-skin')) !== 'panel') {
     await page.click('.skin-btn');
   }
-  await page.click('[data-navigate="categories"]');
-  await page.waitForSelector('#categories.active');
+  await goToCategories(page);
   await page.click('.mode-btn[data-mode="learn"]');
   await page.click('.category-card[data-category="B"]');
   await page.waitForSelector('#quiz.active');
@@ -630,8 +621,7 @@ test('landscape Station learn filters look like dropdowns', async ({ page }) => 
     await cycleSkin(page);
     await page.waitForFunction(() => document.documentElement.getAttribute('data-exam-skin') === 'station');
   }
-  await page.click('[data-navigate="categories"]');
-  await page.waitForSelector('#categories.active');
+  await goToCategories(page);
   await page.click('.mode-btn[data-mode="learn"]');
   await page.click('.category-card[data-category="B"]');
   await page.waitForSelector('#quiz.active.learn-active');
@@ -660,8 +650,7 @@ test('portrait Station learn media is 16:9 without extra letterbox; Panel questi
     await page.click('.skin-btn');
     await page.waitForFunction(() => document.documentElement.getAttribute('data-exam-skin') === 'station');
   }
-  await page.click('[data-navigate="categories"]');
-  await page.waitForSelector('#categories.active');
+  await goToCategories(page);
   await page.click('.mode-btn[data-mode="learn"]');
   await page.click('.category-grid .category-card[data-category="B"]');
   await page.waitForSelector('#quiz.active.learn-active');
@@ -693,8 +682,7 @@ test('portrait Station learn media is 16:9 without extra letterbox; Panel questi
     await cycleSkin(page);
     await page.waitForFunction(() => document.documentElement.getAttribute('data-exam-skin') === 'panel');
   }
-  await page.click('[data-navigate="categories"]');
-  await page.waitForSelector('#categories.active');
+  await goToCategories(page);
   await page.click('.mode-btn[data-mode="learn"]');
   await page.click('.category-grid .category-card[data-category="B"]');
   await page.waitForSelector('#quiz.active.learn-active');
@@ -734,8 +722,7 @@ test('portrait Panel learn wraps header labels and matches back to next height',
     await cycleSkin(page);
     await page.waitForFunction(() => document.documentElement.getAttribute('data-exam-skin') === 'panel');
   }
-  await page.click('[data-navigate="categories"]');
-  await page.waitForSelector('#categories.active');
+  await goToCategories(page);
   await page.click('.mode-btn[data-mode="learn"]');
   await page.click('.category-grid .category-card[data-category="B"]');
   await page.waitForSelector('#quiz.active.learn-active');
@@ -823,8 +810,7 @@ test('portrait Panel keeps ABC and YN in a fixed dock; filters look like dropdow
     };
   });
 
-  await page.click('[data-navigate="categories"]');
-  await page.waitForSelector('#categories.active');
+  await goToCategories(page);
   await page.click('.mode-btn[data-mode="learn"]');
   await page.click('.category-grid .category-card[data-category="C"]');
   await page.waitForSelector('#quiz.active.learn-active');
@@ -930,8 +916,7 @@ test('portrait Station keeps ABC and YN in a fixed dock; filters look like dropd
     };
   });
 
-  await page.click('[data-navigate="categories"]');
-  await page.waitForSelector('#categories.active');
+  await goToCategories(page);
   await page.click('.mode-btn[data-mode="learn"]');
   await page.click('.category-grid .category-card[data-category="C"]');
   await page.waitForSelector('#quiz.active.learn-active');
@@ -980,8 +965,7 @@ test('portrait Panel exam header fits above the film; question matches learn siz
     await page.click('.skin-btn');
     await page.waitForFunction(() => document.documentElement.getAttribute('data-exam-skin') === 'panel');
   }
-  await page.click('[data-navigate="categories"]');
-  await page.waitForSelector('#categories.active');
+  await goToCategories(page);
   await page.click('.mode-btn[data-mode="exam"]');
   await page.click('.category-grid .category-card[data-category="B"]');
   await page.waitForSelector('.modal-overlay.active');
@@ -1036,8 +1020,7 @@ test('Panel exam keeps time-bar space while the clip plays so chrome does not ju
     await page.click('.skin-btn');
     await page.waitForFunction(() => document.documentElement.getAttribute('data-exam-skin') === 'panel');
   }
-  await page.click('[data-navigate="categories"]');
-  await page.waitForSelector('#categories.active');
+  await goToCategories(page);
   await page.click('.mode-btn[data-mode="exam"]');
   await page.click('.category-grid .category-card[data-category="PT"]');
   await page.waitForSelector('.modal-overlay.active');

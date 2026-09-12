@@ -1,4 +1,5 @@
 const { test, expect } = require('@playwright/test');
+const { goToCategories } = require('./helpers');
 
 test.describe('Warm & Soft Theme', () => {
   test('theme button exposes aria-pressed state', async ({ page }) => {
@@ -111,7 +112,7 @@ test.describe('Warm & Soft Theme', () => {
 
   test('category cards use the themed Windows pointing-hand cursor', async ({ page }) => {
     await page.goto('/');
-    await page.click('[data-navigate="categories"]');
+    await goToCategories(page);
     await page.waitForSelector('.category-card');
     const cursor = await page.evaluate(() =>
       getComputedStyle(document.querySelector('.category-card')).cursor
@@ -199,9 +200,7 @@ test.describe('Warm & Soft Theme', () => {
     await page.goto('/');
     await page.waitForSelector('#home.active');
 
-    // Navigate to categories
-    await page.click('[data-navigate="categories"]');
-    await page.waitForSelector('#categories.active');
+    await goToCategories(page);
 
     // Category cards should exist and have correct radius
     const cardRadius = await page.evaluate(() =>
@@ -239,16 +238,14 @@ test.describe('Warm & Soft Theme', () => {
 
   test('screenshot - categories light', async ({ page }) => {
     await page.goto('/');
-    await page.click('[data-navigate="categories"]');
-    await page.waitForSelector('#categories.active');
+    await goToCategories(page);
     await page.waitForTimeout(300);
   });
 
   test('screenshot - categories dark', async ({ page }) => {
     await page.goto('/');
     await page.click('.theme-btn');
-    await page.click('[data-navigate="categories"]');
-    await page.waitForSelector('#categories.active');
+    await goToCategories(page);
     await page.waitForTimeout(300);
   });
 
@@ -350,9 +347,7 @@ async function openQuizThemed(page, { skin, viewport, theme, mode }) {
   }, { nextSkin: skin, nextTheme: theme });
   await page.route('**/local.json', (route) => route.fulfill({ status: 404, body: '' }));
   await page.goto('/');
-  await page.waitForSelector('#home.active');
-  await page.click('[data-navigate="categories"]');
-  await page.waitForSelector('#categories.active');
+  await goToCategories(page);
   await page.click(`.mode-btn[data-mode="${mode}"]`);
   const category = mode === 'exam' ? 'PT' : 'B';
   await page.click(`.category-grid .category-card[data-category="${category}"]`);

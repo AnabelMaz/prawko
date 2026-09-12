@@ -1,5 +1,19 @@
 /** Shared Playwright helpers for the current Panel/WORD UI. */
 
+async function goToCategories(page) {
+  await page.waitForSelector('#home.active');
+  const nav = page.locator('#home [data-navigate="categories"]');
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await nav.click();
+    try {
+      await page.waitForSelector('#categories.active', { timeout: 8000 });
+      return;
+    } catch (err) {
+      if (attempt === 2) throw err;
+    }
+  }
+}
+
 async function enablePracticeExam(page) {
   await page.addInitScript(() => {
     try { localStorage.setItem('prawko_p_p1_practice_exam', '1'); } catch {}
@@ -43,6 +57,7 @@ async function waitForExamMediaAlign(page) {
 }
 
 module.exports = {
+  goToCategories,
   enablePracticeExam,
   recentCategoryIds,
   cycleLanguage,

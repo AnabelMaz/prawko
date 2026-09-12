@@ -21,11 +21,11 @@ Day-to-day product is the local service at http://localhost:5173 (`C:\ProgramDat
 - Media file names from Excel stay in JSON by default (CDN); `-DropMissingMedia` only when asked
 - Media for **online play**: Backblaze B2 `prawko-maz` (`img/` `vid/`), not in git. `upload-media.ps1` / `.py` (`b2 sync --skipNewer`; empty bucket = full upload). Defaults to the same folder as convert-media (ProgramData / `/usr/local/prawko` / `/opt/prawko`), not empty git `src/media`
 - Offline **zip packs**: Cloudflare R2 `prawko-packs` (`PACKS_BASE`, `r2.dev`). Build with `build-media-packs`; **upload in the R2 dashboard** (no wrangler script). `upload-packs.ps1` / `.py` is an optional B2 archive of those zips, not the app host
-- Installer `-InstallGov` does **not** upload to B2 or R2
-- `MEDIA_BASE` in data.js: github.io defaults to B2+R2; a self-hosted server defaults to same-origin `media/` and reads `local.json` on every host (LAN/VM included). `mediaBase: 'cdn'` plus optional `packsBase` is the escape hatch to your own B2/R2
+- Installer `-SyncGov` does **not** upload to B2 or R2
+- `MEDIA_BASE` in data.js: github.io defaults to B2+R2; a self-hosted server defaults to same-origin `media/` and reads `local.json` from the same origin. `mediaBase: 'cdn'` plus optional `packsBase` is the escape hatch to your own B2/R2
 - Learning: default filter unknown + random order; catalog number in the blue counter jumps within the current sequential list only when `local.json` has `learnQuestionJump`
 - Skins: Panel (WORD OSK layout) and Stacja; Panel question/ABC copy is fitted into fixed slots (`fit-text.js`)
-- PWA with service worker; “Download offline” unpacks R2 zips into Cache Storage only when media is remote (`mediaBase: cdn`). Same-origin `media/` on **localhost** is already on disk (no download). A LAN/VM client must download those files from the host. Missing files are a config error, not a silent CDN fallback
+- PWA with service worker; “Download offline” unpacks R2 zips into Cache Storage only when media is remote (`mediaBase: cdn`). Same-origin `media/` on the machine running the server is already on disk (no download). Remote clients need “Download offline” from that host. Missing files are a config error, not a silent CDN fallback
 
 ## i18n Architecture
 - `src/js/i18n.js` — translations dict, `getLang()`, `setLang()`, `t(key)`, `translateQuestion()`
@@ -37,8 +37,8 @@ Day-to-day product is the local service at http://localhost:5173 (`C:\ProgramDat
 ## File Structure
 - `src/js/` — app.js (router), data.js, exam.js, learn.js, ui.js, timer.js, stats.js, i18n.js, profiles.js, offline.js, zip.js, scale.js, scale-boot.js, fit-text.js
 - `src/data/` — meta.json, {category}.json, translations_{en,de,uk}.json
-- `src/media/` — empty in git; img/ (WebP) and vid/ (MP4) live only on the server after `-InstallGov`
-- `Install_Prawko.windows.ps1` / `Install_Prawko.macos.sh` / `Install_Prawko.linux.sh` — one downloaded file per OS. Default: ZIP of AnabelMaz/prawko + Node + service (no Git). `-Dev` / `--dev`: Git clone only (no Node, no server). macOS: launchd, `/usr/local/prawko`. Linux: systemd, `/opt/prawko`. `-InstallGov` / `--install-gov` uses `download-gov.ps1` (Windows) or `download-gov.py` (macOS/Linux) for gov-data paths, then convert-media and parse-excel.
+- `src/media/` — empty in git; img/ (WebP) and vid/ (MP4) live only on the server after `-SyncGov`
+- `Install_Prawko.windows.ps1` / `Install_Prawko.macos.sh` / `Install_Prawko.linux.sh` — one downloaded file per OS. Default: ZIP of AnabelMaz/prawko + Node + service (no Git). `-Dev` / `--dev`: Git clone only (no Node, no server). macOS: launchd, `/usr/local/prawko`. Linux: systemd, `/opt/prawko`. `-SyncGov` / `--sync-gov` uses `download-gov.ps1` (Windows) or `download-gov.py` (macOS/Linux) for gov-data paths, then convert-media and parse-excel.
 - `scripts/` — Windows `.ps1` (no Python). macOS/Linux pipeline `.py`. Installers stay `.ps1` / `.sh`. No Node in the data pipeline.
 
 ## Data Pipeline
@@ -66,7 +66,7 @@ python3 scripts/build-media-packs.py
 # optional: python3 scripts/upload-packs.py
 ```
 
-Media conversion entry points: `convert-media.ps1` (Windows) and `convert-media.py` (macOS/Linux). Windows `-Merge` calls `merge-gov.ps1`; unix `--merge` calls `merge-gov.py`.
+Media conversion entry points: `convert-media.ps1` (Windows) and `convert-media.py` (macOS/Linux). `-MergeGov` / `--merge-gov` calls `merge-gov.ps1` or `merge-gov.py`.
 
 ## Licensing
 - Questions: CC BY-SA 4.0

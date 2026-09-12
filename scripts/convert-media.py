@@ -63,7 +63,7 @@ def resolve_ffmpeg(explicit: str) -> str:
         files = [h for h in hits if h.is_file()]
         if files:
             return str(files[0])
-    die("FFmpeg is not available. Install ffmpeg (brew / apt / dnf) or run the installer with --install-gov.")
+    die("FFmpeg is not available. Install ffmpeg (brew / apt / dnf) or run the installer with --sync-gov.")
     raise AssertionError
 
 

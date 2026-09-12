@@ -35,10 +35,6 @@ EXCLUDE_LOCAL_JSON=0
 INCLUDE_GOV_CACHE=0
 DEV=""
 DEV_SET=0
-# Legacy (still accepted):
-INSTALL_GOV=0
-GOV_QUESTIONS=0
-MERGE=0
 
 say() { printf '%s\n' "$*"; }
 say_c() { printf '\033[36m%s\033[0m\n' "$*"; }
@@ -64,10 +60,8 @@ FLAGS (same as Install_Prawko.windows.ps1 on Windows)
   --sync-gov             Ministry data from gov.pl → staging → server.
                          Scope: --sync-scope questions|media|full (default full).
                          --sync-use-cache skips gov.pl when staging has Excel/raw.
-                         Legacy: --install-gov, --gov-questions.
   --drop-missing-media   Only with --sync-gov (full/media): strip missing media from JSON.
   --merge-gov            On a running server: fills gaps from ministry Excel.
-                         Legacy: --merge.
   --patch                Overlays code from a local checkout (--dev, next to the script,
                          ../prawko-contrib). Skips data/ and media/.
                          On an already running server: overlay only, no sudo,
@@ -124,9 +118,6 @@ while [ $# -gt 0 ]; do
       ;;
     --sync-use-cache|-SyncUseCache) SYNC_USE_CACHE=1; shift ;;
     --merge-gov|-MergeGov) MERGE_GOV=1; shift ;;
-    --install-gov|-InstallGov) INSTALL_GOV=1; shift ;;
-    --gov-questions|-GovQuestions) GOV_QUESTIONS=1; shift ;;
-    --merge|-Merge) MERGE=1; shift ;;
     --patch|-Patch) PATCH=1; shift ;;
     --drop-missing-media|-DropMissingMedia) DROP_MISSING_MEDIA=1; shift ;;
     --export|-Export)
@@ -158,11 +149,6 @@ while [ $# -gt 0 ]; do
     *) die "Unknown argument: $1 (see --help)" ;;
   esac
 done
-
-# Legacy switch names → current model
-if [ "$INSTALL_GOV" -eq 1 ] && [ "$SYNC_GOV" -eq 0 ]; then SYNC_GOV=1; SYNC_SCOPE="full"; fi
-if [ "$GOV_QUESTIONS" -eq 1 ] && [ "$SYNC_GOV" -eq 0 ]; then SYNC_GOV=1; SYNC_SCOPE="questions"; fi
-if [ "$MERGE" -eq 1 ] && [ "$MERGE_GOV" -eq 0 ]; then MERGE_GOV=1; fi
 
 if [ "$HELP" -eq 1 ]; then
   usage
@@ -937,7 +923,7 @@ publish_gov_questions() {
     say_g "Done. Server reads ministry JSON. --patch will not revert this (it skips data/)."
     say_d "Originals remain in contrib/src/data. Videos from the CDN."
   elif [ "$copy_rc" -eq 1 ]; then
-    say_y "Server is not installed — ministry JSON only in gov-data. After install, run --gov-questions again."
+    say_y "Server is not installed — ministry JSON only in gov-data. After install, run --sync-gov --sync-scope questions again."
   else
     say_y "Ministry JSON is in gov-data, but could not be written to the server."
     say_d "contrib/src/data left untouched. Check permissions on $TARGET_DIR or copy gov-data by hand."
@@ -981,7 +967,7 @@ publish_gov_install() {
   assert_gov_parsed "$GOV_DATA" "$excel"
   remove_legacy_server_raw
   if ! server_installed; then
-    say_y "Server is not installed — Excel/JSON/media in $GOV_DATA. After install, run --install-gov again."
+    say_y "Server is not installed — Excel/JSON/media in $GOV_DATA. After install, run --sync-gov again."
     return 0
   fi
   say_c "Copying ministry JSON onto the server (git/ contrib/src/data left untouched)..."
@@ -1183,9 +1169,6 @@ if ! is_root && need_root_for_default; then
   [ "$INCLUDE_GOV_CACHE" -eq 1 ] && args+=(--include-gov-cache)
   [ "$IMPORT_FORCE" -eq 1 ] && args+=(--import-force)
   [ -n "$IMPORT" ] && [ "$IMPORT_SCOPE" != "auto" ] && args+=(--import-scope "$IMPORT_SCOPE")
-  [ "$INSTALL_GOV" -eq 1 ] && args+=(--install-gov)
-  [ "$GOV_QUESTIONS" -eq 1 ] && args+=(--gov-questions)
-  [ "$MERGE" -eq 1 ] && args+=(--merge)
   [ "$DEV_SET" -eq 1 ] && args+=(--dev "$DEV")
   if [ "$UNINSTALL" -eq 0 ]; then
     # Homebrew does not install as root — tools before sudo, like winget before the service.

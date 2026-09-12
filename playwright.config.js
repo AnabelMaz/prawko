@@ -1,20 +1,22 @@
 const { defineConfig } = require('@playwright/test');
 
-// Local machine: hit the existing Prawko service (localhost:5173).
-// CI has no service, so it serves src/ on 3333 for the test job only.
-const useCiStaticServer = Boolean(process.env.CI) && !process.env.PRAWKO_BASE_URL;
+// Default: serve src/ on 3333 (same as CI). Parallel workers stay isolated from ProgramData :5173.
+// PRAWKO_BASE_URL=http://localhost:5173 — test against a live install instead.
+const useStaticServer = !process.env.PRAWKO_BASE_URL;
 
 module.exports = defineConfig({
   testDir: './tests',
+  retries: 2,
+  workers: process.env.CI ? undefined : 1,
   use: {
-    baseURL: process.env.PRAWKO_BASE_URL || (useCiStaticServer ? 'http://localhost:3333' : 'http://localhost:5173'),
+    baseURL: process.env.PRAWKO_BASE_URL || 'http://localhost:3333',
     locale: 'pl-PL',
     screenshot: 'on',
     serviceWorkers: 'block',
   },
-  webServer: useCiStaticServer
+  webServer: useStaticServer
     ? {
-        command: 'npx --yes http-server src -p 3333 -c-1 --silent',
+        command: 'npx http-server src -p 3333 -c-1 --silent',
         port: 3333,
         reuseExistingServer: true,
         timeout: 180000,

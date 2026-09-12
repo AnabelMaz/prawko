@@ -64,7 +64,7 @@ if (-not (Test-Path -LiteralPath $SourceDir)) {
 
 $ffmpeg = Resolve-ConvertFfmpegExe $FfmpegExe
 if (-not $ffmpeg) {
-    throw "FFmpeg is not available. Install ffmpeg or run Install_Prawko.windows.ps1 -InstallGov (it drops a portable copy)."
+    throw "FFmpeg is not available. Install ffmpeg or run Install_Prawko.windows.ps1 -SyncGov (it drops a portable copy)."
 }
 Write-Host "[OK] FFmpeg: $ffmpeg" -ForegroundColor Green
 Write-Host "Source (situational): $SourceDir" -ForegroundColor Gray

@@ -1,10 +1,9 @@
 const { test, expect } = require('@playwright/test');
+const { goToCategories } = require('./helpers');
 
 async function openCategories(page) {
   await page.goto('/');
-  await page.waitForSelector('#home.active');
-  await page.click('[data-navigate="categories"]');
-  await page.waitForSelector('#categories.active');
+  await goToCategories(page);
   await page.waitForSelector('.category-grid .category-card[data-category="B"] .offline-btn');
 }
 
@@ -481,8 +480,7 @@ test.describe('Category media access', () => {
       await storeMediaBlob('media/img/offline-idb.png', new Blob([png], { type: 'image/png' }));
     });
     await fakeOffline(page);
-    await page.click('[data-navigate="categories"]');
-    await page.waitForSelector('#categories.active');
+    await goToCategories(page);
     await page.click('.mode-btn[data-mode="learn"]');
     await page.click('.category-grid .category-card[data-category="B"]');
     await page.waitForSelector('#quiz.active');

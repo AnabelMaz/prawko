@@ -19,11 +19,7 @@ param(
     [switch]$ExcludeMedia,
     [switch]$ExcludeLocalJson,
     [switch]$IncludeGovCache,
-    [string]$Dev,
-    # Legacy aliases (still accepted):
-    [switch]$InstallGov,
-    [switch]$GovQuestions,
-    [switch]$Merge
+    [string]$Dev
 )
 
 try {
@@ -38,17 +34,6 @@ $ErrorActionPreference = "Stop"
 if (Get-Variable PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue) {
     $PSNativeCommandUseErrorActionPreference = $false
 }
-
-# Legacy switch names → current model
-if ($InstallGov -and -not $SyncGov) {
-    $SyncGov = $true
-    if (-not $PSBoundParameters.ContainsKey('SyncScope')) { $SyncScope = 'Full' }
-}
-if ($GovQuestions -and -not $SyncGov) {
-    $SyncGov = $true
-    $SyncScope = 'Questions'
-}
-if ($Merge -and -not $MergeGov) { $MergeGov = $true }
 
 $serviceName = "PrawkoWORDService"
 $targetDir = "C:\ProgramData\prawko"
@@ -100,14 +85,12 @@ SWITCHES
                     Does not download PJM. Does not touch src\data in git/contrib.
                     With media on the server, sets mediaBase=media in local.json.
                     No administrator, no service reinstall.
-                    Legacy: -InstallGov (= -SyncGov -SyncScope Full),
-                    -GovQuestions (= -SyncGov -SyncScope Questions).
 
   -DropMissingMedia Only with -SyncGov -SyncScope Full or Media: the parser strips
                     from JSON media whose file is missing in local raw. Default: NO.
 
   -MergeGov         On a running server: appends from ministry Excel only the gaps.
-                    Legacy: -Merge. No server = install with no switches first.
+                    No server = install with no switches first.
 
   -Patch            Overlays code from the local checkout (-Dev, next to the script,
                     ..\prawko-contrib, ..\contrib). Skips data\ and media\.
@@ -959,9 +942,6 @@ if (($Uninstall -or $installingServer) -and -not (Test-IsAdmin)) {
     if ($IncludeGovCache) { $argList += "-IncludeGovCache" }
     if ($ImportForce) { $argList += "-ImportForce" }
     if ($PSBoundParameters.ContainsKey("ImportScope") -and $ImportScope -ne 'Auto') { $argList += "-ImportScope"; $argList += $ImportScope }
-    if ($InstallGov) { $argList += "-InstallGov" }
-    if ($GovQuestions) { $argList += "-GovQuestions" }
-    if ($Merge) { $argList += "-Merge" }
     if ($PSBoundParameters.ContainsKey("Dev") -and $Dev) { $argList += "-Dev"; $argList += "`"$Dev`"" }
     if ($Help) { $argList += "-Help" }
     Start-Process -FilePath "powershell.exe" -Verb RunAs -Wait -ArgumentList $argList

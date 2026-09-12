@@ -1,11 +1,9 @@
 const { test, expect } = require('@playwright/test');
-const { enablePracticeExam, recentCategoryIds } = require('./helpers');
+const { goToCategories, enablePracticeExam, recentCategoryIds } = require('./helpers');
 
 async function openCategories(page) {
   await page.goto('/');
-  await page.waitForSelector('#home.active');
-  await page.click('[data-navigate="categories"]');
-  await page.waitForSelector('#categories.active');
+  await goToCategories(page);
 }
 
 async function startExamMode(page, category = 'PT') {
