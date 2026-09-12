@@ -198,6 +198,55 @@ test.describe('Learn video result mark', () => {
     await expect(mark).toBeVisible();
     expect(await markedAnswers.evaluateAll((els) => els.map((el) => el.className).sort())).toEqual(answerSnapshot);
   });
+
+  test('answer mark returns after next/prev on image and video questions', async ({ page }) => {
+    await page.route(/\.(mp4|webm)(\?|$)/i, async () => {});
+    await startLearnMode(page, {
+      localJson: { mediaBase: 'cdn', learnQuestionJump: true },
+    });
+    await setLearnQueue(page, 'filter', 'all');
+    await setLearnQueue(page, 'order', 'sequential');
+    const targets = await page.evaluate(async () => {
+      const data = await fetch('data/B.json').then((res) => res.json());
+      const imagePos = data.questions.findIndex((q) => q.media && q.mediaType === 'image') + 1;
+      const videoPos = data.questions.findIndex((q) => q.mediaType === 'video') + 1;
+      return { imagePos, videoPos };
+    });
+    expect(targets.imagePos).toBeGreaterThan(0);
+    expect(targets.videoPos).toBeGreaterThan(0);
+
+    const mark = page.locator('#quiz .learn-media-mark');
+    const jump = async (pos) => {
+      await page.locator('.learn-qnum-input').fill(String(pos));
+      await page.locator('.learn-qnum-input').press('Enter');
+    };
+
+    await jump(targets.imagePos);
+    await expect(page.locator('#quiz .media-area img')).toHaveCount(1);
+    await page.locator('.answers .answer-btn').first().click();
+    await expect(mark).toBeVisible();
+    await page.locator('.btn-next').click();
+    await page.locator('.btn-prev').click();
+    await expect(page.locator('#quiz .media-area img')).toHaveCount(1);
+    await expect(mark).toBeVisible();
+
+    await jump(targets.videoPos);
+    await expect(page.locator('#quiz .media-area video')).toHaveCount(1);
+    await page.locator('.answers .answer-btn').first().click();
+    await page.locator('#quiz .media-area video').evaluate((video) => {
+      video.pause();
+      video.dispatchEvent(new Event('ended'));
+    });
+    await expect(mark).toBeVisible();
+    await page.locator('.btn-next').click();
+    await page.locator('.btn-prev').click();
+    await expect(page.locator('#quiz .media-area video')).toHaveCount(1);
+    await page.locator('#quiz .media-area video').evaluate((video) => {
+      video.pause();
+      video.dispatchEvent(new Event('ended'));
+    });
+    await expect(mark).toBeVisible();
+  });
 });
 
 test.describe('Media slot size', () => {

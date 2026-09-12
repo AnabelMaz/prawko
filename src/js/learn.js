@@ -547,7 +547,16 @@ function applyLearnAnswerFeedback(q, answer) {
   if (!answersDiv) return;
   markSelectedAnswer(answersDiv, answer);
   highlightAnswer(answersDiv, answer, q.correct);
-  showLearnMediaMark(answer === q.correct);
+}
+
+function learnRenderOptions(q) {
+  const sessionAnswer = state?.sessionAnswers?.get(q.id);
+  return {
+    categoryId: state?.category,
+    learnMediaMark: sessionAnswer !== undefined
+      ? { isCorrect: sessionAnswer === q.correct }
+      : null,
+  };
 }
 
 function restoreSessionAnswer(q) {
@@ -573,7 +582,7 @@ function showLearnQuestion() {
   if (!q) return;
 
   updateProgress();
-  renderQuestion(q, document.querySelector('.question-card'), { categoryId: state.category });
+  renderQuestion(q, document.querySelector('.question-card'), learnRenderOptions(q));
   restoreSessionAnswer(q);
 }
 
@@ -585,6 +594,7 @@ function handleLearnAnswer(answer) {
   state.givenAnswer = answer;
   const isCorrect = answer === q.correct;
   applyLearnAnswerFeedback(q, answer);
+  showLearnMediaMark(isCorrect);
   saveLearnAnswer(state.category, q.id, answer, isCorrect);
   state.sessionAnswers.set(q.id, answer);
 
@@ -660,7 +670,7 @@ export function refreshLearnQuestion() {
   if (!state) return;
   const q = getCurrentQuestion();
   if (!q) return;
-  renderQuestion(q, document.querySelector('.question-card'), { categoryId: state.category });
+  renderQuestion(q, document.querySelector('.question-card'), learnRenderOptions(q));
   restoreSessionAnswer(q);
   updateLearnStats();
 }

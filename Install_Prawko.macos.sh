@@ -19,14 +19,26 @@ LAUNCH_PLIST="/Library/LaunchDaemons/${LAUNCH_LABEL}.plist"
 HELP=0
 NONINTERACTIVE=0
 UNINSTALL=0
-INSTALL_GOV=0
-GOV_QUESTIONS=0
-MERGE=0
+SYNC_GOV=0
+SYNC_SCOPE="full"
+SYNC_USE_CACHE=0
+MERGE_GOV=0
 PATCH=0
 DROP_MISSING_MEDIA=0
 EXPORT=""
+IMPORT=""
+IMPORT_SCOPE="auto"
+IMPORT_FORCE=0
+EXCLUDE_DATA=0
+EXCLUDE_MEDIA=0
+EXCLUDE_LOCAL_JSON=0
+INCLUDE_GOV_CACHE=0
 DEV=""
 DEV_SET=0
+# Legacy (still accepted):
+INSTALL_GOV=0
+GOV_QUESTIONS=0
+MERGE=0
 
 say() { printf '%s\n' "$*"; }
 say_c() { printf '\033[36m%s\033[0m\n' "$*"; }
@@ -49,27 +61,28 @@ FLAGS (same as Install_Prawko.windows.ps1 on Windows)
   (none)                 Default mode: ZIP from GitHub AnabelMaz/prawko (branch ${REPO_BRANCH}),
                          launchd http://localhost:${LISTEN_PORT}. No Git. Questions from the repo, media
                          from the prawko-maz CDN. If the server is already running, nothing is overwritten.
-  --install-gov          Excel + situational-media ZIP from gov.pl.
-                         Staging: ~/Library/Application Support/prawko/gov-data
-                         Conversion (WebP/MP4) and JSON: ${TARGET_DIR}
-                         Does not download PJM. --patch skips data/ and media/.
-  --drop-missing-media   Only with --install-gov: the parser strips from JSON any media
-                         whose file is missing from local raw. Default: NO.
-  --gov-questions        Ministry question catalogue onto a live server only.
-                         Does not touch src/media or the CDN.
+  --sync-gov             Ministry data from gov.pl → staging → server.
+                         Scope: --sync-scope questions|media|full (default full).
+                         --sync-use-cache skips gov.pl when staging has Excel/raw.
+                         Legacy: --install-gov, --gov-questions.
+  --drop-missing-media   Only with --sync-gov (full/media): strip missing media from JSON.
+  --merge-gov            On a running server: fills gaps from ministry Excel.
+                         Legacy: --merge.
   --patch                Overlays code from a local checkout (--dev, next to the script,
                          ../prawko-contrib). Skips data/ and media/.
                          On an already running server: overlay only, no sudo,
                          no launchd reinstall.
                          On first install: AnabelMaz ZIP + launchd + overlay.
-  --export <path>        Pack: <path>/prawko/Install_Prawko.macos.sh
-                         and <path>/prawko-contrib/. Does not touch the server.
+  --export <path>        Portable pack. Default: snapshot/data, snapshot/media,
+                         snapshot/local.json, code-only contrib (no duplicate src/data
+                         or src/media when in snapshot). Opt out: --exclude-data,
+                         --exclude-media, --exclude-local-json. Optional: --include-gov-cache.
+  --import <path>        Restore from a pack. --import-scope auto|code|runtime.
+                         --import-force overwrites existing data/media.
   --dev <path>           Git clone only (code, commit, push). Not ${TARGET_DIR}.
                          Does not install Node or launchd — even if the server is not running.
                          Git is used only here. Localhost: run the script with no flags first.
                          Folder must be empty or not exist yet.
-  --merge                On an already running server: fills gaps from ministry Excel.
-                         Does not set up launchd. No server = run with no flags first.
   --uninstall            Removes launchd and ${TARGET_DIR}. Homebrew / Git / Node stay.
   --non-interactive      No Enter pause at the end.
   --help                 This help.
@@ -84,18 +97,17 @@ TWO USER TYPES
     (none)           Homebrew if missing, Node, app ZIP, launchd
     --dev            Git + clone (no Node, no server, no sudo)
     --patch          nothing when the server is up; without a server: Node + launchd + overlay
-    --install-gov    FFmpeg if missing; Excel+ZIP from gov.pl
-    --gov-questions  Python (Excel + gov.pl)
-    --merge          Python; writes to the running server
+    --sync-gov       FFmpeg if missing (full/media); Excel from gov.pl
+    --merge-gov      Python; writes to the running server
     --export         nothing (file copy)
+    --import         nothing (file copy onto server)
     --uninstall      nothing new
 
 REQUIREMENTS
   Server (no flags): sudo, Homebrew/Node if missing, ZIP, launchd. No Git.
   --dev: Git + clone only (no Node, no server, no sudo). Does not install Homebrew,
          unless brew is already present and git is missing — then brew install git.
-  --install-gov: FFmpeg; Python+openpyxl for parse-excel.py.
-  --gov-questions: Python. --merge: Python; requires a server.
+  --sync-gov: FFmpeg (full/media); Python+openpyxl. --merge-gov: Python; requires a server.
 EOF
 }
 
@@ -104,6 +116,14 @@ while [ $# -gt 0 ]; do
     --help|-h|-Help) HELP=1; shift ;;
     --non-interactive|-NonInteractive) NONINTERACTIVE=1; shift ;;
     --uninstall|-Uninstall) UNINSTALL=1; shift ;;
+    --sync-gov|-SyncGov) SYNC_GOV=1; shift ;;
+    --sync-scope|-SyncScope)
+      [ $# -ge 2 ] || die "--sync-scope requires questions, media, or full"
+      SYNC_SCOPE="$(printf '%s' "$2" | tr '[:upper:]' '[:lower:]')"
+      shift 2
+      ;;
+    --sync-use-cache|-SyncUseCache) SYNC_USE_CACHE=1; shift ;;
+    --merge-gov|-MergeGov) MERGE_GOV=1; shift ;;
     --install-gov|-InstallGov) INSTALL_GOV=1; shift ;;
     --gov-questions|-GovQuestions) GOV_QUESTIONS=1; shift ;;
     --merge|-Merge) MERGE=1; shift ;;
@@ -114,6 +134,21 @@ while [ $# -gt 0 ]; do
       EXPORT="$2"
       shift 2
       ;;
+    --import|-Import)
+      [ $# -ge 2 ] || die "--import requires a path"
+      IMPORT="$2"
+      shift 2
+      ;;
+    --import-scope|-ImportScope)
+      [ $# -ge 2 ] || die "--import-scope requires auto, code, or runtime"
+      IMPORT_SCOPE="$(printf '%s' "$2" | tr '[:upper:]' '[:lower:]')"
+      shift 2
+      ;;
+    --import-force|-ImportForce) IMPORT_FORCE=1; shift ;;
+    --exclude-data|-ExcludeData) EXCLUDE_DATA=1; shift ;;
+    --exclude-media|-ExcludeMedia) EXCLUDE_MEDIA=1; shift ;;
+    --exclude-local-json|-ExcludeLocalJson) EXCLUDE_LOCAL_JSON=1; shift ;;
+    --include-gov-cache|-IncludeGovCache) INCLUDE_GOV_CACHE=1; shift ;;
     --dev|-Dev)
       [ $# -ge 2 ] || die "--dev requires a path"
       DEV="$2"
@@ -123,6 +158,11 @@ while [ $# -gt 0 ]; do
     *) die "Unknown argument: $1 (see --help)" ;;
   esac
 done
+
+# Legacy switch names → current model
+if [ "$INSTALL_GOV" -eq 1 ] && [ "$SYNC_GOV" -eq 0 ]; then SYNC_GOV=1; SYNC_SCOPE="full"; fi
+if [ "$GOV_QUESTIONS" -eq 1 ] && [ "$SYNC_GOV" -eq 0 ]; then SYNC_GOV=1; SYNC_SCOPE="questions"; fi
+if [ "$MERGE" -eq 1 ] && [ "$MERGE_GOV" -eq 0 ]; then MERGE_GOV=1; fi
 
 if [ "$HELP" -eq 1 ]; then
   usage
@@ -157,9 +197,9 @@ need_root_for_default() {
   # sudo only: first server install or --uninstall.
   [ "$UNINSTALL" -eq 1 ] && return 0
   [ -n "$EXPORT" ] && return 1
-  [ "$GOV_QUESTIONS" -eq 1 ] && return 1
-  [ "$INSTALL_GOV" -eq 1 ] && return 1
-  [ "$MERGE" -eq 1 ] && return 1
+  [ -n "$IMPORT" ] && return 1
+  [ "$SYNC_GOV" -eq 1 ] && return 1
+  [ "$MERGE_GOV" -eq 1 ] && return 1
   [ "$DEV_SET" -eq 1 ] && return 1
   [ "$PATCH" -eq 1 ] && server_installed && return 1
   server_installed && return 1
@@ -632,8 +672,77 @@ install_dev_clone() {
   say_d "Preview stays in $TARGET_DIR. You commit and push here. Onto the server: ./Install_Prawko.macos.sh --patch"
 }
 
+dir_has_files() {
+  [ -d "$1" ] && [ -n "$(find "$1" -type f 2>/dev/null | head -n 1)" ]
+}
+
+rsync_progress() {
+  if rsync --help 2>&1 | grep -q -- '--info=progress2'; then
+    rsync --info=progress2 "$@"
+  else
+    rsync --progress "$@"
+  fi
+}
+
+resolve_export_data_src() {
+  if [ -f "$TARGET_DIR/src/data/meta.json" ]; then echo "$TARGET_DIR/src/data"; return 0; fi
+  local contrib; contrib="$(require_contrib)"
+  if [ -f "$contrib/src/data/meta.json" ]; then echo "$contrib/src/data"; return 0; fi
+  return 1
+}
+
+resolve_export_media_root() {
+  if dir_has_files "$TARGET_DIR/src/media/img" || dir_has_files "$TARGET_DIR/src/media/vid"; then
+    echo "$TARGET_DIR/src/media"; return 0
+  fi
+  local contrib; contrib="$(require_contrib)"
+  if dir_has_files "$contrib/src/media/img" || dir_has_files "$contrib/src/media/vid"; then
+    echo "$contrib/src/media"; return 0
+  fi
+  local local_media="$REAL_HOME/Library/Application Support/prawko/media"
+  if dir_has_files "$local_media/img" || dir_has_files "$local_media/vid"; then
+    echo "$local_media"; return 0
+  fi
+  return 1
+}
+
+write_export_manifest() {
+  local path="$1" data="$2" media="$3" localjson="$4" govcache="$5"
+  local ds="$6" ms="$7" ls="$8" gs="$9"
+  python3 - "$path" "$data" "$media" "$localjson" "$govcache" "$ds" "$ms" "$ls" "$gs" <<'PY'
+import json, sys, datetime
+path, data, media, localjson, govcache, ds, ms, ls, gs = sys.argv[1:10]
+locations = {"code": "contrib"}
+if data == "1":
+    locations["data"] = "snapshot"
+if media == "1":
+    locations["media"] = "snapshot"
+if localjson == "1":
+    locations["localJson"] = "snapshot"
+payload = {
+    "format": 1,
+    "created": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    "platform": "macos",
+    "components": {
+        "code": True,
+        "data": data == "1",
+        "media": media == "1",
+        "localJson": localjson == "1",
+        "govCache": govcache == "1",
+    },
+    "sources": {k: v for k, v in [
+        ("data", ds), ("media", ms), ("localJson", ls), ("govCache", gs)
+    ] if v},
+    "locations": locations,
+}
+open(path, "w", encoding="utf-8").write(json.dumps(payload, indent=2) + "\n")
+PY
+}
+
 export_pack() {
-  local dest_root dest_install dest_contrib contrib
+  local dest_root dest_install dest_contrib contrib data_src media_src local_src
+  local has_data=0 has_media=0 has_local=0 has_gov=0
+  local src_data="" src_media="" src_local="" src_gov=""
   dest_root="$1"
   [ -n "$dest_root" ] || die "--export requires a path, e.g. --export ~/Desktop/prawko-pack"
   case "$dest_root" in
@@ -660,29 +769,144 @@ exec bash "$real" "$@"
 STUB
   chmod +x "$dest_install/Install_Prawko.macos.sh"
   say_g "-> Launcher: $dest_install/Install_Prawko.macos.sh"
+  if [ "$EXCLUDE_DATA" -eq 0 ]; then
+    if data_src="$(resolve_export_data_src)"; then
+      mkdir -p "$dest_root/snapshot/data"
+      say_c "-> Snapshot data: $data_src"
+      rsync_progress -a "$data_src/" "$dest_root/snapshot/data/"
+      has_data=1; src_data="$data_src"
+    else
+      say_y "-> Snapshot data: nothing to export."
+    fi
+  fi
+  if [ "$EXCLUDE_MEDIA" -eq 0 ]; then
+    if media_src="$(resolve_export_media_root)"; then
+      mkdir -p "$dest_root/snapshot/media"
+      say_c "-> Snapshot media: $media_src"
+      for sub in img vid; do
+        [ -d "$media_src/$sub" ] || continue
+        mkdir -p "$dest_root/snapshot/media/$sub"
+        rsync_progress -a "$media_src/$sub/" "$dest_root/snapshot/media/$sub/"
+      done
+      has_media=1; src_media="$media_src"
+    else
+      say_y "-> Snapshot media: nothing to export."
+    fi
+  fi
+  if [ "$EXCLUDE_LOCAL_JSON" -eq 0 ]; then
+    if [ -f "$TARGET_DIR/src/local.json" ]; then
+      mkdir -p "$dest_root/snapshot"
+      cp "$TARGET_DIR/src/local.json" "$dest_root/snapshot/local.json"
+      has_local=1; src_local="$TARGET_DIR/src/local.json"
+      say_c "-> Snapshot local.json"
+    elif [ "$has_media" -eq 1 ]; then
+      mkdir -p "$dest_root/snapshot"
+      printf '{\n  "mediaBase": "media"\n}\n' > "$dest_root/snapshot/local.json"
+      has_local=1; src_local="(generated)"
+      say_c "-> Snapshot local.json: generated mediaBase=media"
+    fi
+  fi
+  if [ "$INCLUDE_GOV_CACHE" -eq 1 ]; then
+    if dir_has_files "$GOV_DATA"; then
+      mkdir -p "$dest_root/gov-cache/gov-data"
+      say_c "-> Gov cache: $GOV_DATA"
+      rsync_progress -a "$GOV_DATA/" "$dest_root/gov-cache/gov-data/"
+      has_gov=1; src_gov="$GOV_DATA"
+    else
+      say_y "-> Gov cache: nothing to export."
+    fi
+  fi
   if [ "$(cd "$contrib" && pwd)" = "$(mkdir -p "$dest_contrib" && cd "$dest_contrib" && pwd)" ]; then
     say_d "-> Contrib is already in $dest_contrib (skipping copy)."
   else
     mkdir -p "$dest_contrib"
-    say_c "-> rsync contrib: $contrib -> $dest_contrib"
-    say_d "   Large src/media may take a while."
+    say_c "-> rsync contrib: $contrib -> $dest_contrib (code only)"
     _rsync_ex=(
       -a
       --exclude node_modules --exclude .git --exclude test-results
-      --exclude playwright-report --exclude blob-report --exclude coverage --exclude .cursor
+      --exclude playwright-report --exclude blob-report --exclude coverage --exclude .cursor --exclude gov-data
     )
-    if rsync --help 2>&1 | grep -q -- '--info'; then
-      rsync "${_rsync_ex[@]}" --info=progress2 "$contrib/" "$dest_contrib/"
-    else
-      rsync "${_rsync_ex[@]}" --progress "$contrib/" "$dest_contrib/"
+    if [ "$has_data" -eq 1 ]; then
+      _rsync_ex+=(--exclude 'src/data/')
+      say_d "   Runtime in snapshot — omitting contrib src/data"
     fi
+    if [ "$has_media" -eq 1 ]; then
+      _rsync_ex+=(--exclude 'src/media/')
+      say_d "   Runtime in snapshot — omitting contrib src/media"
+    fi
+    rsync_progress "${_rsync_ex[@]}" "$contrib/" "$dest_contrib/"
     unset _rsync_ex
     [ -f "$dest_contrib/src/index.html" ] || die "After export, missing $dest_contrib/src/index.html"
     say_g "-> Contrib: $dest_contrib"
   fi
+  write_export_manifest "$dest_root/manifest.json" "$has_data" "$has_media" "$has_local" "$has_gov" \
+    "$src_data" "$src_media" "$src_local" "$src_gov"
+  say_g "-> Manifest: $dest_root/manifest.json"
   say_g "Done. From the pack:"
   say "  bash \"$dest_install/Install_Prawko.macos.sh\""
-  say "  ... --patch  /  --install-gov  /  --export <another folder>"
+  say "  ... --import \"$dest_root\"   /   --patch   /   --sync-gov"
+}
+
+import_pack() {
+  local pack_root="$1" pack_contrib="$pack_root/prawko-contrib" snapshot="$pack_root/snapshot"
+  local do_code=0 do_runtime=0
+  [ -n "$pack_root" ] || die "--import requires a path"
+  case "$pack_root" in
+    /*) ;;
+    *) pack_root="$INITIAL_PWD/$pack_root" ;;
+  esac
+  pack_root="$(cd "$pack_root" && pwd)"
+  [ -d "$pack_root" ] || die "--import: pack not found: $pack_root"
+  case "$IMPORT_SCOPE" in
+    code) do_code=1 ;;
+    runtime) do_runtime=1 ;;
+    auto) do_code=1; do_runtime=1 ;;
+    *) die "Unknown --import-scope: $IMPORT_SCOPE" ;;
+  esac
+  say_c "Import <- $pack_root"
+  if [ "$do_code" -eq 1 ]; then
+    [ -f "$pack_contrib/src/index.html" ] || die "--import: missing $pack_contrib/src/index.html"
+    server_installed || die "--import needs a running server. First run with no flags, then --import."
+    say_c "-> Overlay code from pack contrib"
+    overlay_src "$pack_contrib/src" "$TARGET_DIR" "prawko-import"
+  fi
+  if [ "$do_runtime" -eq 1 ]; then
+    server_installed || die "--import needs a running server. First run with no flags, then --import."
+    if [ -f "$snapshot/data/meta.json" ]; then
+      if [ "$IMPORT_FORCE" -eq 0 ] && [ -f "$TARGET_DIR/src/data/meta.json" ]; then
+        say_y "-> Server data exists; use --import-force to overwrite."
+      else
+        mkdir -p "$TARGET_DIR/src/data"
+        say_c "-> Restore data"
+        rsync_progress -a "$snapshot/data/" "$TARGET_DIR/src/data/"
+      fi
+    fi
+    if [ -d "$snapshot/media/img" ] || [ -d "$snapshot/media/vid" ]; then
+      if [ "$IMPORT_FORCE" -eq 0 ] && { dir_has_files "$TARGET_DIR/src/media/img" || dir_has_files "$TARGET_DIR/src/media/vid"; }; then
+        say_y "-> Server media exists; use --import-force to overwrite."
+      else
+        mkdir -p "$TARGET_DIR/src/media/img" "$TARGET_DIR/src/media/vid"
+        for sub in img vid; do
+          [ -d "$snapshot/media/$sub" ] || continue
+          say_c "-> Restore media/$sub"
+          rsync_progress -a "$snapshot/media/$sub/" "$TARGET_DIR/src/media/$sub/"
+        done
+      fi
+    fi
+    if [ -f "$snapshot/local.json" ]; then
+      cp "$snapshot/local.json" "$TARGET_DIR/src/local.json"
+      say_c "-> Restore local.json"
+    elif dir_has_files "$TARGET_DIR/src/media/img" || dir_has_files "$TARGET_DIR/src/media/vid"; then
+      set_local_media_base "$TARGET_DIR"
+    fi
+    stamp_cache "$TARGET_DIR" "prawko-import"
+  fi
+  if [ -d "$pack_root/gov-cache/gov-data" ]; then
+    mkdir -p "$GOV_DATA"
+    say_c "-> Restore gov-cache"
+    rsync_progress -a "$pack_root/gov-cache/gov-data/" "$GOV_DATA/"
+  fi
+  say_g "Done. Refresh the app in the browser."
 }
 
 do_uninstall() {
@@ -703,7 +927,7 @@ publish_gov_questions() {
   local excel="$GOV_DATA/baza_pytan.xlsx" copy_rc=0
   ensure_python_openpyxl
   remove_legacy_server_raw
-  say_c "GovQuestions: Excel from gov.pl → $GOV_DATA (contrib/src/data left untouched)"
+  say_c "SyncGov Questions: Excel from gov.pl → $GOV_DATA (contrib/src/data left untouched)"
   say_d "No media ZIP, no src/media, no CDN change."
   run_pipeline download-gov.py --excel-only
   run_parse_excel "$excel" "$GOV_DATA"
@@ -721,7 +945,8 @@ publish_gov_questions() {
 }
 
 publish_gov_install() {
-  local excel="$GOV_DATA/baza_pytan.xlsx" img_out vid_out ffmpeg copy_rc=0
+  local excel="$GOV_DATA/baza_pytan.xlsx" img_out vid_out ffmpeg copy_rc=0 skip_dl=0
+  [ "${1:-}" = "skip_download" ] && skip_dl=1
   ensure_cmd ffmpeg ffmpeg
   if ! command -v cwebp >/dev/null 2>&1; then
     if command -v brew >/dev/null 2>&1; then
@@ -733,9 +958,13 @@ publish_gov_install() {
     fi
   fi
   ensure_python_openpyxl
-  say_c "InstallGov: Excel + situational-media ZIP from gov.pl → $GOV_DATA"
+  say_c "SyncGov Full: Excel + situational-media ZIP from gov.pl → $GOV_DATA"
   say_d "Not downloading PJM (sign-language) packs."
-  run_pipeline download-gov.py
+  if [ "$skip_dl" -eq 0 ]; then
+    run_pipeline download-gov.py
+  else
+    say_d "Skipping gov.pl download (--sync-use-cache / cached staging)."
+  fi
   [ -f "$excel" ] || die "Missing $excel — the question bank from gov.pl was not downloaded."
   if server_installed; then
     img_out="$TARGET_DIR/src/media/img"
@@ -778,6 +1007,50 @@ publish_gov_install() {
   say_g "Done. Server: JSON + media from gov.pl. --patch will not overwrite data/ or media/."
 }
 
+publish_sync_gov_media() {
+  local img_out vid_out ffmpeg raw_dir="$GOV_DATA/raw"
+  dir_has_files "$raw_dir" || die "No situational raw in $GOV_DATA/raw. Run --sync-gov --sync-scope full first."
+  ensure_cmd ffmpeg ffmpeg
+  if server_installed; then
+    img_out="$TARGET_DIR/src/media/img"
+    vid_out="$TARGET_DIR/src/media/vid"
+  else
+    img_out="$REAL_HOME/Library/Application Support/prawko/media/img"
+    vid_out="$REAL_HOME/Library/Application Support/prawko/media/vid"
+  fi
+  say_c "SyncGov Media: convert existing raw → WebP/MP4 (no Excel download)."
+  ffmpeg="$(command -v ffmpeg)"
+  run_pipeline convert-media.py --source "$raw_dir" --img-out "$img_out" --vid-out "$vid_out" --ffmpeg "$ffmpeg"
+  remove_legacy_server_raw
+  server_installed || {
+    say_y "Server is not installed — media in staging. After install, run --sync-gov --sync-scope media again."
+    return 0
+  }
+  mkdir -p "$TARGET_DIR/src/media/img" "$TARGET_DIR/src/media/vid"
+  if [ "$img_out" != "$TARGET_DIR/src/media/img" ]; then
+    rsync -a "$img_out/" "$TARGET_DIR/src/media/img/"
+    rsync -a "$vid_out/" "$TARGET_DIR/src/media/vid/"
+  fi
+  set_local_media_base "$TARGET_DIR"
+  say_g "Done. Server uses local media (mediaBase=media)."
+}
+
+invoke_sync_gov() {
+  case "$SYNC_SCOPE" in
+    questions) publish_gov_questions ;;
+    media) publish_sync_gov_media ;;
+    full)
+      if [ "$SYNC_USE_CACHE" -eq 1 ] && [ -f "$GOV_DATA/baza_pytan.xlsx" ] && dir_has_files "$GOV_DATA/raw"; then
+        say_d "SyncUseCache: staging has Excel and raw — skipping gov.pl download."
+        publish_gov_install skip_download
+      else
+        publish_gov_install
+      fi
+      ;;
+    *) die "Unknown --sync-scope: $SYNC_SCOPE (use questions, media, or full)." ;;
+  esac
+}
+
 do_merge() {
   local excel="$GOV_DATA/baza_pytan.xlsx" py ffmpeg="" media_args=()
   ensure_python_openpyxl
@@ -816,6 +1089,12 @@ if [ -n "$EXPORT" ]; then
   exit 0
 fi
 
+if [ -n "$IMPORT" ]; then
+  import_pack "$IMPORT"
+  pause_if_interactive
+  exit 0
+fi
+
 if [ "$DEV_SET" -eq 1 ] && [ "$UNINSTALL" -eq 0 ]; then
   say_c "=== Git for changes (--dev) — no Node, no server ==="
   ensure_git
@@ -835,9 +1114,9 @@ if [ "$DEV_SET" -eq 1 ] && [ "$UNINSTALL" -eq 0 ]; then
   exit 0
 fi
 
-if [ "$GOV_QUESTIONS" -eq 1 ] || [ "$INSTALL_GOV" -eq 1 ] || [ "$MERGE" -eq 1 ]; then
+if [ "$SYNC_GOV" -eq 1 ] || [ "$MERGE_GOV" -eq 1 ]; then
   _prawko_gov_py="$(resolve_pipeline download-gov.py)" || die "Missing scripts/download-gov.py. Run the installer with no flags (it will download the app with scripts into $TARGET_DIR) or run it from the root of a cloned repo."
-  command -v python3 >/dev/null 2>&1 || die "python3 is required for --install-gov / --gov-questions / --merge."
+  command -v python3 >/dev/null 2>&1 || die "python3 is required for --sync-gov / --merge-gov."
   if [ -n "$_prawko_gov_data_preset" ]; then
     export PRAWKO_GOV_DATA="$_prawko_gov_data_preset"
   else
@@ -848,29 +1127,23 @@ if [ "$GOV_QUESTIONS" -eq 1 ] || [ "$INSTALL_GOV" -eq 1 ] || [ "$MERGE" -eq 1 ];
   unset _prawko_gov_py
 fi
 
-if [ "$GOV_QUESTIONS" -eq 1 ]; then
-  publish_gov_questions
+if [ "$SYNC_GOV" -eq 1 ]; then
+  invoke_sync_gov
   pause_if_interactive
   exit 0
 fi
 
-if [ "$INSTALL_GOV" -eq 1 ]; then
-  publish_gov_install
-  pause_if_interactive
-  exit 0
-fi
-
-if [ "$MERGE" -eq 1 ]; then
+if [ "$MERGE_GOV" -eq 1 ]; then
   if ! server_installed; then
-    die "--merge requires a running server. First run bash Install_Prawko.macos.sh with no flags."
+    die "--merge-gov requires a running server. First run bash Install_Prawko.macos.sh with no flags."
   fi
-  say_c "=== MERGE: gaps from ministry Excel (no launchd reinstall) ==="
+  say_c "=== MergeGov: gaps from ministry Excel (no launchd reinstall) ==="
   do_merge
   pause_if_interactive
   exit 0
 fi
 
-if [ "$PATCH" -eq 1 ] && [ "$MERGE" -eq 0 ] && [ "$UNINSTALL" -eq 0 ] && [ "$DEV_SET" -eq 0 ] && server_installed; then
+if [ "$PATCH" -eq 1 ] && [ "$MERGE_GOV" -eq 0 ] && [ "$UNINSTALL" -eq 0 ] && [ "$DEV_SET" -eq 0 ] && server_installed; then
   remove_legacy_server_raw
   apply_patch
   say_g "Done. In the open app, banner: Available update / Refresh."
@@ -878,14 +1151,15 @@ if [ "$PATCH" -eq 1 ] && [ "$MERGE" -eq 0 ] && [ "$UNINSTALL" -eq 0 ] && [ "$DEV
   exit 0
 fi
 
-if [ "$UNINSTALL" -eq 0 ] && [ "$MERGE" -eq 0 ] && [ "$GOV_QUESTIONS" -eq 0 ] && [ "$INSTALL_GOV" -eq 0 ] && [ "$PATCH" -eq 0 ] && [ "$DEV_SET" -eq 0 ] && server_installed; then
+if [ "$UNINSTALL" -eq 0 ] && [ "$MERGE_GOV" -eq 0 ] && [ "$SYNC_GOV" -eq 0 ] && [ "$PATCH" -eq 0 ] && [ "$DEV_SET" -eq 0 ] && [ -z "$IMPORT" ] && server_installed; then
   remove_legacy_server_raw
   say_y "Server already running in $TARGET_DIR — not overwriting files (no git checkout / pull)."
   say_d "  Code from local contrib: ./Install_Prawko.macos.sh --patch"
-  say_d "  Ministry questions:  ./Install_Prawko.macos.sh --install-gov   or   --gov-questions"
-  say_d "  Git for changes:     ./Install_Prawko.macos.sh --dev ~/prawko"
-  say_d "  Pack:                ./Install_Prawko.macos.sh --export ~/Desktop/kopia"
-  say_d "  From scratch:        ./Install_Prawko.macos.sh --uninstall   then with no flags"
+  say_d "  Ministry data:         ./Install_Prawko.macos.sh --sync-gov"
+  say_d "  Git for changes:       ./Install_Prawko.macos.sh --dev ~/prawko"
+  say_d "  Pack:                  ./Install_Prawko.macos.sh --export ~/Desktop/kopia"
+  say_d "  Restore:               ./Install_Prawko.macos.sh --import ~/Desktop/kopia"
+  say_d "  From scratch:          ./Install_Prawko.macos.sh --uninstall   then with no flags"
   pause_if_interactive
   exit 0
 fi
@@ -895,12 +1169,23 @@ if ! is_root && need_root_for_default; then
   args=()
   [ "$NONINTERACTIVE" -eq 1 ] && args+=(--non-interactive)
   [ "$UNINSTALL" -eq 1 ] && args+=(--uninstall)
-  [ "$INSTALL_GOV" -eq 1 ] && args+=(--install-gov)
-  [ "$GOV_QUESTIONS" -eq 1 ] && args+=(--gov-questions)
-  [ "$MERGE" -eq 1 ] && args+=(--merge)
+  [ "$SYNC_GOV" -eq 1 ] && args+=(--sync-gov)
+  [ "$SYNC_GOV" -eq 1 ] && [ "$SYNC_SCOPE" != "full" ] && args+=(--sync-scope "$SYNC_SCOPE")
+  [ "$SYNC_USE_CACHE" -eq 1 ] && args+=(--sync-use-cache)
+  [ "$MERGE_GOV" -eq 1 ] && args+=(--merge-gov)
   [ "$PATCH" -eq 1 ] && args+=(--patch)
   [ "$DROP_MISSING_MEDIA" -eq 1 ] && args+=(--drop-missing-media)
   [ -n "$EXPORT" ] && args+=(--export "$EXPORT")
+  [ -n "$IMPORT" ] && args+=(--import "$IMPORT")
+  [ "$EXCLUDE_DATA" -eq 1 ] && args+=(--exclude-data)
+  [ "$EXCLUDE_MEDIA" -eq 1 ] && args+=(--exclude-media)
+  [ "$EXCLUDE_LOCAL_JSON" -eq 1 ] && args+=(--exclude-local-json)
+  [ "$INCLUDE_GOV_CACHE" -eq 1 ] && args+=(--include-gov-cache)
+  [ "$IMPORT_FORCE" -eq 1 ] && args+=(--import-force)
+  [ -n "$IMPORT" ] && [ "$IMPORT_SCOPE" != "auto" ] && args+=(--import-scope "$IMPORT_SCOPE")
+  [ "$INSTALL_GOV" -eq 1 ] && args+=(--install-gov)
+  [ "$GOV_QUESTIONS" -eq 1 ] && args+=(--gov-questions)
+  [ "$MERGE" -eq 1 ] && args+=(--merge)
   [ "$DEV_SET" -eq 1 ] && args+=(--dev "$DEV")
   if [ "$UNINSTALL" -eq 0 ]; then
     # Homebrew does not install as root — tools before sudo, like winget before the service.
@@ -944,9 +1229,9 @@ remove_legacy_server_raw
 
 say_c "=== 4–5. SKIPPED (bank from AnabelMaz/prawko ZIP) ==="
 say_d "-> Questions: src/data from the pack. Media: CDN prawko-maz."
-say_d "-> Ministry Excel+ZIP: ./Install_Prawko.macos.sh --install-gov"
-say_d "-> Ministry question catalogue: ./Install_Prawko.macos.sh --gov-questions"
-say_d "-> Gaps from ministry:    ./Install_Prawko.macos.sh --merge"
+say_d "-> Ministry sync: ./Install_Prawko.macos.sh --sync-gov"
+say_d "-> Gaps from ministry: ./Install_Prawko.macos.sh --merge-gov"
+say_d "-> Pack / restore: --export / --import"
 say_d "-> Local contrib: ./Install_Prawko.macos.sh --patch"
 say_d "-> Git for changes:    ./Install_Prawko.macos.sh --dev ~/prawko (no server)"
 
@@ -983,7 +1268,7 @@ if curl -fsS "http://127.0.0.1:${LISTEN_PORT}/" >/dev/null 2>&1; then
   say_g "=================================================="
   say_g " SERVICE STARTED SUCCESSFULLY! "
   say_y " App: http://localhost:${LISTEN_PORT} "
-  if [ "$MERGE" -eq 1 ]; then
+  if [ "$MERGE_GOV" -eq 1 ]; then
     say_y " Questions:   AnabelMaz/prawko + gaps from ministry Excel (merge) "
   else
     say_y " Questions:   bank from AnabelMaz/prawko (src/data) "

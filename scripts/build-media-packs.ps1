@@ -6,7 +6,7 @@
 # needs parse-excel.ps1 — packs only group files the app already references.
 #
 # Pipeline (two public hosts — treat buckets as empty):
-#   1. Install_Prawko.windows.ps1 -InstallGov   → Excel, convert-media, JSON
+#   1. Install_Prawko.windows.ps1 -SyncGov   → Excel, convert-media, JSON
 #   2. scripts/upload-media.ps1         → B2 prawko-maz img/ + vid/ (online play)
 #   3. scripts/build-media-packs.ps1    → zip + manifest (this script)
 #   4. Cloudflare R2 dashboard          → prawko-packs (public PACKS_BASE)

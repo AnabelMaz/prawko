@@ -376,6 +376,7 @@ function revokePlayableBlob() {
 
 export function renderQuestion(question, container, options = {}) {
   const examMedia = options.examMedia === true;
+  const learnMediaMark = options.learnMediaMark || null;
   const q = translateQuestion(question);
   const mediaArea = container.querySelector('.media-area');
   const questionText = container.querySelector('.question-text')
@@ -552,10 +553,14 @@ export function renderQuestion(question, container, options = {}) {
               setLearnMediaMarkHidden(true);
               video.play();
             });
-            video.addEventListener('play', () => setReplayVisible(false));
+            video.addEventListener('play', () => {
+              setReplayVisible(false);
+              setLearnMediaMarkHidden(true);
+            });
             video.addEventListener('ended', () => {
               setReplayVisible(true);
-              setLearnMediaMarkHidden(false);
+              if (learnMediaMark) showLearnMediaMark(learnMediaMark.isCorrect);
+              else setLearnMediaMarkHidden(false);
             });
 
             mediaArea.classList.add('has-learn-video');
@@ -584,11 +589,11 @@ export function renderQuestion(question, container, options = {}) {
           mediaArea.innerHTML = '';
 
           const img = document.createElement('img');
-          img.onload = () => mediaArea.classList.remove('loading');
+          const onImageReady = () => finishLearnImageLoad(mediaArea, learnMediaMark);
+          img.onload = onImageReady;
           img.onerror = () => loadImage();
-          img.src = mediaUrl;
           img.alt = t('imgAlt');
-          img.loading = 'lazy';
+          img.loading = 'eager';
           img.decoding = 'async';
           img.width = 1280;
           img.height = 720;
@@ -600,6 +605,8 @@ export function renderQuestion(question, container, options = {}) {
             img.addEventListener('contextmenu', (e) => e.preventDefault());
           }
           mediaArea.appendChild(img);
+          img.src = mediaUrl;
+          if (img.complete) onImageReady();
           syncExamMediaAlign();
         })();
       };
@@ -738,10 +745,16 @@ export function showLearnMediaMark(isCorrect) {
     mark.setAttribute('aria-hidden', 'true');
     mediaArea.appendChild(mark);
   }
-  mark.hidden = false;
   mark.classList.toggle('correct', isCorrect);
   mark.classList.toggle('incorrect', !isCorrect);
   mark.textContent = isCorrect ? '\u2713' : '\u2717';
+  const video = mediaArea.querySelector('video');
+  mark.hidden = Boolean(video && !video.paused && !video.ended);
+}
+
+function finishLearnImageLoad(mediaArea, learnMediaMark) {
+  mediaArea.classList.remove('loading');
+  if (learnMediaMark) showLearnMediaMark(learnMediaMark.isCorrect);
 }
 
 function setLearnMediaMarkHidden(hidden) {

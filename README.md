@@ -71,60 +71,70 @@ Po wgraniu nowszej wersji kodu w otwartej karcie może pojawić się baner „Do
 | Aplikacja i usługa | `C:\ProgramData\prawko` |
 | ZIP / surowe JPG·WMV z gov.pl | `%LOCALAPPDATA%\prawko\gov-data` |
 | Skonwertowane WebP / MP4 i JSON z Excela | `C:\ProgramData\prawko\src\media` oraz `src\data` |
-| FFmpeg przenośny (przy `-InstallGov` / `-Merge`, gdy nie ma w PATH) | `C:\ProgramData\prawko\tools` |
+| FFmpeg przenośny (przy `-SyncGov` / `-MergeGov`, gdy nie ma w PATH) | `C:\ProgramData\prawko\tools` |
 
-Zwykły użytkownik **nie potrzebuje** drugiego klona gita. `-InstallGov` nie kopiuje mediów jeszcze raz obok checkoutu.
-
-Jedyna powtórka przy `-InstallGov`: archiwum ZIP + rozpakowane JPG/WMV (cache, żeby nie ściągać od zera) oraz surowe pliki + WebP/MP4 (źródło vs to, co odtwarza przeglądarka). To nie są dwie kopie tej samej paczki w ProgramData i w gicie.
+Zwykły użytkownik **nie potrzebuje** drugiego klona gita. `-SyncGov` nie kopiuje mediów do folderu gita — tylko na serwer w ProgramData.
 
 ### Przełączniki instalatora
 
 | Przełącznik | Działanie |
 |---|---|
-| *(brak)* | Instalacja serwera, pytania z repo; oglądanie z Backblaze, offline z Cloudflare |
-| `-InstallGov` | Excel + ZIP multimediów sytuacyjnych z gov.pl; konwersja WebP/MP4 na serwer. **Nie** pobiera tłumaczeń migowych (PJM, ~10 GB) |
-| `-GovQuestions` | Tylko katalog pytań (Excel → JSON na serwerze). Nie rusza mediów ani CDN |
-| `-DropMissingMedia` | Tylko z `-InstallGov`: wykreśla z JSON media, których nie ma w lokalnym raw. **Domyślnie wyłączone** — nazwa z Excela zostaje (CDN) |
-| `-Dev <folder>` | Tylko Git + klon do pracy. **Bez** Node i **bez** serwera |
-| `-Patch` | Overlay `src` z contrib (bez `data\` i `media\`). Na **stojącym** serwerze nic nie doinstalowuje. **Bez** serwera = ZIP + Node + usługa + overlay |
-| `-Merge` | Na **stojącym** serwerze dopisuje z Excela MI tylko braki. Bez serwera = błąd |
-| `-Export <ścieżka>` | Paczka do innego folderu (instalator + contrib), bez ruszania serwera |
-| `-Uninstall` | Usuwa usługę i `C:\ProgramData\prawko`. Git / Node / NSSM zostają w systemie |
-| `-NonInteractive` | Bez pauzy Enter na końcu |
-| `-Help` | Pełna pomoc |
+| *(brak)* | Serwer: ZIP z GitHuba, pytania z repo, media z CDN |
+| `-SyncGov` | Gov.pl → staging → serwer. Domyślnie **Full** (Excel + ZIP + WebP/MP4 + JSON). **Nie** pobiera PJM (~10 GB) |
+| `-SyncScope Questions\|Media\|Full` | Zakres `-SyncGov`: tylko pytania / tylko konwersja raw / pełne (domyślne) |
+| `-SyncUseCache` | Przy `-SyncGov`: nie woła gov.pl, gdy staging ma Excel i raw |
+| `-DropMissingMedia` | Przy `-SyncGov` (Full/Media): wycina z JSON media bez pliku lokalnego. Domyślnie **wyłączone** |
+| `-MergeGov` | Na stojącym serwerze: dopisuje z Excela MI tylko braki |
+| `-Export <ścieżka>` | Paczka przenośna: kod + **domyślnie** snapshot serwera (`data`, `media`, `local.json`, `manifest.json`) |
+| `-ExcludeData` / `-ExcludeMedia` / `-ExcludeLocalJson` | Przy `-Export`: wyklucz z paczki (domyślnie wszystko wchodzi) |
+| `-IncludeGovCache` | Przy `-Export`: dołóż `%LOCALAPPDATA%\prawko\gov-data` (Excel, raw, cache) |
+| `-Import <ścieżka>` | Przywróć z paczki exportu (serwer musi już stać). `-ImportScope Auto\|Code\|Runtime`, `-ImportForce` |
+| `-Dev <folder>` | Tylko Git + klon. **Bez** Node i serwera |
+| `-Patch` | Overlay kodu z contrib (`src\`, bez `data\` i `media\`) |
+| `-Uninstall` | Usuwa usługę i `C:\ProgramData\prawko` |
+| `-NonInteractive` / `-Help` | Bez pauzy Enter / pełna pomoc |
 
-Każdy przełącznik doinstalowuje **tylko to, czego używa**:
-
-| Akcja | Może doinstalować | Nie rusza |
-|---|---|---|
-| *(brak)* | Node, NSSM, ZIP aplikacji, usługa | Git |
-| `-Dev` | Git + klon | Node, NSSM, serwer |
-| `-Patch` | nic, gdy serwer stoi; bez serwera: Node + usługa + overlay | Git |
-| `-InstallGov` | FFmpeg gdy brak | Git, reinstal usługi |
-| `-GovQuestions` | Excel z gov.pl | Git, Node, serwer |
-| `-Merge` | Excel; zapis do stojącego serwera | pełny reinstal (brak serwera = błąd) |
-| `-Export` | nic | serwer |
-| `-Uninstall` | nic nowego | Git / Node / NSSM zostają |
+**Legacy (nadal działają):** `-InstallGov` = `-SyncGov`, `-GovQuestions` = `-SyncGov -SyncScope Questions`, `-Merge` = `-MergeGov`.
 
 Administrator tylko przy **pierwszej instalacji serwera** albo `-Uninstall`.
 
-### Lokalna paczka ministerstwa (opcjonalnie, kilka GB)
+### Gov.pl na serwerze (opcjonalnie, kilka GB)
 
-Domyślna instalacja **wystarcza do nauki i egzaminu**. JSON jest w repo; oglądanie z Backblaze, „Pobierz offline” z Cloudflare.
+Domyślna instalacja wystarcza (JSON z repo, media z CDN).
 
-Lokalne WebP/MP4 (na dysku serwera, bez B2/R2, albo własna kopia):
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -InstallGov
-```
-
-Staging (ZIP, surowe JPG/WMV) ląduje w `%LOCALAPPDATA%\prawko\gov-data`. Konwersja i JSON — tylko na serwerze w ProgramData. Gdy na `C:` mało miejsca, ZIP/raw mogą spaść do `gov-data` w checkoutcie na innym dysku.
-
-Sam katalog pytań, bez ściągania filmów:
+Pełna paczka MI lokalnie:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -GovQuestions
+powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -SyncGov
 ```
+
+Tylko pytania, filmy z CDN:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -SyncGov -SyncScope Questions
+```
+
+Staging (ZIP, raw) → `%LOCALAPPDATA%\prawko\gov-data`. WebP/MP4 i JSON → `C:\ProgramData\prawko\src\`.
+
+### Export i import (USB / nowy PC)
+
+**Export** — domyślnie pełny snapshot (pytania + media + `local.json`), bez dotykania serwera:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -Export D:\backup\prawko-pack
+```
+
+Tylko kod (mniejsza paczka): dodaj `-ExcludeData -ExcludeMedia -ExcludeLocalJson`.
+
+Struktura paczki: `prawko\` (launcher), `prawko-contrib\`, `snapshot\`, `manifest.json`; opcjonalnie `gov-cache\`.
+
+**Import** — na nowym PC najpierw instalator **bez przełączników**, potem:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -Import D:\backup\prawko-pack
+```
+
+`-ImportForce` nadpisuje istniejące `data`/`media` na serwerze. Bez gov.pl, jeśli paczka ma snapshot.
 
 ### Instalacja dla dewelopera
 
@@ -152,7 +162,7 @@ powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -Patch
 powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -Uninstall
 ```
 
-Znika usługa i `C:\ProgramData\prawko` (w tym FFmpeg ściągnięty tam przez `-InstallGov`). Katalog `%LOCALAPPDATA%\prawko\gov-data` oraz Git / Node / NSSM zostają.
+Znika usługa i `C:\ProgramData\prawko` (w tym FFmpeg z `-SyncGov`). `%LOCALAPPDATA%\prawko\gov-data` oraz Git / Node / NSSM zostają.
 
 ---
 
@@ -167,7 +177,7 @@ Ten sam produkt co na Windowsie: ściągasz **jeden skrypt**, resztę robi on sa
 | System | macOS (Intel albo Apple Silicon) |
 | Powłoka | bash (wbudowany) — **nie** musisz klonować repo ani instalować Homebrew wcześniej |
 | Uprawnienia | Pierwsza instalacja zapyta o **hasło administratora** (sudo), jak UAC na Windows |
-| Python | Tylko przy `--install-gov` / `--gov-questions` / `--merge`. Do samego serwera **nie** |
+| Python | Tylko przy `--sync-gov` / `--merge-gov`. Do samego serwera **nie** |
 
 Instalator sam doinstaluje **Homebrew** (jeśli go nie ma), potem **Node.js**. Gita nie rusza, chyba że podasz `--dev`.
 
@@ -214,29 +224,17 @@ Gdy usługa już stoi, ponowne odpalenie **bez przełączników nic nie nadpisuj
 
 ### Przełączniki (jak na Windowsie)
 
-| macOS | Windows | Działanie |
-|---|---|---|
-| *(brak)* | *(brak)* | Serwer, pytania z repo; oglądanie z Backblaze, offline z Cloudflare |
-| `--install-gov` | `-InstallGov` | Excel + ZIP z gov.pl; WebP/MP4 na serwer. **Nie** pobiera PJM |
-| `--gov-questions` | `-GovQuestions` | Tylko Excel → JSON na serwerze |
-| `--drop-missing-media` | `-DropMissingMedia` | Tylko z `--install-gov`; domyślnie **wyłączone** |
-| `--dev <folder>` | `-Dev <folder>` | Tylko Git + klon. **Bez** Node i **bez** serwera. Nie `/usr/local/prawko` |
-| `--patch` | `-Patch` | Overlay `src` bez `data/` i `media/`. Na stojącym serwerze nic nie doinstalowuje. Bez serwera = ZIP + Node + launchd + overlay |
-| `--merge` | `-Merge` | Dopisz z Excela MI tylko braki; **wymaga** serwera |
-| `--export <ścieżka>` | `-Export` | Paczka instalator + contrib |
-| `--uninstall` | `-Uninstall` | Usuwa launchd i `/usr/local/prawko` |
-| `--non-interactive` | `-NonInteractive` | Bez pauzy Enter |
-| `--help` | `-Help` | Pomoc |
+Te same joby co w tabeli Windows powyżej. macOS używa `--sync-gov`, `--export`, `--import`, `--merge-gov` itd. (legacy: `--install-gov`, `--gov-questions`, `--merge`).
 
 ```bash
-./Install_Prawko.macos.sh --install-gov
-./Install_Prawko.macos.sh --gov-questions
-./Install_Prawko.macos.sh --dev ~/prawko
-./Install_Prawko.macos.sh --patch
-./Install_Prawko.macos.sh --uninstall
+bash Install_Prawko.macos.sh --sync-gov
+bash Install_Prawko.macos.sh --export ~/Desktop/prawko-pack
+bash Install_Prawko.macos.sh --import ~/Desktop/prawko-pack
+bash Install_Prawko.macos.sh --dev ~/prawko
+bash Install_Prawko.macos.sh --patch
 ```
 
-Na macOS `--gov-questions`, `--install-gov` i `--merge` potrzebują **Pythona** (gov.pl + Excel). Node jest tylko do serwera aplikacji. `--dev` tego nie rusza. Sudo tylko przy pierwszej instalacji serwera albo `--uninstall`.
+`--sync-gov` i `--merge-gov` wymagają **Pythona**. Sudo tylko przy pierwszej instalacji serwera albo `--uninstall`.
 
 ### Instalacja dla dewelopera (macOS)
 
@@ -271,7 +269,7 @@ Wymaga **systemd** (Ubuntu, Debian, Fedora, Arch, openSUSE i pokrewne). Alpine /
 | System | Linux z systemd, x86_64 albo aarch64 (glibc) |
 | Powłoka | bash |
 | Uprawnienia | Pierwsza instalacja: **sudo** (katalog `/opt/prawko` i unit systemd) |
-| Python | Tylko przy `--install-gov` / `--gov-questions` / `--merge` |
+| Python | Tylko przy `--sync-gov` / `--merge-gov` |
 
 Node: najpierw to, co już jest w PATH (18+), potem paczka dystrybucji (`apt` / `dnf` / `yum` / `pacman` / `zypper` / `apk`), na końcu oficjalny tarball z nodejs.org do `/opt/prawko/tools/node`. Homebrew na Linuksie **nie** jest używany. `--dev` nie instaluje Gita — daj `sudo apt install git` (albo odpowiednik).
 
@@ -293,7 +291,7 @@ bash Install_Prawko.linux.sh
 
 3. Otwórz [http://localhost:5173](http://localhost:5173).
 
-Pełna lista: `bash Install_Prawko.linux.sh --help`. Przełączniki jak na macOS (`--dev`, `--patch`, `--install-gov`, …).
+Pełna lista: `bash Install_Prawko.linux.sh --help`. Przełączniki jak na macOS (`--sync-gov`, `--export`, `--import`, …).
 
 ### Gdzie lądują pliki
 
@@ -306,10 +304,11 @@ Pełna lista: `bash Install_Prawko.linux.sh --help`. Przełączniki jak na macOS
 | Tarball Node (gdy brak paczki 18+) | `/opt/prawko/tools/node` |
 
 ```bash
-bash Install_Prawko.linux.sh --install-gov
+bash Install_Prawko.linux.sh --sync-gov
+bash Install_Prawko.linux.sh --export ~/prawko-pack
+bash Install_Prawko.linux.sh --import ~/prawko-pack
 bash Install_Prawko.linux.sh --dev ~/prawko
 bash Install_Prawko.linux.sh --patch
-bash Install_Prawko.linux.sh --uninstall
 ```
 
 ---
@@ -320,7 +319,7 @@ bash Install_Prawko.linux.sh --uninstall
 - **Symulacja egzaminu** — 32 pytania, 25 minut, punktacja jak na egzaminie
 - **12 kategorii** — A, A1, A2, AM, B, B1, C, C1, D, D1, PT, T
 - **Skórki** — Panel i Stacja
-- **Multimedia** — zdjęcia i filmy z oficjalnej bazy (stream z Backblaze, paczki offline z Cloudflare, albo lokalnie po `-InstallGov`)
+- **Multimedia** — zdjęcia i filmy z oficjalnej bazy (stream z Backblaze, paczki offline z Cloudflare, albo lokalnie po `-SyncGov`)
 - **Języki** — PL, EN, DE, UA (interfejs i treść pytań)
 - **Tryb ciemny / jasny** — zapisany w przeglądarce
 - **Profile lokalne** — postęp na tym komputerze
@@ -350,7 +349,7 @@ Treść pytań w językach obcych pochodzi z Excela MI (`Pytanie [EN]`, `Pytanie
 | Zdjęcia / filmy | nie (pusty `src/media`) | CDN albo `C:\ProgramData\prawko\src\media` | CDN albo `/usr/local/prawko/src/media` | CDN albo `/opt/prawko/src/media` |
 | Excel / ZIP / JPG / WMV | nie | `%LOCALAPPDATA%\prawko\gov-data` | `~/Library/Application Support/prawko/gov-data` | `~/.local/share/prawko/gov-data` |
 
-Czysty clone **nie wymaga** `-InstallGov`. JSON jest w `src/data`. Domyślnie (github.io i localhost bez mediów na dysku):
+Czysty clone **nie wymaga** `-SyncGov`. JSON jest w `src/data`. Domyślnie (github.io i localhost bez mediów na dysku):
 
 | Co | Skąd | Stała w `src/js/data.js` |
 |---|---|---|
@@ -359,7 +358,7 @@ Czysty clone **nie wymaga** `-InstallGov`. JSON jest w `src/data`. Domyślnie (g
 
 R2 zostaje na publicznym adresie testowym `r2.dev` (bez płatnej domeny). Własna domena na kubeł nie jest wymagana. Stary fetch plik-po-pliku z B2 zostaje w kodzie (`OFFLINE_DOWNLOAD = 'files'`).
 
-**Dwa hosty, zawsze oba** — jakby kubełki były puste. Instalator (`-InstallGov`) robi tylko dysk lokalny (kroki 1–3). **Nie** wgrywa nic na B2 ani R2.
+**Dwa hosty, zawsze oba** — jakby kubełki były puste. Instalator (`-SyncGov`) robi tylko dysk lokalny (kroki 1–3). **Nie** wgrywa nic na B2 ani R2.
 
 ### Od gov.pl do chmury (kolejność)
 
@@ -367,7 +366,7 @@ PJM (tłumaczenia migowe) na gov.pl jest **wylistywane, nie pobierane**.
 
 | Krok | Skąd | Co | Dokąd | Narzędzie |
 |---|---|---|---|---|
-| 1 | [gov.pl — prawo jazdy](https://www.gov.pl/web/infrastruktura/prawo-jazdy) | Excel + ZIP-y JPG/WMV (sytuacyjne) | `%LOCALAPPDATA%\prawko\gov-data` (`baza_pytan.xlsx`, `raw\`, `cache\`) | `download-gov.ps1` albo `-InstallGov` |
+| 1 | [gov.pl — prawo jazdy](https://www.gov.pl/web/infrastruktura/prawo-jazdy) | Excel + ZIP-y JPG/WMV (sytuacyjne) | `%LOCALAPPDATA%\prawko\gov-data` (`baza_pytan.xlsx`, `raw\`, `cache\`) | `download-gov.ps1` albo `-SyncGov` |
 | 2 | `gov-data\raw` | JPG → WebP, WMV → MP4 | `C:\ProgramData\prawko\src\media\img` i `vid` (bez serwera: `%LOCALAPPDATA%\prawko\media`) | `convert-media.ps1` |
 | 3 | Excel | JSON pytań (nazwy plików mediów) | `src\data\` (i kopia na serwerze) | `parse-excel.ps1` |
 | 4 | `src\media` z kroku 2 | pojedyncze WebP i MP4 | Backblaze B2 `prawko-maz` → `img/` i `vid/` (oglądanie online, `MEDIA_CDN`) | `upload-media.ps1` (`.b2env`; `b2 sync --skipNewer`) |
@@ -389,16 +388,16 @@ Push na `main` odpala testy Playwright i wgrywa `src/` na GitHub Pages: [anabelm
 
 ## Pipeline danych na Windows
 
-Regeneracja JSON i mediów jest w **PowerShellu** (bez Pythona i bez Node w pipeline). Na Windowsie nie używaj bliźniaków `.py`. Instalator `Install_Prawko.windows.ps1` woła te skrypty sam (`-InstallGov` / `-GovQuestions` / `-Merge`). Ścieżki `gov-data` bierze z `scripts/download-gov.ps1 -LibraryOnly` (nie zgaduje katalogu w instalatorze). `convert-media.ps1` ładuje tę samą bibliotekę. `-Merge` woła `scripts/merge-gov.ps1` (ten sam job co `merge-gov.py` na macOS/Linux).
+Regeneracja JSON i mediów jest w **PowerShellu** (bez Pythona i bez Node w pipeline). Instalator woła te skrypty przez `-SyncGov` / `-MergeGov`. Ręcznie — tylko gdy wiesz, co robisz; zwykły user idzie przez instalator.
 
-Wymagania poza instalatorem: przy konwersji mediów **FFmpeg** i **cwebp** (instalator przy `-InstallGov` kładzie przenośnego FFmpeg do `tools\`, jeśli nie ma w PATH).
+Wymagania poza instalatorem: **FFmpeg** i **cwebp** (`-SyncGov` kładzie przenośnego FFmpeg do `tools\`, jeśli brak w PATH).
 
 | Skrypt | Zadanie |
 |---|---|
 | `scripts/download-gov.ps1` | Excel + ZIP z gov.pl → `%LOCALAPPDATA%\prawko\gov-data` |
 | `scripts/parse-excel.ps1` | Excel → `src/data/*.json` oraz `translations_{en,de,uk}.json` |
 | `scripts/convert-media.ps1` | JPG → WebP, WMV → MP4 (nie rusza PJM) |
-| `scripts/merge-gov.ps1` | Dopisywanie braków MI (`-Merge`); też `. scripts\merge-gov.ps1 -LibraryOnly` |
+| `scripts/merge-gov.ps1` | Dopisywanie braków MI (`-MergeGov`); też `. scripts\merge-gov.ps1 -LibraryOnly` |
 | `scripts/filter-no-media.ps1` | **Raport** pytań z `media: null`. Kasowanie wierszy tylko z `-Remove` |
 | `scripts/upload-media.ps1` | Sync `img/` `vid/` na B2 `prawko-maz` (online). Domyślnie ProgramData / LocalAppData / repo; `-MediaDir`. `--skipNewer` |
 | `scripts/build-media-packs.ps1` | Zipy + `manifest.json` → `%LOCALAPPDATA%\prawko\packs` (nie git) |
@@ -410,7 +409,7 @@ Przykład — JSON z Excela już leżącego na dysku:
 powershell -ExecutionPolicy Bypass -File .\scripts\parse-excel.ps1
 ```
 
-Domyślna ścieżka Excela to `gov-data\baza_pytan.xlsx` obok repo. Po `-InstallGov` / `-GovQuestions` plik jest w LocalAppData — wtedy podaj `-Excel`:
+Domyślna ścieżka Excela to `gov-data\baza_pytan.xlsx` obok repo. Po `-SyncGov` plik jest w LocalAppData — wtedy podaj `-Excel`:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\parse-excel.ps1 `
@@ -439,7 +438,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build-media-packs.ps1
 
 Po pierwszym syncu B2 ustaw `MEDIA_CDN` w `src/js/data.js` na URL wypisany przez `upload-media.ps1`. `PACKS_BASE` to publiczny URL R2 (`r2.dev`), nie B2.
 
-Zwykła aktualizacja pytań na już stojącym serwerze: `Install_Prawko.windows.ps1 -GovQuestions` albo `-InstallGov`. Nie odpalaj pełnego instalatora „dla pewności”, jeśli serwer już działa.
+Aktualizacja pytań na stojącym serwerze: `-SyncGov -SyncScope Questions` albo `-SyncGov`. Pełny reinstal „dla pewności” nie jest potrzebny.
 
 ---
 
@@ -453,7 +452,7 @@ Instalator to **`.sh`**. Reszta pipeline to **Python** (`python3`), bez Node i b
 | `scripts/parse-excel.py` | Excel → JSON (ten sam zestaw reguł co `parse-excel.ps1`) |
 | `scripts/convert-media.py` | JPG → WebP, WMV → MP4 (VideoToolbox, gdy jest; nie rusza PJM) |
 | `scripts/filter-no-media.py` | Raport; kasowanie tylko z `--remove` |
-| `scripts/merge-gov.py` | Dopisywanie braków MI (`--merge`) |
+| `scripts/merge-gov.py` | Dopisywanie braków MI (`--merge-gov`) |
 | `scripts/upload-media.py` | Sync `img/` `vid/` na B2 (online). `--skipNewer`. `--media-dir` |
 | `scripts/build-media-packs.py` | To samo co `build-media-packs.ps1` (zipy + manifest) |
 | `scripts/upload-packs.py` | Opcjonalne archiwum zipów na B2 — nie host „Pobierz offline” |
@@ -555,60 +554,52 @@ After a code overlay, an open tab may show an "Update available" banner — use 
 | App and service | `C:\ProgramData\prawko` |
 | ZIP / raw JPG·WMV from gov.pl | `%LOCALAPPDATA%\prawko\gov-data` |
 | Converted WebP / MP4 and Excel JSON | `C:\ProgramData\prawko\src\media` and `src\data` |
-| Portable FFmpeg (if `-InstallGov` / `-Merge` and none on PATH) | `C:\ProgramData\prawko\tools` |
+| Portable FFmpeg (if `-SyncGov` / `-MergeGov` and none on PATH) | `C:\ProgramData\prawko\tools` |
 
-A normal user does **not** need a second git clone. `-InstallGov` does not duplicate media next to the checkout.
-
-The only duplication with `-InstallGov` is ZIP + unpacked JPG/WMV (download cache) versus raw + WebP/MP4 (source vs what the browser plays). That is not two copies of the same pack in ProgramData and in git.
+A normal user does **not** need a second git clone. `-SyncGov` does not duplicate media next to the checkout.
 
 ### Installer switches
 
 | Switch | Effect |
 |---|---|
-| *(none)* | Server install, repo questions; playback from Backblaze, offline from Cloudflare |
-| `-InstallGov` | Excel + situational media ZIPs from gov.pl; WebP/MP4 on the server. Does **not** download sign-language packs (PJM, ~10 GB) |
-| `-GovQuestions` | Question catalogue only (Excel → JSON on the server). Leaves media and the CDN alone |
-| `-DropMissingMedia` | With `-InstallGov` only: clear JSON media names whose files are missing from local raw. **Off by default** — Excel names stay (CDN) |
-| `-Dev <folder>` | Git clone only — **no** Node and **no** server. Empty or new folder; **not** `C:\ProgramData\prawko` |
-| `-Patch` | Overlay `src` from contrib (skip `data\` and `media\`). Installs nothing if the server is already up. **Without** a server: ZIP + Node + service + overlay |
-| `-Merge` | Keep GitHub questions; add ministry Excel rows that are not already there. **Requires** a running server |
-| `-Export <path>` | Copy a portable pack (installer + contrib) without touching the server |
-| `-Uninstall` | Remove the service and `C:\ProgramData\prawko`. Git / Node / NSSM stay on the machine |
-| `-NonInteractive` | No Enter pause at the end |
-| `-Help` | Full help |
+| *(none)* | Server: GitHub ZIP, repo questions, CDN media |
+| `-SyncGov` | Gov.pl → staging → server. Default **Full** (Excel + ZIP + WebP/MP4 + JSON). No PJM (~10 GB) |
+| `-SyncScope Questions\|Media\|Full` | Scope for `-SyncGov` |
+| `-SyncUseCache` | Skip gov.pl when staging already has Excel + raw |
+| `-DropMissingMedia` | With `-SyncGov` (Full/Media): strip JSON media without local files. **Off** by default |
+| `-MergeGov` | On a running server: append ministry Excel rows that are missing |
+| `-Export <path>` | Portable pack: code + **default** server snapshot (`data`, `media`, `local.json`, `manifest.json`) |
+| `-ExcludeData` / `-ExcludeMedia` / `-ExcludeLocalJson` | Slim down `-Export` (all included by default) |
+| `-IncludeGovCache` | Add `%LOCALAPPDATA%\prawko\gov-data` to export |
+| `-Import <path>` | Restore from export pack (server must already be up). `-ImportScope Auto\|Code\|Runtime`, `-ImportForce` |
+| `-Dev <folder>` | Git clone only — **no** Node, **no** server |
+| `-Patch` | Overlay code from contrib (`src\`, skip `data\` and `media\`) |
+| `-Uninstall` | Remove service and `C:\ProgramData\prawko` |
+| `-NonInteractive` / `-Help` | No Enter pause / full help |
 
-Each switch installs **only what it uses**:
-
-| Action | May install | Leaves alone |
-|---|---|---|
-| *(none)* | Node, NSSM, app ZIP, service | Git |
-| `-Dev` | Git + clone | Node, NSSM, server |
-| `-Patch` | nothing if the server is up; otherwise Node + service + overlay | Git |
-| `-InstallGov` | FFmpeg if missing | Git, service reinstall |
-| `-GovQuestions` | Excel from gov.pl | Git, Node, server |
-| `-Merge` | Excel; writes into the running server | full reinstall (no server = error) |
-| `-Export` | nothing | server |
-| `-Uninstall` | nothing new | Git / Node / NSSM stay |
+**Legacy (still work):** `-InstallGov` = `-SyncGov`, `-GovQuestions` = `-SyncGov -SyncScope Questions`, `-Merge` = `-MergeGov`.
 
 Administrator only for the **first server install** or `-Uninstall`.
 
 ### Optional local ministry pack (several GB)
 
-The default install is enough to study and sit a mock exam. JSON is in the repo; playback is Backblaze, Download offline is Cloudflare.
-
-Local WebP/MP4 (on the server disk, no B2/R2, or your own copy):
+Default install is enough (repo JSON, CDN media).
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -InstallGov
+powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -SyncGov
+powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -SyncGov -SyncScope Questions
 ```
 
-Staging (ZIP, raw JPG/WMV) goes to `%LOCALAPPDATA%\prawko\gov-data`. Conversion and JSON go only to the ProgramData server. If `C:` is tight, ZIP/raw may overflow to `gov-data` in a checkout on another drive.
+Staging → `%LOCALAPPDATA%\prawko\gov-data`. WebP/MP4 and JSON → `C:\ProgramData\prawko\src\`.
 
-Questions only, no film download:
+### Export and import (USB / new PC)
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -GovQuestions
+powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -Export D:\backup\prawko-pack
+powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -Import D:\backup\prawko-pack
 ```
+
+Code-only pack: add `-ExcludeData -ExcludeMedia -ExcludeLocalJson`. On a new PC: install **with no switches** first, then `-Import`.
 
 ### Developer install
 
@@ -636,7 +627,7 @@ powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -Patch
 powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -Uninstall
 ```
 
-Removes the service and `C:\ProgramData\prawko` (including FFmpeg dropped there by `-InstallGov`). `%LOCALAPPDATA%\prawko\gov-data` and Git / Node / NSSM remain.
+Removes the service and `C:\ProgramData\prawko` (including FFmpeg from `-SyncGov`). `%LOCALAPPDATA%\prawko\gov-data` and Git / Node / NSSM remain.
 
 ---
 
@@ -651,7 +642,7 @@ Same product as Windows: download **one script**, it does the rest (tools, ZIP, 
 | OS | macOS (Intel or Apple Silicon) |
 | Shell | built-in bash — you do **not** clone the repo or install Homebrew first |
 | Privileges | First install asks for the **administrator password** (sudo), like UAC on Windows |
-| Python | Only for `--install-gov` / `--gov-questions` / `--merge`. Not needed to run the app |
+| Python | Only for `--sync-gov` / `--merge-gov`. Not needed to run the app |
 
 The installer installs **Homebrew** if missing, then **Node.js**. Git is installed only with `--dev`.
 
@@ -698,28 +689,17 @@ If the service is already running, a second run **with no switches does not over
 
 ### Switches (same jobs as Windows)
 
-| macOS | Windows | Effect |
-|---|---|---|
-| *(none)* | *(none)* | Server, repo questions; playback from Backblaze, offline from Cloudflare |
-| `--install-gov` | `-InstallGov` | Excel + ZIPs from gov.pl; WebP/MP4 on the server. No PJM |
-| `--gov-questions` | `-GovQuestions` | Excel → JSON on the server only |
-| `--drop-missing-media` | `-DropMissingMedia` | With `--install-gov` only; **off** by default |
-| `--dev <folder>` | `-Dev <folder>` | Git + clone only. **No** Node and **no** server. Not `/usr/local/prawko` |
-| `--patch` | `-Patch` | Overlay `src`, skip `data/` and `media/`. Installs nothing if the server is up. Without a server: ZIP + Node + launchd + overlay |
-| `--merge` | `-Merge` | Add ministry Excel rows that are not already there; **requires** a running server |
-| `--export <path>` | `-Export` | Portable pack |
-| `--uninstall` | `-Uninstall` | Remove launchd and `/usr/local/prawko` |
-| `--non-interactive` | `-NonInteractive` | No Enter pause |
-| `--help` | `-Help` | Help |
+Same flags as the Windows table above: `--sync-gov`, `--export`, `--import`, `--merge-gov`, etc. (legacy: `--install-gov`, `--gov-questions`, `--merge`).
 
 ```bash
-./Install_Prawko.macos.sh --install-gov
-./Install_Prawko.macos.sh --dev ~/prawko
-./Install_Prawko.macos.sh --patch
-./Install_Prawko.macos.sh --uninstall
+bash Install_Prawko.macos.sh --sync-gov
+bash Install_Prawko.macos.sh --export ~/Desktop/prawko-pack
+bash Install_Prawko.macos.sh --import ~/Desktop/prawko-pack
+bash Install_Prawko.macos.sh --dev ~/prawko
+bash Install_Prawko.macos.sh --patch
 ```
 
-`--dev` does not set up localhost and does not install Node. `--patch` overlays your code onto a **running** server.
+`--sync-gov` and `--merge-gov` need **Python**. Sudo only on first server install or `--uninstall`.
 
 ### Developer install (macOS)
 
@@ -752,7 +732,7 @@ Needs **systemd** (Ubuntu, Debian, Fedora, Arch, openSUSE and similar). Alpine /
 | OS | Linux with systemd, x86_64 or aarch64 (glibc) |
 | Shell | bash |
 | Privileges | First install: **sudo** (`/opt/prawko` and the systemd unit) |
-| Python | Only for `--install-gov` / `--gov-questions` / `--merge` |
+| Python | Only for `--sync-gov` / `--merge-gov` |
 
 Node: PATH first (18+), then the distro package (`apt` / `dnf` / `yum` / `pacman` / `zypper` / `apk`), then the official nodejs.org tarball into `/opt/prawko/tools/node`. Homebrew on Linux is **not** used. `--dev` does not install Git — use `sudo apt install git` (or your distro’s equivalent).
 
@@ -774,7 +754,7 @@ bash Install_Prawko.linux.sh
 
 3. Open [http://localhost:5173](http://localhost:5173).
 
-All switches: `bash Install_Prawko.linux.sh --help`. Same flags as macOS (`--dev`, `--patch`, `--install-gov`, …).
+All switches: `bash Install_Prawko.linux.sh --help`. Same flags as macOS (`--sync-gov`, `--export`, `--import`, …).
 
 ### Where files land
 
@@ -787,10 +767,11 @@ All switches: `bash Install_Prawko.linux.sh --help`. Same flags as macOS (`--dev
 | Node tarball (if no distro Node 18+) | `/opt/prawko/tools/node` |
 
 ```bash
-bash Install_Prawko.linux.sh --install-gov
+bash Install_Prawko.linux.sh --sync-gov
+bash Install_Prawko.linux.sh --export ~/prawko-pack
+bash Install_Prawko.linux.sh --import ~/prawko-pack
 bash Install_Prawko.linux.sh --dev ~/prawko
 bash Install_Prawko.linux.sh --patch
-bash Install_Prawko.linux.sh --uninstall
 ```
 
 ---
@@ -801,7 +782,7 @@ bash Install_Prawko.linux.sh --uninstall
 - **Exam simulation** — 32 questions, 25 minutes, official scoring
 - **12 categories** — A, A1, A2, AM, B, B1, C, C1, D, D1, PT, T
 - **Skins** — Panel and Station
-- **Media** — official photos and films (Backblaze stream, Cloudflare offline packs, or local after `-InstallGov`)
+- **Media** — official photos and films (Backblaze stream, Cloudflare offline packs, or local after `-SyncGov`)
 - **Languages** — PL, EN, DE, UA (UI and question text)
 - **Dark / light theme** — persisted in the browser
 - **Local profiles** — progress on this machine
@@ -831,7 +812,7 @@ Non-Polish question text comes from the ministry Excel (`Pytanie [EN]`, `Pytanie
 | Photos / films | no (empty `src/media`) | CDN or `C:\ProgramData\prawko\src\media` | CDN or `/usr/local/prawko/src/media` | CDN or `/opt/prawko/src/media` |
 | Excel / ZIP / JPG / WMV | no | `%LOCALAPPDATA%\prawko\gov-data` | `~/Library/Application Support/prawko/gov-data` | `~/.local/share/prawko/gov-data` |
 
-A clean clone does **not** need `-InstallGov`. JSON is in `src/data`. Defaults (github.io and localhost without files on disk):
+A clean clone does **not** need `-SyncGov`. JSON is in `src/data`. Defaults (github.io and localhost without files on disk):
 
 | What | Where | Constant in `src/js/data.js` |
 |---|---|---|
@@ -840,7 +821,7 @@ A clean clone does **not** need `-InstallGov`. JSON is in `src/data`. Defaults (
 
 Packs stay on the free `r2.dev` public development URL (no paid custom domain). The old per-file B2 fetch remains in code (`OFFLINE_DOWNLOAD = 'files'`).
 
-**Two hosts, always both** — treat the buckets as empty. The installer (`-InstallGov`) only fills the local disk (steps 1–3). It does **not** upload to B2 or R2.
+**Two hosts, always both** — treat the buckets as empty. The installer (`-SyncGov`) only fills the local disk (steps 1–3). It does **not** upload to B2 or R2.
 
 ### From gov.pl to the cloud (order)
 
@@ -848,7 +829,7 @@ PJM (sign-language) links on gov.pl are **listed, not downloaded**.
 
 | Step | From | What | To | Tool |
 |---|---|---|---|---|
-| 1 | [gov.pl — driving licence](https://www.gov.pl/web/infrastruktura/prawo-jazdy) | Excel + JPG/WMV ZIPs (situational) | `%LOCALAPPDATA%\prawko\gov-data` (`baza_pytan.xlsx`, `raw\`, `cache\`) | `download-gov.ps1` or `-InstallGov` |
+| 1 | [gov.pl — driving licence](https://www.gov.pl/web/infrastruktura/prawo-jazdy) | Excel + JPG/WMV ZIPs (situational) | `%LOCALAPPDATA%\prawko\gov-data` (`baza_pytan.xlsx`, `raw\`, `cache\`) | `download-gov.ps1` or `-SyncGov` |
 | 2 | `gov-data\raw` | JPG → WebP, WMV → MP4 | `C:\ProgramData\prawko\src\media\img` and `vid` (no server: `%LOCALAPPDATA%\prawko\media`) | `convert-media.ps1` |
 | 3 | Excel | question JSON (media file names) | `src\data\` (and the server copy) | `parse-excel.ps1` |
 | 4 | `src\media` from step 2 | individual WebP and MP4 | Backblaze B2 `prawko-maz` → `img/` and `vid/` (online play, `MEDIA_CDN`) | `upload-media.ps1` (`.b2env`; `b2 sync --skipNewer`) |
@@ -870,16 +851,16 @@ A push to `main` runs Playwright and publishes `src/` to GitHub Pages: [anabelma
 
 ## Data pipeline on Windows
 
-Regenerate JSON and media with **PowerShell** (no Python and no Node in the pipeline). Do not use the `.py` twins on Windows. `Install_Prawko.windows.ps1` runs these scripts (`-InstallGov` / `-GovQuestions` / `-Merge`). Gov-data paths come from `scripts/download-gov.ps1 -LibraryOnly` (the installer does not invent that folder). `convert-media.ps1` loads the same library. `-Merge` runs `scripts/merge-gov.ps1` (same job as `merge-gov.py` on macOS/Linux).
+Regenerate JSON and media with **PowerShell** (no Python and no Node in the pipeline). The installer runs these via `-SyncGov` / `-MergeGov`. Manual runs are for advanced use.
 
-Besides the installer: media conversion needs **FFmpeg** and **cwebp** (`-InstallGov` can drop a portable FFmpeg into `tools\` if none is on PATH).
+Besides the installer: media conversion needs **FFmpeg** and **cwebp** (`-SyncGov` can drop a portable FFmpeg into `tools\` if none is on PATH).
 
 | Script | Job |
 |---|---|
 | `scripts/download-gov.ps1` | Excel + ZIPs from gov.pl → `%LOCALAPPDATA%\prawko\gov-data` |
 | `scripts/parse-excel.ps1` | Excel → `src/data/*.json` and `translations_{en,de,uk}.json` |
 | `scripts/convert-media.ps1` | JPG → WebP, WMV → MP4 (does not touch PJM) |
-| `scripts/merge-gov.ps1` | Append missing ministry rows (`-Merge`); also `. scripts\merge-gov.ps1 -LibraryOnly` |
+| `scripts/merge-gov.ps1` | Append missing ministry rows (`-MergeGov`); also `. scripts\merge-gov.ps1 -LibraryOnly` |
 | `scripts/filter-no-media.ps1` | **Report** questions with `media: null`. Drops rows only with `-Remove` |
 | `scripts/upload-media.ps1` | Sync `img/` `vid/` to B2 `prawko-maz` (online). Default ProgramData / LocalAppData / repo; `-MediaDir`. `--skipNewer` |
 | `scripts/build-media-packs.ps1` | Zips + `manifest.json` → `%LOCALAPPDATA%\prawko\packs` (not git) |
@@ -891,7 +872,7 @@ Parse an Excel file already on disk:
 powershell -ExecutionPolicy Bypass -File .\scripts\parse-excel.ps1
 ```
 
-The default Excel path is `gov-data\baza_pytan.xlsx` next to the repo. After `-InstallGov` / `-GovQuestions` the file lives under LocalAppData — pass `-Excel`:
+The default Excel path is `gov-data\baza_pytan.xlsx` next to the repo. After `-SyncGov` the file lives under LocalAppData — pass `-Excel`:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\parse-excel.ps1 `
@@ -920,7 +901,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build-media-packs.ps1
 
 After the first B2 sync, set `MEDIA_CDN` in `src/js/data.js` to the URL `upload-media.ps1` prints. `PACKS_BASE` is the public R2 URL (`r2.dev`), not B2.
 
-To refresh questions on a running server, use `Install_Prawko.windows.ps1 -GovQuestions` or `-InstallGov`. Do not re-run a full install “just in case” if the service is already up.
+To refresh questions on a running server: `-SyncGov -SyncScope Questions` or `-SyncGov`. A full reinstall is not needed.
 
 ---
 
@@ -934,7 +915,7 @@ The installer is **`.sh`**. The rest of the pipeline is **Python** (`python3`), 
 | `scripts/parse-excel.py` | Excel → JSON (same rules as `parse-excel.ps1`) |
 | `scripts/convert-media.py` | JPG → WebP, WMV → MP4 (VideoToolbox when available; skips PJM) |
 | `scripts/filter-no-media.py` | Report; delete rows only with `--remove` |
-| `scripts/merge-gov.py` | Add missing ministry rows (`--merge`) |
+| `scripts/merge-gov.py` | Add missing ministry rows (`--merge-gov`) |
 | `scripts/upload-media.py` | Sync `img/` `vid/` to B2 (online). `--skipNewer`. `--media-dir` |
 | `scripts/build-media-packs.py` | Same job as `build-media-packs.ps1` (zips + manifest) |
 | `scripts/upload-packs.py` | Optional zip archive on B2 — not the “Download offline” host |

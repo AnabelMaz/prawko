@@ -13,8 +13,8 @@
 #
 # powershell -ExecutionPolicy Bypass -File scripts/parse-excel.ps1
 # powershell -ExecutionPolicy Bypass -File scripts/parse-excel.ps1 -Excel gov-data\baza_pytan.xlsx -OutDir src\data
-# Installer: Install_Prawko.windows.ps1 -GovQuestions / -InstallGov (repo root)
-# Drop missing media: parse-excel.ps1 -DropMissingMedia or Install_Prawko.windows.ps1 -InstallGov -DropMissingMedia
+# Installer: Install_Prawko.windows.ps1 -SyncGov (repo root)
+# Drop missing media: parse-excel.ps1 -DropMissingMedia or Install_Prawko.windows.ps1 -SyncGov -DropMissingMedia
 
 param(
     [string]$Excel,
