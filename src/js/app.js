@@ -7,7 +7,7 @@ import { showScreen, renderCategories, applyLanguage, renderHistory, renderLearn
 import { setLang, getLang, loadQuestionTranslations, nextLang, LANG_LABELS, t } from './i18n.js';
 import { downloadCategoryMedia, getDownloadedCategories, reconcileDownloadedCategories, offlineCoverageHue } from './offline.js';
 import { getProfileSummary, loadHistory, loadLastResult, clearHistory, clearLearnProgress } from './stats.js';
-import { setupUiFitScale, refitUiScale, layoutCategoryGrid } from './scale.js';
+import { setupUiFitScale, refitUiScale, revealUiScale, layoutCategoryGrid } from './scale.js';
 import {
   DEFAULT_PROFILE_NAME,
   PROFILE_LIMIT,
@@ -670,6 +670,7 @@ async function init() {
   } catch {
     if (spinner) spinner.classList.add('hidden');
     document.getElementById('app').textContent = 'Failed to load app data. Please refresh.';
+    document.documentElement.removeAttribute('data-ui-pending');
     return;
   }
 
@@ -763,6 +764,7 @@ async function init() {
     applyLanguage();
     updateLanguageButtons(lang);
     paintHomeTagline();
+    refitUiScale();
     fillProfilePanel();
     applyExamSkin(document.documentElement.getAttribute('data-exam-skin'));
     syncCategoriesProgressLink();
@@ -882,6 +884,7 @@ async function init() {
   window.addEventListener('online', updateOnlineStatus);
   window.addEventListener('offline', updateOnlineStatus);
   updateOnlineStatus();
+  await revealUiScale();
 
   // Preload category data on hover
   document.querySelectorAll('.category-card').forEach(card => {

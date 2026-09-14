@@ -6,8 +6,9 @@
   var PORTRAIT_H = 1280;
   var MAX = 1;
   var MIN = 0.01;
-  var vw = window.innerWidth;
-  var vh = window.innerHeight;
+  var vv = window.visualViewport;
+  var vw = (vv && vv.width) || window.innerWidth;
+  var vh = (vv && vv.height) || window.innerHeight;
   var portrait = vw < vh;
   var w = portrait ? PORTRAIT_W : DESIGN_W;
   var h = portrait ? PORTRAIT_H : DESIGN_H;
@@ -22,4 +23,11 @@
   root.setAttribute('data-ui-orient', portrait ? 'portrait' : 'landscape');
   root.setAttribute('data-ui-station', 'page');
   root.setAttribute('data-ui-fit', '1');
+  root.setAttribute('data-ui-pending', '1');
+  if (document.head && !document.getElementById('ui-pending-css')) {
+    var css = document.createElement('style');
+    css.id = 'ui-pending-css';
+    css.textContent = 'html[data-ui-pending] .ui-stage{visibility:hidden}';
+    document.head.appendChild(css);
+  }
 })();

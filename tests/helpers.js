@@ -1,6 +1,7 @@
 /** Shared Playwright helpers for the current Panel/WORD UI. */
 
 async function goToCategories(page) {
+  await page.waitForFunction(() => !document.documentElement.hasAttribute('data-ui-pending'));
   await page.waitForSelector('#home.active');
   const nav = page.locator('#home [data-navigate="categories"]');
   for (let attempt = 0; attempt < 3; attempt++) {

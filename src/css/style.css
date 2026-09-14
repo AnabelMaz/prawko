@@ -227,16 +227,8 @@ html[data-ui-station="page"][data-ui-mode="fit"] .top-controls {
   right: calc(12px - (100vw / var(--ui-scale) - var(--ui-design-width)) / 2);
 }
 
-html[data-ui-measuring] .ui-stage {
-  height: auto !important;
-  overflow: visible !important;
-}
-
-html[data-ui-measuring] #app {
-  height: auto !important;
-  display: block !important;
-  flex: none !important;
-  min-height: 0 !important;
+html[data-ui-pending] .ui-stage {
+  visibility: hidden;
 }
 
 .ui-slot {
@@ -385,6 +377,11 @@ section[id] {
 section.active {
   display: block;
   animation: screenEnter 0.35s var(--ease-out);
+}
+
+#home.active {
+  position: relative;
+  animation: none;
 }
 
 /* Nothing is drag-selectable except question/answer copy (and learn jump). */
@@ -781,6 +778,20 @@ body.session-chrome-hidden .top-controls {
   margin: 0 auto 28px;
   line-height: 1.5;
   position: relative;
+}
+
+/* Landscape home is always the 1280 box — skip 2.7→3→3.5 rem steps. */
+html[data-ui-orient="landscape"] .hero {
+  padding: 88px 40px 72px;
+  border-radius: 0 0 36px 36px;
+}
+
+html[data-ui-orient="landscape"] .hero h1 {
+  font-size: 3.5rem;
+}
+
+html[data-ui-orient="landscape"] .hero p {
+  font-size: 1.2rem;
 }
 
 .cta-button {
@@ -4667,6 +4678,16 @@ html[data-ui-mode="fit"] #quiz.active:not(.exam-active) .learn-nav button {
   justify-content: center;
   align-items: center;
   padding: 48px 0;
+}
+
+#home-spinner.loading-spinner {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  padding: 0;
+  overflow: visible;
+  pointer-events: none;
 }
 
 .loading-spinner::after {

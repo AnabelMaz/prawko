@@ -12,6 +12,7 @@ export const UI_PORTRAIT_HEIGHT = 1280;
 export const UI_MAX_SCALE = 1;
 export const UI_MIN_SCALE = 0.01;
 export const UI_BOTTOM_INSET_RATIO = 0.05;
+const UI_SCALE_EPS = 0.01;
 
 const SCROLL_SCREEN_IDS = ['results', 'history', 'learn-progress'];
 
@@ -26,6 +27,7 @@ function clampScale(value) {
 
 let started = false;
 let raf = 0;
+let resizeWait = 0;
 let applying = false;
 let lastDesignW = 0;
 let lastDesignH = 0;
@@ -65,6 +67,10 @@ function isCategoriesScreen() {
   return document.getElementById('categories')?.classList.contains('active') === true;
 }
 
+function isHomeScreen() {
+  return document.getElementById('home')?.classList.contains('active') === true;
+}
+
 function isFillStation() {
   return isQuizScreen() || isCategoriesScreen();
 }
@@ -73,6 +79,16 @@ function measurePageHeight() {
   const screen = document.querySelector('#app .screen.active');
   if (!screen) return UI_LANDSCAPE_HEIGHT;
   return Math.max(1, Math.ceil(screen.scrollHeight));
+}
+
+function rememberCurrentScale(root) {
+  lastDesignW = parseFloat(root.style.getPropertyValue('--ui-design-width')) || lastDesignW;
+  lastDesignH = parseFloat(root.style.getPropertyValue('--ui-design-height')) || lastDesignH;
+  lastScale = Number(root.style.getPropertyValue('--ui-scale')) || lastScale;
+  lastMode = root.getAttribute('data-ui-mode') || lastMode;
+  lastStation = root.getAttribute('data-ui-station') || lastStation;
+  lastOrient = root.getAttribute('data-ui-orient') || lastOrient;
+  lastChromeH = parseFloat(root.style.getPropertyValue('--ui-chrome-top')) || 0;
 }
 
 /** Largest equal squares of `n` items that fit in innerW × innerH. */
@@ -145,6 +161,7 @@ function applyUiFitScale() {
   root.style.setProperty('--ui-chrome-top', `${chromeH}px`);
   const { vw, vh } = viewportSize();
   const vhAvail = Math.max(1, vh - chromeH);
+  const home = isHomeScreen();
   const portrait = isPortraitAspect(vw, vhAvail);
   const orient = portrait ? 'portrait' : 'landscape';
   const station = isScrollScreen() ? 'scroll' : (isFillStation() ? 'fill' : 'page');
@@ -178,15 +195,9 @@ function applyUiFitScale() {
   } else {
     designW = portrait ? UI_PORTRAIT_WIDTH : UI_DESIGN_WIDTH;
     mode = 'fit';
-    heightSlack = 8;
     const minH = portrait ? UI_PORTRAIT_HEIGHT : UI_LANDSCAPE_HEIGHT;
-    root.setAttribute('data-ui-mode', 'fit');
-    root.setAttribute('data-ui-station', 'page');
-    root.setAttribute('data-ui-measuring', '1');
-    void app.offsetHeight;
-    const contentH = measurePageHeight();
-    root.removeAttribute('data-ui-measuring');
-    designH = Math.max(minH, contentH);
+    designH = Math.max(minH, measurePageHeight());
+    heightSlack = home ? 4 : 8;
     scale = clampScale(Math.min(vw / designW, vhAvail / designH));
   }
 
@@ -196,7 +207,7 @@ function applyUiFitScale() {
     && orient === lastOrient
     && Math.abs(designW - lastDesignW) < 2
     && Math.abs(designH - lastDesignH) < heightSlack
-    && Math.abs(scale - lastScale) < 0.001
+    && Math.abs(scale - lastScale) < UI_SCALE_EPS
     && chromeH === lastChromeH
   ) {
     applying = false;
@@ -232,6 +243,8 @@ function applyUiFitScale() {
   });
 }
 
+/** Align dock copy to the film slot. Geometry comes from the slot, not from
+ *  whether this question currently has an image or video. */
 export function syncExamMediaAlign() {
   const quiz = document.getElementById('quiz');
   const session = quiz?.classList.contains('exam-active') || quiz?.classList.contains('learn-active');
@@ -240,23 +253,21 @@ export function syncExamMediaAlign() {
     quiz?.style.removeProperty('--exam-media-width');
     return;
   }
-  const media = quiz.querySelector('.media-area');
+  const film = quiz.querySelector('.media-slot') || quiz.querySelector('.media-area');
   const dock = quiz.querySelector('.quiz-dock');
-  if (!media || !dock) return;
-  const mediaBox = media.getBoundingClientRect();
+  if (!film || !dock) return;
+  const filmBox = film.getBoundingClientRect();
   const dockBox = dock.getBoundingClientRect();
-  if (mediaBox.width < 8 || dockBox.width < 8) {
-    quiz.style.removeProperty('--exam-media-left');
-    quiz.style.removeProperty('--exam-media-width');
+  if (filmBox.width < 8 || dockBox.width < 8) {
     scheduleFitQuizDockText();
     return;
   }
   const scaleRaw = getComputedStyle(document.documentElement).getPropertyValue('--ui-scale');
   const scale = Number(scaleRaw);
   const safeScale = Number.isFinite(scale) && scale > 0 ? scale : 1;
-  const left = Math.max(0, Math.round((mediaBox.left - dockBox.left) / safeScale));
+  const left = Math.max(0, Math.round((filmBox.left - dockBox.left) / safeScale));
   quiz.style.setProperty('--exam-media-left', `${left}px`);
-  quiz.style.setProperty('--exam-media-width', `${Math.round(mediaBox.width / safeScale)}px`);
+  quiz.style.setProperty('--exam-media-width', `${Math.round(filmBox.width / safeScale)}px`);
   scheduleFitQuizDockText();
 }
 
@@ -268,16 +279,42 @@ export function refitUiScale() {
   });
 }
 
+function waitForHomeFonts() {
+  if (!document.fonts?.ready) return Promise.resolve();
+  const loadTitle = document.fonts.load('800 3.5rem "DM Sans"').catch(() => {});
+  return Promise.race([
+    Promise.all([document.fonts.ready, loadTitle]),
+    new Promise((resolve) => setTimeout(resolve, 800)),
+  ]);
+}
+
+/** First visible home frame uses the fitted scale (exam rules included). */
+export async function revealUiScale() {
+  await waitForHomeFonts();
+  applyUiFitScale();
+  await new Promise((resolve) => setTimeout(resolve, 90));
+  applyUiFitScale();
+  document.documentElement.removeAttribute('data-ui-pending');
+}
+
 export function setupUiFitScale() {
   if (started) {
     refitUiScale();
     return;
   }
   started = true;
+  rememberCurrentScale(document.documentElement);
   applyUiFitScale();
-  window.addEventListener('resize', refitUiScale);
-  window.visualViewport?.addEventListener('resize', refitUiScale);
-  window.addEventListener('orientationchange', refitUiScale);
+  const onViewportResize = () => {
+    if (resizeWait) clearTimeout(resizeWait);
+    resizeWait = setTimeout(() => {
+      resizeWait = 0;
+      refitUiScale();
+    }, 32);
+  };
+  window.addEventListener('resize', onViewportResize);
+  window.visualViewport?.addEventListener('resize', onViewportResize);
+  window.addEventListener('orientationchange', onViewportResize);
   const chrome = document.querySelector('.app-chrome');
   if (chrome && typeof ResizeObserver !== 'undefined') {
     let chromeTimer = 0;
@@ -290,7 +327,7 @@ export function setupUiFitScale() {
   if (appEl && typeof ResizeObserver !== 'undefined') {
     let appTimer = 0;
     new ResizeObserver(() => {
-      if (isQuizScreen() || isCategoriesScreen()) return;
+      if (isQuizScreen() || isCategoriesScreen() || isHomeScreen()) return;
       clearTimeout(appTimer);
       appTimer = setTimeout(() => {
         refitUiScale();

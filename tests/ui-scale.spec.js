@@ -1,56 +1,101 @@
 const { test, expect } = require('@playwright/test');
 const { goToCategories, cycleSkin, waitForExamMediaAlign } = require('./helpers');
 
-test('landscape home scales the 1280 layout instead of wrapping', async ({ page }) => {
-  await page.setViewportSize({ width: 640, height: 450 });
-  await page.goto('/');
+async function waitForHomeScale(page) {
   await page.waitForSelector('#home.active');
+  await page.waitForFunction(() => !document.documentElement.hasAttribute('data-ui-pending'));
+}
 
-  const metrics = await page.evaluate(() => {
+function expectHomeFitsWindow(metrics, vw, vh) {
+  expect(metrics.heroWidth).toBeGreaterThan(vw - 4);
+  expect(metrics.heroBottom).toBeLessThan(vh);
+  expect(metrics.startVisible).toBe(true);
+  expect(metrics.examBottom).toBeGreaterThan(metrics.examTop + 8);
+  expect(metrics.examBottom).toBeLessThanOrEqual(vh + 2);
+  expect(metrics.footerBottom).toBeLessThanOrEqual(vh + 2);
+  expect(metrics.homeBottom).toBeLessThanOrEqual(vh + 2);
+  expect(metrics.scale).toBeGreaterThan(0.05);
+  expect(metrics.scale).toBeLessThanOrEqual(vw / metrics.designW + 0.02);
+}
+
+async function homeFitMetrics(page) {
+  return page.evaluate(() => {
     const root = document.documentElement;
-    const home = document.getElementById('home').getBoundingClientRect();
+    const vh = window.innerHeight;
     const hero = document.querySelector('#home .hero').getBoundingClientRect();
+    const start = document.querySelector('#home [data-navigate="categories"]').getBoundingClientRect();
+    const exam = document.querySelector('#home .exam-info').getBoundingClientRect();
+    const footer = document.querySelector('#home .app-footer').getBoundingClientRect();
+    const home = document.getElementById('home').getBoundingClientRect();
     return {
       designW: parseFloat(getComputedStyle(root).getPropertyValue('--ui-design-width')),
+      designH: parseFloat(getComputedStyle(root).getPropertyValue('--ui-design-height')),
       scale: Number(getComputedStyle(root).getPropertyValue('--ui-scale')),
       orient: root.getAttribute('data-ui-orient'),
       mode: root.getAttribute('data-ui-mode'),
-      homeBottom: home.bottom,
       heroWidth: hero.width,
+      heroBottom: hero.bottom,
+      startVisible: start.height > 8 && start.bottom <= vh + 2,
+      examTop: exam.top,
+      examBottom: exam.bottom,
+      footerBottom: footer.bottom,
+      homeBottom: home.bottom,
     };
   });
+}
+
+test('landscape home scales the 1280 layout instead of wrapping', async ({ page }) => {
+  await page.setViewportSize({ width: 640, height: 450 });
+  await page.goto('/');
+  await waitForHomeScale(page);
+
+  const metrics = await homeFitMetrics(page);
   expect(metrics.designW).toBeCloseTo(1280, 0);
+  expect(metrics.designH).toBeGreaterThanOrEqual(800);
   expect(metrics.orient).toBe('landscape');
   expect(metrics.mode).toBe('fit');
-  expect(metrics.scale).toBeGreaterThan(0.05);
-  expect(metrics.scale).toBeLessThanOrEqual(640 / 1280 + 0.02);
-  expect(metrics.heroWidth).toBeGreaterThan(640 - 4);
-  expect(metrics.homeBottom).toBeLessThanOrEqual(450 + 2);
+  expectHomeFitsWindow(metrics, 640, 450);
+});
+
+test('home scale does not flash a measuring layout', async ({ page }) => {
+  await page.addInitScript(() => {
+    const log = [];
+    const tick = () => {
+      const title = document.querySelector('#home .hero-title');
+      log.push({
+        pending: document.documentElement.hasAttribute('data-ui-pending'),
+        scale: Number(document.documentElement.style.getPropertyValue('--ui-scale')
+          || getComputedStyle(document.documentElement).getPropertyValue('--ui-scale')),
+        titlePx: title ? parseFloat(getComputedStyle(title).fontSize) : 0,
+      });
+      window.__homeScaleLog = log;
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+  await page.setViewportSize({ width: 640, height: 450 });
+  await page.goto('/');
+  await waitForHomeScale(page);
+  const samples = await page.evaluate(() => window.__homeScaleLog || []);
+  const visible = samples.filter((s) => !s.pending && s.titlePx > 0);
+  expect(visible.length).toBeGreaterThan(0);
+  const scales = [...new Set(visible.map((s) => s.scale.toFixed(3)))];
+  expect(scales.length).toBe(1);
+  const titles = [...new Set(visible.map((s) => s.titlePx.toFixed(1)))];
+  expect(titles.length).toBe(1);
+  expect(visible[0].titlePx).toBeGreaterThan(50);
 });
 
 test('short 1024 laptop window with browser chrome still scales', async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 580 });
   await page.goto('/');
-  await page.waitForSelector('#home.active');
+  await waitForHomeScale(page);
 
-  const metrics = await page.evaluate(() => {
-    const root = document.documentElement;
-    const home = document.getElementById('home').getBoundingClientRect();
-    const hero = document.querySelector('#home .hero').getBoundingClientRect();
-    return {
-      designW: parseFloat(getComputedStyle(root).getPropertyValue('--ui-design-width')),
-      scale: Number(getComputedStyle(root).getPropertyValue('--ui-scale')),
-      orient: root.getAttribute('data-ui-orient'),
-      homeBottom: home.bottom,
-      heroWidth: hero.width,
-    };
-  });
+  const metrics = await homeFitMetrics(page);
   expect(metrics.designW).toBeCloseTo(1280, 0);
+  expect(metrics.designH).toBeGreaterThanOrEqual(800);
   expect(metrics.orient).toBe('landscape');
-  expect(metrics.scale).toBeGreaterThan(0.05);
-  expect(metrics.scale).toBeLessThanOrEqual(1024 / 1280 + 0.02);
-  expect(metrics.heroWidth).toBeGreaterThan(1024 - 4);
-  expect(metrics.homeBottom).toBeLessThanOrEqual(580 + 4);
+  expectHomeFitsWindow(metrics, 1024, 580);
 });
 
 async function categoryGridMetrics(page) {
@@ -141,23 +186,12 @@ test('category cards pack as the largest squares in portrait', async ({ page }) 
 test('home keeps scaling the 1280 layout on a small laptop before wrapping', async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 768 });
   await page.goto('/');
-  await page.waitForSelector('#home.active');
+  await waitForHomeScale(page);
 
-  const metrics = await page.evaluate(() => {
-    const root = document.documentElement;
-    const hero = document.querySelector('#home .hero').getBoundingClientRect();
-    return {
-      designW: parseFloat(getComputedStyle(root).getPropertyValue('--ui-design-width')),
-      scale: Number(getComputedStyle(root).getPropertyValue('--ui-scale')),
-      orient: root.getAttribute('data-ui-orient'),
-      heroWidth: hero.width,
-    };
-  });
+  const metrics = await homeFitMetrics(page);
   expect(metrics.designW).toBeCloseTo(1280, 0);
   expect(metrics.orient).toBe('landscape');
-  expect(metrics.scale).toBeGreaterThan(0.05);
-  expect(metrics.scale).toBeLessThanOrEqual(1024 / 1280 + 0.02);
-  expect(metrics.heroWidth).toBeGreaterThan(1024 - 4);
+  expectHomeFitsWindow(metrics, 1024, 768);
 });
 
 test('learn quiz scales fonts with the window, not only the film', async ({ page }) => {
@@ -247,6 +281,76 @@ test('wrapping an ABC answer does not resize the learn media slot', async ({ pag
   expect(longBox).toBeTruthy();
   expect(Math.abs(shortBox.height - longBox.height)).toBeLessThan(2);
   expect(Math.abs(shortBox.width - longBox.width)).toBeLessThan(2);
+});
+
+test('learn film slot and dock indent stay put with or without media', async ({ page }) => {
+  await page.route('**/local.json', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ learnQuestionJump: true, mediaBase: 'cdn' }),
+    });
+  });
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/');
+  await goToCategories(page);
+  await page.click('.mode-btn[data-mode="learn"]');
+  await page.click('.category-card[data-category="B"]');
+  await page.waitForSelector('#quiz.active.learn-active');
+  await page.click('.learn-filter-select .learn-queue-select');
+  await page.click('.learn-filter-select [data-value="all"]');
+  await page.click('.learn-order-select .learn-queue-select');
+  await page.click('.learn-order-select [data-value="sequential"]');
+
+  const targets = await page.evaluate(async () => {
+    const data = await fetch('data/B.json').then((res) => res.json());
+    const emptyIdx = data.questions.findIndex((q) => !q.media);
+    if (emptyIdx < 0) return { emptyPos: 0, otherPos: 0 };
+    const kind = data.questions[emptyIdx].type;
+    const otherIdx = data.questions.findIndex((q, i) => i !== emptyIdx && q.media && q.type === kind);
+    return { emptyPos: emptyIdx + 1, otherPos: otherIdx + 1 };
+  });
+  expect(targets.emptyPos).toBeGreaterThan(0);
+  expect(targets.otherPos).toBeGreaterThan(0);
+
+  const jump = async (n) => {
+    const input = page.locator('.learn-qnum-input');
+    await input.fill(String(n));
+    await input.press('Enter');
+    await page.waitForFunction((pos) => {
+      const el = document.querySelector('.learn-qnum-input');
+      return el && el.value === String(pos);
+    }, n);
+    await waitForExamMediaAlign(page);
+  };
+
+  const metrics = () => page.evaluate(() => {
+    const quiz = document.getElementById('quiz');
+    const slot = document.querySelector('.media-slot')?.getBoundingClientRect();
+    const q = document.querySelector('.question-text')?.getBoundingClientRect();
+    return {
+      left: quiz?.style.getPropertyValue('--exam-media-left') || '',
+      width: quiz?.style.getPropertyValue('--exam-media-width') || '',
+      slotW: Math.round(slot?.width || 0),
+      slotH: Math.round(slot?.height || 0),
+      qW: Math.round(q?.width || 0),
+    };
+  });
+
+  await jump(targets.emptyPos);
+  await expect(page.locator('#quiz .media-area')).toHaveClass(/media-empty/);
+  const empty = await metrics();
+  await jump(targets.otherPos);
+  await expect(page.locator('#quiz .media-area')).toHaveClass(/has-media/);
+  const withMedia = await metrics();
+
+  expect(empty.slotW).toBeGreaterThan(80);
+  expect(empty.slotH).toBeGreaterThan(80);
+  expect(withMedia.left).toBe(empty.left);
+  expect(withMedia.width).toBe(empty.width);
+  expect(Math.abs(withMedia.slotW - empty.slotW)).toBeLessThan(2);
+  expect(Math.abs(withMedia.slotH - empty.slotH)).toBeLessThan(2);
+  expect(Math.abs(withMedia.qW - empty.qW)).toBeLessThan(2);
 });
 
 test('learn quiz answers sit under the film; nav sits in the side column', async ({ page }) => {
@@ -406,28 +510,22 @@ test('offline banner is reserved above the scaled canvas', async ({ page }) => {
 test('narrow portrait home wraps feature cards at full width', async ({ page }) => {
   await page.setViewportSize({ width: 420, height: 800 });
   await page.goto('/');
-  await page.waitForSelector('#home.active');
+  await waitForHomeScale(page);
 
-  const metrics = await page.evaluate(() => {
-    const root = document.documentElement;
-    const home = document.getElementById('home').getBoundingClientRect();
+  const metrics = await homeFitMetrics(page);
+  const extras = await page.evaluate(() => {
     const stage = document.querySelector('.ui-stage');
     return {
-      scale: Number(getComputedStyle(root).getPropertyValue('--ui-scale')),
-      designW: parseFloat(getComputedStyle(root).getPropertyValue('--ui-design-width')),
-      orient: root.getAttribute('data-ui-orient'),
       stageWidth: stage.getBoundingClientRect().width,
       columns: getComputedStyle(stage.querySelector('.features')).gridTemplateColumns.split(' ').length,
-      homeBottom: home.bottom,
     };
   });
   expect(metrics.orient).toBe('portrait');
   expect(metrics.designW).toBeCloseTo(720, 0);
-  expect(metrics.scale).toBeGreaterThan(0.05);
-  expect(metrics.scale).toBeLessThanOrEqual(420 / 720 + 0.02);
-  expect(metrics.stageWidth).toBeLessThanOrEqual(420 + 2);
-  expect(metrics.columns).toBe(1);
-  expect(metrics.homeBottom).toBeLessThanOrEqual(800 + 4);
+  expect(metrics.designH).toBeGreaterThanOrEqual(1280);
+  expect(extras.stageWidth).toBeLessThanOrEqual(420 + 2);
+  expect(extras.columns).toBe(1);
+  expectHomeFitsWindow(metrics, 420, 800);
 });
 
 test('quiz layout uses aspect ratio, not pixel width', async ({ page }) => {
@@ -475,58 +573,46 @@ test('short landscape learn quiz keeps the question text visible', async ({ page
 test('home hero is visible and the language bar scales with the station', async ({ page }) => {
   await page.setViewportSize({ width: 1100, height: 520 });
   await page.goto('/');
-  await page.waitForSelector('#home.active');
+  await waitForHomeScale(page);
   await page.waitForFunction(() => document.documentElement.getAttribute('data-ui-station') === 'page');
 
-  const metrics = await page.evaluate(() => {
+  const metrics = await homeFitMetrics(page);
+  const chrome = await page.evaluate(() => {
     const root = document.documentElement;
     const hero = document.querySelector('#home .hero-title').getBoundingClientRect();
-    const heroBar = document.querySelector('#home .hero').getBoundingClientRect();
-    const start = document.querySelector('#home [data-navigate="categories"]').getBoundingClientRect();
     const bar = document.querySelector('.top-controls').getBoundingClientRect();
     const home = document.getElementById('home').getBoundingClientRect();
     const slot = document.querySelector('.ui-slot').getBoundingClientRect();
     return {
       station: root.getAttribute('data-ui-station'),
-      scale: Number(getComputedStyle(root).getPropertyValue('--ui-scale')),
-      designW: parseFloat(getComputedStyle(root).getPropertyValue('--ui-design-width')),
-      designH: parseFloat(getComputedStyle(root).getPropertyValue('--ui-design-height')),
       heroHeight: hero.height,
       heroTop: hero.top,
-      heroWidth: heroBar.width,
-      startVisible: start.height > 8 && start.bottom <= 520 + 2,
       barHeight: bar.height,
       barTop: bar.top,
       homeTop: home.top,
-      homeBottom: home.bottom,
       slotTop: slot.top,
       slotWidth: slot.width,
     };
   });
-  expect(metrics.station).toBe('page');
+  expect(chrome.station).toBe('page');
   expect(metrics.designW).toBeCloseTo(1280, 0);
-  expect(metrics.scale).toBeGreaterThan(0.05);
-  expect(metrics.scale).toBeLessThan(1);
-  expect(metrics.designH).toBeGreaterThan(200);
-  expect(metrics.designH).toBeLessThan(2500);
-  expect(metrics.heroHeight).toBeGreaterThan(12);
-  expect(metrics.heroTop).toBeGreaterThanOrEqual(-1);
-  expect(metrics.homeTop).toBeLessThan(16);
-  expect(metrics.slotTop).toBeLessThan(2);
-  expect(metrics.barTop).toBeLessThan(16);
-  expect(metrics.startVisible).toBe(true);
-  expect(metrics.barHeight).toBeGreaterThan(8);
-  expect(metrics.barHeight).toBeLessThan(64);
-  expect(metrics.barTop).toBeGreaterThanOrEqual(0);
-  expect(metrics.homeBottom).toBeLessThanOrEqual(520 + 2);
-  expect(metrics.heroWidth).toBeGreaterThan(1100 - 4);
-  expect(metrics.slotWidth).toBeLessThan(1100 - 8);
+  expect(metrics.designH).toBeGreaterThanOrEqual(800);
+  expectHomeFitsWindow(metrics, 1100, 520);
+  expect(chrome.heroHeight).toBeGreaterThan(12);
+  expect(chrome.heroTop).toBeGreaterThanOrEqual(-1);
+  expect(chrome.homeTop).toBeLessThan(16);
+  expect(chrome.slotTop).toBeLessThan(2);
+  expect(chrome.barTop).toBeLessThan(16);
+  expect(chrome.barHeight).toBeGreaterThan(8);
+  expect(chrome.barHeight).toBeLessThan(64);
+  expect(chrome.barTop).toBeGreaterThanOrEqual(0);
+  expect(chrome.slotWidth).toBeLessThan(1100 - 8);
 });
 
 test('wide home hero spans the full window width', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 900 });
   await page.goto('/');
-  await page.waitForSelector('#home.active');
+  await waitForHomeScale(page);
 
   const metrics = await page.evaluate(() => {
     const hero = document.querySelector('#home .hero').getBoundingClientRect();
@@ -552,6 +638,8 @@ test('wide home hero spans the full window width', async ({ page }) => {
   expect(metrics.barRight).toBeLessThanOrEqual(1600 + 2);
   expect(metrics.scale).toBeGreaterThan(0.05);
   expect(metrics.scale).toBeLessThanOrEqual(1);
+  const fit = await homeFitMetrics(page);
+  expectHomeFitsWindow(fit, 1600, 900);
 });
 
 test('station-skin learn quiz keeps question text below the media on a short window', async ({ page }) => {
