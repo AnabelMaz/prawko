@@ -62,5 +62,14 @@ test('macOS/Linux pipeline scripts are Python, not Node or bash twins', () => {
   expect(windows).not.toMatch(/merge-gov\.js/);
   expect(windows).toMatch(/merge-gov\.ps1/);
   expect(windows).not.toMatch(/function Merge-GovExcelIntoDataFiles/);
+  expect(windows).toMatch(/&\s*robocopy\.exe/);
+  expect(windows).not.toMatch(/Start-Process -FilePath "robocopy\.exe"/);
+  expect(windows).toMatch(/Get-RobocopyCopyPlan/);
+  expect(windows).toMatch(/ConvertTo-RobocopyDestFile/);
+  expect(windows).toMatch(/OrigWriteTimeUtc/);
+  expect(windows).toMatch(/Write-Progress -Activity \$activity -Status \$status/);
+  expect(windows).not.toMatch(/counting files/);
+  expect(windows).not.toMatch(/will copy \{0\} files/);
+  expect(windows).not.toMatch(/already on destination, skipping/);
   expect(scripts).toContain('merge-gov.ps1');
 });

@@ -358,6 +358,149 @@ function Get-CopyTreeStats {
     return @{ Files = $files; Bytes = $bytes }
 }
 
+function ConvertTo-RobocopyDestFile {
+    param(
+        [Parameter(Mandatory = $true)][string]$ListedPath,
+        [Parameter(Mandatory = $true)][string]$Source,
+        [Parameter(Mandatory = $true)][string]$Destination
+    )
+    $listed = $ListedPath.Trim().Trim('"')
+    $destRoot = [IO.Path]::GetFullPath($Destination).TrimEnd('\', '/')
+    $srcRoot = [IO.Path]::GetFullPath($Source).TrimEnd('\', '/')
+    $sep = [string][IO.Path]::DirectorySeparatorChar
+    if (-not [IO.Path]::IsPathRooted($listed)) {
+        return (Join-Path $destRoot $listed)
+    }
+    try {
+        $full = [IO.Path]::GetFullPath($listed)
+    } catch {
+        return (Join-Path $destRoot $listed)
+    }
+    $fullTrim = $full.TrimEnd('\', '/')
+    if ($fullTrim.Equals($srcRoot, [StringComparison]::OrdinalIgnoreCase) -or
+        $fullTrim.StartsWith($srcRoot + $sep, [StringComparison]::OrdinalIgnoreCase)) {
+        $tail = $fullTrim.Substring($srcRoot.Length).TrimStart('\', '/')
+        if ($tail) { return (Join-Path $destRoot $tail) }
+        return $destRoot
+    }
+    if ($fullTrim.Equals($destRoot, [StringComparison]::OrdinalIgnoreCase) -or
+        $fullTrim.StartsWith($destRoot + $sep, [StringComparison]::OrdinalIgnoreCase)) {
+        return $full
+    }
+    return (Join-Path $destRoot ([IO.Path]::GetFileName($full)))
+}
+
+function Get-RobocopyCopyPlan {
+    param(
+        [Parameter(Mandatory = $true)][string]$Source,
+        [Parameter(Mandatory = $true)][string]$Destination,
+        [Parameter(Mandatory = $true)][string[]]$ArgumentList,
+        [string]$ProgressActivity = ""
+    )
+    $listArgs = @()
+    foreach ($token in $ArgumentList) {
+        if ($token -and ($token -notmatch '^(?i)/(nfl|ndl|njs|nc|ns|np|njh|l|bytes)$')) {
+            $listArgs += $token
+        }
+    }
+    $listArgs += @("/L", "/BYTES", "/NJH", "/NDL", "/NP")
+    if ($ProgressActivity) {
+        $planJob = Start-Job -ScriptBlock {
+            param($Source, $Destination, $ArgumentList)
+            & robocopy.exe $Source $Destination @ArgumentList 2>&1 | ForEach-Object { "$_" }
+        } -ArgumentList $Source, $Destination, $listArgs
+        try {
+            while ($true) {
+                $finished = Wait-Job -Job $planJob -Timeout 1
+                Write-Progress -Activity $ProgressActivity -Status "planning copy..." -PercentComplete 0
+                if ($finished) { break }
+            }
+            $output = @(Receive-Job -Job $planJob | ForEach-Object { "$_" })
+        } finally {
+            Remove-Job -Job $planJob -Force -ErrorAction SilentlyContinue
+        }
+    } else {
+        $output = & robocopy.exe $Source $Destination @listArgs 2>&1 | ForEach-Object { "$_" }
+    }
+    $items = New-Object 'System.Collections.Generic.List[object]'
+    $totalFiles = [int64]0
+    $copyFiles = [int64]0
+    $totalBytes = [int64]0
+    $copyBytes = [int64]0
+    foreach ($line in $output) {
+        if ($line -match '(?i)^\s*(Files|Pliki)\s*:\s+(\d+)\s+(\d+)\s+(\d+)') {
+            $totalFiles = [int64]$Matches[2]
+            $copyFiles = [int64]$Matches[3]
+            continue
+        }
+        if ($line -match '(?i)^\s*(Bytes|Bajty)\s*:\s+(\d+)\s+(\d+)\s+(\d+)') {
+            $totalBytes = [int64]$Matches[2]
+            $copyBytes = [int64]$Matches[3]
+            continue
+        }
+        if ($line -match '(?i)\b(New File|Newer|Nowy plik|Nowszy)\b\s+(\d+)\s+(.+)$') {
+            $listed = ([string]$Matches[3]).Trim()
+            if (-not $listed) { continue }
+            $size = [int64]$Matches[2]
+            $destFile = ConvertTo-RobocopyDestFile -ListedPath $listed -Source $Source -Destination $Destination
+            $info = New-Object IO.FileInfo $destFile
+            $existed = $info.Exists
+            [void]$items.Add(@{
+                DestPath = $destFile
+                Bytes = $size
+                Existed = $existed
+                OrigLength = $(if ($existed) { $info.Length } else { [int64]0 })
+                OrigWriteTimeUtc = $(if ($existed) { $info.LastWriteTimeUtc } else { [datetime]::MinValue })
+            })
+        }
+    }
+    if ($items.Count -gt 0) {
+        $copyFiles = [int64]$items.Count
+        $copyBytes = [int64]0
+        foreach ($item in $items) { $copyBytes += $item.Bytes }
+    }
+    if ($totalFiles -le 0) { $totalFiles = $copyFiles }
+    if ($totalBytes -le 0) { $totalBytes = $copyBytes }
+    return @{
+        Items = $items
+        TotalFiles = $totalFiles
+        CopyFiles = $copyFiles
+        TotalBytes = $totalBytes
+        CopyBytes = $copyBytes
+        Ok = ($totalBytes -gt 0 -or $copyBytes -gt 0 -or $items.Count -gt 0)
+    }
+}
+
+function Measure-RobocopyCopyProgress {
+    param(
+        [Parameter(Mandatory = $true)]$Items
+    )
+    $bytes = [int64]0
+    $files = [int64]0
+    foreach ($item in $Items) {
+        $info = New-Object IO.FileInfo $item.DestPath
+        if (-not $info.Exists) { continue }
+        if ($item.Existed) {
+            $mtimeDelta = [Math]::Abs(($info.LastWriteTimeUtc - $item.OrigWriteTimeUtc).TotalSeconds)
+            $lenChanged = ($info.Length -ne $item.OrigLength)
+            if ($lenChanged -and ($item.Bytes -le 0 -or $info.Length -lt $item.Bytes)) {
+                $bytes += $info.Length
+            } elseif ($mtimeDelta -ge 2 -or $lenChanged) {
+                $files++
+                $bytes += $item.Bytes
+            }
+        } else {
+            $have = $info.Length
+            if ($item.Bytes -gt 0 -and $have -gt $item.Bytes) { $have = $item.Bytes }
+            $bytes += $have
+            if ($item.Bytes -le 0 -or $info.Length -ge $item.Bytes) {
+                $files++
+            }
+        }
+    }
+    return @{ Bytes = $bytes; Files = $files }
+}
+
 function Invoke-SafeRobocopy {
     param(
         [Parameter(Mandatory = $true)][string]$Source,
@@ -376,34 +519,57 @@ function Invoke-SafeRobocopy {
         return
     }
 
+    $activity = $Activity
     if ($ProgressTotalBytes -le 0) {
-        Write-Host "   counting files..." -ForegroundColor DarkGray
         $srcStats = Get-CopyTreeStats -Root $Source -ExcludeDirNames $ProgressExcludeDirNames
         $ProgressTotalBytes = $srcStats.Bytes
-        Write-Host ("   {0} files, {1}" -f $srcStats.Files, (Format-CopySize $srcStats.Bytes)) -ForegroundColor DarkCyan
     }
 
-    Write-Host "   copying..." -ForegroundColor DarkGray
+    $plan = Get-RobocopyCopyPlan -Source $Source -Destination $Destination -ArgumentList $ArgumentList -ProgressActivity $activity
+    if (-not $plan.Ok) {
+        $plan.TotalBytes = $ProgressTotalBytes
+        $plan.CopyBytes = $ProgressTotalBytes
+    }
+    if ($plan.TotalBytes -le 0) { $plan.TotalBytes = $plan.CopyBytes }
+    $alreadyBytes = [Math]::Max([int64]0, $plan.TotalBytes - $plan.CopyBytes)
+    $alreadyFiles = [Math]::Max([int64]0, $plan.TotalFiles - $plan.CopyFiles)
+    $maxDoneBytes = $alreadyBytes
+    $maxDoneFiles = $alreadyFiles
+
+    $startDest = Get-CopyTreeStats -Root $Destination -ExcludeDirNames $ProgressExcludeDirNames
     $job = Start-Job -ScriptBlock {
         param($Source, $Destination, $ArgumentList)
-        $p = Start-Process -FilePath "robocopy.exe" -ArgumentList (@($Source, $Destination) + $ArgumentList) -Wait -PassThru -WindowStyle Hidden
-        return $p.ExitCode
+        & robocopy.exe $Source $Destination @ArgumentList | Out-Null
+        return $LASTEXITCODE
     } -ArgumentList $Source, $Destination, $ArgumentList
-    $activity = $Activity
     try {
-        while ($job.State -eq 'Running') {
-            Start-Sleep -Seconds 8
-            if ($job.State -ne 'Running') { break }
-            $now = Get-CopyTreeStats -Root $Destination -ExcludeDirNames $ProgressExcludeDirNames
-            $status = "{0} / {1}  ({2} files)" -f (Format-CopySize $now.Bytes), (Format-CopySize $ProgressTotalBytes), $now.Files
+        while ($true) {
+            $finished = Wait-Job -Job $job -Timeout 1
+            if ($finished) { break }
+            $copied = @{ Bytes = [int64]0; Files = [int64]0 }
+            if ($plan.Items.Count -gt 0) {
+                $copied = Measure-RobocopyCopyProgress -Items $plan.Items
+            } else {
+                $nowDest = Get-CopyTreeStats -Root $Destination -ExcludeDirNames $ProgressExcludeDirNames
+                $copied.Bytes = [Math]::Max([int64]0, $nowDest.Bytes - $startDest.Bytes)
+                $copied.Files = [Math]::Max([int64]0, $nowDest.Files - $startDest.Files)
+            }
+            $doneBytes = $alreadyBytes + $copied.Bytes
+            if ($doneBytes -gt $plan.TotalBytes) { $doneBytes = $plan.TotalBytes }
+            $doneFiles = $alreadyFiles + $copied.Files
+            if ($doneFiles -gt $plan.TotalFiles -and $plan.TotalFiles -gt 0) { $doneFiles = $plan.TotalFiles }
+            if ($doneBytes -lt $maxDoneBytes) { $doneBytes = $maxDoneBytes }
+            if ($doneFiles -lt $maxDoneFiles) { $doneFiles = $maxDoneFiles }
+            $maxDoneBytes = $doneBytes
+            $maxDoneFiles = $doneFiles
+            $status = "{0} / {1}   {2} / {3} files" -f (Format-CopySize $doneBytes), (Format-CopySize $plan.TotalBytes), $doneFiles, $plan.TotalFiles
             $pct = 0
-            if ($ProgressTotalBytes -gt 0) {
-                $pct = [int][Math]::Min(99, [Math]::Floor(100.0 * $now.Bytes / $ProgressTotalBytes))
+            if ($plan.TotalBytes -gt 0) {
+                $pct = [int][Math]::Min(99, [Math]::Floor(100.0 * $doneBytes / $plan.TotalBytes))
             }
             Write-Progress -Activity $activity -Status $status -PercentComplete $pct
-            Write-Host ("   {0}" -f $status) -ForegroundColor DarkGray
         }
-        $raw = Receive-Job -Job $job -Wait
+        $raw = Receive-Job -Job $job
         if ($job.State -eq 'Failed') {
             throw "robocopy job failed: $Source -> $Destination : $raw"
         }
@@ -413,6 +579,11 @@ function Invoke-SafeRobocopy {
         }
         if ($code -ge 8) {
             throw "robocopy failed (code $code): $Source -> $Destination"
+        }
+        if ($plan.TotalBytes -gt 0) {
+            $finalFiles = $plan.TotalFiles
+            if ($finalFiles -le 0) { $finalFiles = $alreadyFiles + $plan.CopyFiles }
+            Write-Progress -Activity $activity -Status ("{0} / {1}   {2} / {3} files" -f (Format-CopySize $plan.TotalBytes), (Format-CopySize $plan.TotalBytes), $finalFiles, $finalFiles) -PercentComplete 100
         }
     } finally {
         Write-Progress -Activity $activity -Completed
@@ -735,9 +906,7 @@ exit `$LASTEXITCODE
             if ($skipContribMedia) { $omit += "src\media" }
             Write-Host ("   Runtime in snapshot — omitting contrib: {0}" -f ($omit -join ", ")) -ForegroundColor Gray
         }
-        Write-Host "   counting files..." -ForegroundColor DarkGray
         $srcStats = Get-CopyTreeStats -Root $contribSrc -ExcludeDirNames $xdNames
-        Write-Host ("   {0} files, {1}" -f $srcStats.Files, (Format-CopySize $srcStats.Bytes)) -ForegroundColor DarkCyan
         Invoke-SafeRobocopy -Activity "Export contrib" -ProgressTotalBytes $srcStats.Bytes -ProgressExcludeDirNames $xdNames -Source $contribSrc -Destination $destContrib -ArgumentList @(
             @("/E", "/XD") + $robocopyXd + @("/R:2", "/W:1", "/NFL", "/NDL", "/NJH", "/NJS", "/nc", "/ns", "/np")
         )
