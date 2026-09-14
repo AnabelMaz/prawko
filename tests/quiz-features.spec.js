@@ -734,6 +734,20 @@ test.describe('Quiz text selection', () => {
   }
 });
 
+test('page favicon is svg; pwa icons stay in the manifest', async ({ page }) => {
+  await page.goto('/');
+  const links = await page.evaluate(() => [...document.querySelectorAll('link')].map((l) => ({
+    rel: l.rel,
+    href: l.getAttribute('href'),
+  })));
+  expect(links.some((l) => l.rel.includes('icon') && l.href.endsWith('icons/icon.svg'))).toBe(true);
+  expect(links.some((l) => (l.href || '').includes('icon-192.png'))).toBe(false);
+  const res = await page.request.get('/manifest.json');
+  const manifest = await res.json();
+  expect(manifest.icons.some((icon) => icon.src.includes('icon-192.png'))).toBe(true);
+  expect(manifest.icons.some((icon) => icon.src.includes('icon-512.png'))).toBe(true);
+});
+
 test.describe('Home and categories are not selectable', () => {
   function pageSelection(selectors) {
     const u = (s) => {
