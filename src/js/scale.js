@@ -75,7 +75,34 @@ function measurePageHeight() {
   return Math.max(1, Math.ceil(screen.scrollHeight));
 }
 
-/** Pick columns/rows so every visible category card fits the grid box. */
+/** Largest equal squares of `n` items that fit in innerW × innerH. */
+function largestSquareGrid(n, innerW, innerH, gap) {
+  let bestCols = 1;
+  let bestSide = -Infinity;
+  let bestEmpty = Infinity;
+  for (let cols = 1; cols <= n; cols++) {
+    const rows = Math.ceil(n / cols);
+    const cellW = (innerW - gap * Math.max(0, cols - 1)) / cols;
+    const cellH = (innerH - gap * Math.max(0, rows - 1)) / rows;
+    const side = Math.min(cellW, cellH);
+    if (!(side > 0)) continue;
+    const empty = cols * rows - n;
+    const bigger = side > bestSide + 0.5;
+    const tighter = Math.abs(side - bestSide) <= 0.5 && empty < bestEmpty;
+    if (bigger || tighter) {
+      bestSide = side;
+      bestEmpty = empty;
+      bestCols = cols;
+    }
+  }
+  return {
+    cols: bestCols,
+    rows: Math.ceil(n / bestCols),
+    cell: Math.max(1, Math.floor(bestSide)),
+  };
+}
+
+/** Pack visible category cards as the largest squares that fit the grid. */
 export function layoutCategoryGrid() {
   const section = document.getElementById('categories');
   const grid = document.querySelector('.category-grid');
@@ -85,37 +112,26 @@ export function layoutCategoryGrid() {
     (c) => !c.hidden && c.style.display !== 'none'
   );
   const n = Math.max(1, cards.length);
-  const w = grid.clientWidth;
-  const h = grid.clientHeight;
-  if (w < 32 || h < 32) return;
+  const cs = getComputedStyle(grid);
+  const padX = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
+  const padY = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+  const gap = parseFloat(cs.rowGap || cs.columnGap || cs.gap) || 10;
+  const innerW = Math.max(1, grid.clientWidth - padX);
+  const innerH = Math.max(1, grid.clientHeight - padY);
+  if (innerW < 32 || innerH < 32) return;
 
-  let bestCols = Math.min(4, n);
-  let bestScore = -Infinity;
-  for (let cols = 1; cols <= n; cols++) {
-    const rows = Math.ceil(n / cols);
-    const cellW = w / cols;
-    const cellH = h / rows;
-    if (cellW < 64 || cellH < 44) continue;
-    const aspect = cellW / cellH;
-    const aspectScore = 1 - Math.min(1, Math.abs(Math.log(aspect / 1.45)));
-    const empty = cols * rows - n;
-    const fillScore = 1 - empty / Math.max(cols * rows, 1);
-    const sizeScore = Math.min(cellH, 110) / 110 + Math.min(cellW, 220) / 220;
-    const score = aspectScore * 2 + fillScore + sizeScore;
-    if (score > bestScore) {
-      bestScore = score;
-      bestCols = cols;
-    }
-  }
-
-  const bestRows = Math.ceil(n / bestCols);
-  grid.style.setProperty('--cat-cols', String(bestCols));
-  grid.style.setProperty('--cat-rows', String(bestRows));
+  const { cols, rows, cell } = largestSquareGrid(n, innerW, innerH, gap);
+  grid.style.setProperty('--cat-cols', String(cols));
+  grid.style.setProperty('--cat-rows', String(rows));
+  grid.style.setProperty('--cat-cell', `${cell}px`);
 
   const designH = Number.parseFloat(
     getComputedStyle(document.documentElement).getPropertyValue('--ui-design-height')
   ) || 0;
-  section.classList.toggle('categories-compact', designH > 0 && designH < 760);
+  const compact = designH > 0 && designH < 760;
+  const compactChanged = section.classList.contains('categories-compact') !== compact;
+  section.classList.toggle('categories-compact', compact);
+  if (compactChanged) requestAnimationFrame(() => layoutCategoryGrid());
 }
 
 function applyUiFitScale() {
