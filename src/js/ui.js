@@ -431,6 +431,7 @@ export function renderQuestion(question, container, options = {}) {
         mediaArea.classList.remove('has-media', 'exam-film-pending');
         mediaArea.classList.add('media-empty');
         mediaArea.setAttribute('aria-hidden', 'true');
+        onLearnMediaSettled(learnMediaMark);
         return;
       }
 
@@ -467,6 +468,7 @@ export function renderQuestion(question, container, options = {}) {
 
       fallback.append(p, retryBtn);
       mediaArea.appendChild(fallback);
+      onLearnMediaSettled(learnMediaMark);
     };
 
     if (q.mediaType === 'video') {
@@ -559,8 +561,7 @@ export function renderQuestion(question, container, options = {}) {
             });
             video.addEventListener('ended', () => {
               setReplayVisible(true);
-              if (learnMediaMark) showLearnMediaMark(learnMediaMark.isCorrect);
-              else setLearnMediaMarkHidden(false);
+              onLearnMediaSettled(learnMediaMark);
             });
 
             mediaArea.classList.add('has-learn-video');
@@ -589,7 +590,10 @@ export function renderQuestion(question, container, options = {}) {
           mediaArea.innerHTML = '';
 
           const img = document.createElement('img');
-          const onImageReady = () => finishLearnImageLoad(mediaArea, learnMediaMark);
+          const onImageReady = () => {
+            mediaArea.classList.remove('loading');
+            onLearnMediaSettled(learnMediaMark);
+          };
           img.onload = onImageReady;
           img.onerror = () => loadImage();
           img.alt = t('imgAlt');
@@ -623,6 +627,7 @@ export function renderQuestion(question, container, options = {}) {
       mediaArea.innerHTML = '<svg class="media-empty-icon" viewBox="0 0 96 72" aria-hidden="true"><rect x="16" y="24" width="52" height="36" rx="6" fill="none" stroke="currentColor" stroke-width="3"/><rect x="24" y="14" width="18" height="12" rx="3" fill="none" stroke="currentColor" stroke-width="3"/><circle cx="42" cy="42" r="10" fill="none" stroke="currentColor" stroke-width="3"/><line x1="10" y1="10" x2="86" y2="62" stroke="currentColor" stroke-width="4" stroke-linecap="round"/></svg>';
     }
   }
+  onLearnMediaSettled(learnMediaMark);
 
   // Question text
   if (questionText) questionText.textContent = q.q;
@@ -748,13 +753,21 @@ export function showLearnMediaMark(isCorrect) {
   mark.classList.toggle('correct', isCorrect);
   mark.classList.toggle('incorrect', !isCorrect);
   mark.textContent = isCorrect ? '\u2713' : '\u2717';
-  const video = mediaArea.querySelector('video');
-  mark.hidden = Boolean(video && !video.paused && !video.ended);
+  mark.hidden = isLearnMediaPending(mediaArea);
 }
 
-function finishLearnImageLoad(mediaArea, learnMediaMark) {
-  mediaArea.classList.remove('loading');
-  if (learnMediaMark) showLearnMediaMark(learnMediaMark.isCorrect);
+function isLearnMediaPending(mediaArea) {
+  const video = mediaArea.querySelector('video');
+  if (video && !video.paused && !video.ended) return true;
+  return mediaArea.classList.contains('loading') && !mediaArea.querySelector('img, video');
+}
+
+function onLearnMediaSettled(learnMediaMark) {
+  if (learnMediaMark) {
+    showLearnMediaMark(learnMediaMark.isCorrect);
+    return;
+  }
+  setLearnMediaMarkHidden(false);
 }
 
 function setLearnMediaMarkHidden(hidden) {

@@ -204,10 +204,12 @@ test.describe('Learn video result mark', () => {
     await setLearnQueue(page, 'order', 'sequential');
     const targets = await page.evaluate(async () => {
       const data = await fetch('data/B.json').then((res) => res.json());
+      const emptyPos = data.questions.findIndex((q) => !q.media) + 1;
       const imagePos = data.questions.findIndex((q) => q.media && q.mediaType === 'image') + 1;
       const videoPos = data.questions.findIndex((q) => q.mediaType === 'video') + 1;
-      return { imagePos, videoPos };
+      return { emptyPos, imagePos, videoPos };
     });
+    expect(targets.emptyPos).toBeGreaterThan(0);
     expect(targets.imagePos).toBeGreaterThan(0);
     expect(targets.videoPos).toBeGreaterThan(0);
 
@@ -216,6 +218,15 @@ test.describe('Learn video result mark', () => {
       await page.locator('.learn-qnum-input').fill(String(pos));
       await page.locator('.learn-qnum-input').press('Enter');
     };
+
+    await jump(targets.emptyPos);
+    await expect(page.locator('#quiz .media-area')).toHaveClass(/media-empty/);
+    await page.locator('.answers .answer-btn').first().click();
+    await expect(mark).toBeVisible();
+    await page.locator('.btn-next').click();
+    await page.locator('.btn-prev').click();
+    await expect(page.locator('#quiz .media-area')).toHaveClass(/media-empty/);
+    await expect(mark).toBeVisible();
 
     await jump(targets.imagePos);
     await expect(page.locator('#quiz .media-area img')).toHaveCount(1);
