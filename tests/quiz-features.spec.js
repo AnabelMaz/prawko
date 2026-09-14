@@ -1052,6 +1052,15 @@ test.describe('Learn catalog jump', () => {
     }));
     await page.locator('.learn-nav .btn-next').click();
     await expect(page.locator('.question-card')).not.toHaveAttribute('data-question-id', '6362');
+    const afterNext = await page.evaluate(() => ({
+      q: document.querySelector('.question-text')?.style.fontSize || '',
+      a: document.querySelector('.abc-answers .answer-text')?.style.fontSize || '',
+      hasAbc: Boolean(document.querySelector('.abc-answers')),
+    }));
+    expect(afterNext.q, 'question size after next must already be fitted').toMatch(/px$/);
+    if (afterNext.hasAbc) {
+      expect(afterNext.a, 'answer size after next must already be fitted').toMatch(/px$/);
+    }
     await page.locator('.learn-nav .btn-prev').click();
     await expect(page.locator('.question-card')).toHaveAttribute('data-question-id', '6362');
     await expect.poll(() => page.evaluate((beforeNav) => {

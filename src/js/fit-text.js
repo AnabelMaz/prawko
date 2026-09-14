@@ -1,7 +1,7 @@
 // fit-text.js — Panel: scale question and ABC copy to the slot.
-// Runs only when a question is shown and when the window scale/layout
-// updates. Does not hide text and does not watch the dock for its own
-// font-size writes (that looped 7px ↔ 32px and blanked the copy).
+// Runs when a question is shown and when the window scale/layout updates.
+// Does not hide text and does not watch the dock for its own font-size
+// writes (that looped 7px ↔ 32px and blanked the copy).
 //
 // Fit rule: wrap at the slot width, then check that the resulting 1–n
 // lines fit in the slot height. Question scales alone; A/B/C share the
@@ -9,6 +9,11 @@
 // the dock (36% / 64%), not from button clientHeight — that box still
 // follows leftover min-height / label layout and baked 19px vs 28px
 // on the same question after next/prev.
+//
+// Do not clear inline font-size before measuring: the canvas uses dock
+// fractions, not the current px. Clearing flashed the CSS default, then
+// the fitted size. When the dock is already laid out, fit in the same
+// turn as the new copy so the first paint is already the length-based size.
 
 const MIN_PX = 7;
 const MAX_PX = 32;
@@ -242,6 +247,19 @@ function dockReady(dock) {
   return true;
 }
 
+function retryFit() {
+  if (layoutTries >= LAYOUT_TRIES) {
+    layoutTries = 0;
+    return;
+  }
+  layoutTries += 1;
+  const gen = fitGen;
+  requestAnimationFrame(() => {
+    if (gen !== fitGen) return;
+    fitQuizDockText();
+  });
+}
+
 export function fitQuizDockText() {
   const dock = quizDock();
   if (!dock || !isPanelFit()) {
@@ -249,33 +267,34 @@ export function fitQuizDockText() {
     layoutTries = 0;
     return;
   }
-  clearInlineSizes(dock);
   void dock.offsetHeight;
   if (!dockReady(dock)) {
-    if (layoutTries >= LAYOUT_TRIES) {
-      layoutTries = 0;
-      return;
-    }
-    layoutTries += 1;
-    requestAnimationFrame(() => fitQuizDockText());
+    retryFit();
+    return;
+  }
+  const ready = fitQuestion(dock)
+    && (!dock.querySelector('.abc-answers') || fitAnswers(dock));
+  if (!ready) {
+    retryFit();
     return;
   }
   layoutTries = 0;
-  const ready = fitQuestion(dock)
-    && (!dock.querySelector('.abc-answers') || fitAnswers(dock));
-  if (!ready && layoutTries < LAYOUT_TRIES) {
-    layoutTries += 1;
-    requestAnimationFrame(() => fitQuizDockText());
-  }
 }
 
 export function scheduleFitQuizDockText() {
-  const gen = ++fitGen;
+  fitGen += 1;
+  layoutTries = 0;
+  const dock = quizDock();
+  if (dock && isPanelFit()) {
+    void dock.offsetHeight;
+    if (dockReady(dock)) {
+      fitQuizDockText();
+      return;
+    }
+  }
+  const gen = fitGen;
   requestAnimationFrame(() => {
     if (gen !== fitGen) return;
-    requestAnimationFrame(() => {
-      if (gen !== fitGen) return;
-      fitQuizDockText();
-    });
+    fitQuizDockText();
   });
 }
