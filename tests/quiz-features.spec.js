@@ -156,7 +156,7 @@ test.describe('Learn media is only the current question', () => {
 });
 
 test.describe('Learn video result mark', () => {
-  test('replay hides the mark until the clip ends and leaves answer buttons', async ({ page }) => {
+  test('mark stays on after answer while the clip plays; only replay hides it', async ({ page }) => {
     await page.route(/\.(mp4|webm)(\?|$)/i, async () => {});
     await startLearnMode(page, {
       localJson: { mediaBase: 'cdn', learnQuestionJump: true },
@@ -176,6 +176,11 @@ test.describe('Learn video result mark', () => {
     await page.locator('.answers .answer-btn').first().click();
     const mark = page.locator('#quiz .learn-media-mark');
     await expect(mark).toBeVisible();
+    await expect(mark).toHaveCSS('font-family', /Noto Sans Symbols/);
+    await mediaArea.locator('video').evaluate((video) => {
+      video.dispatchEvent(new Event('play'));
+    });
+    await expect(mark).toBeVisible();
     const markedAnswers = page.locator('.answers .answer-btn.correct, .answers .answer-btn.incorrect');
     await expect(markedAnswers).not.toHaveCount(0);
     const answerSnapshot = await markedAnswers.evaluateAll((els) => els.map((el) => el.className).sort());
@@ -183,10 +188,24 @@ test.describe('Learn video result mark', () => {
       video.pause();
       video.dispatchEvent(new Event('ended'));
     });
+    await expect(mark).toBeVisible();
     await page.locator('#quiz .media-replay-btn').click();
     await expect(mark).toBeHidden();
     await expect(markedAnswers).not.toHaveCount(0);
     expect(await markedAnswers.evaluateAll((els) => els.map((el) => el.className).sort())).toEqual(answerSnapshot);
+    await mediaArea.locator('video').evaluate((video) => {
+      video.dispatchEvent(new Event('pause'));
+    });
+    await expect(mark).toBeHidden();
+    await mediaArea.locator('video').evaluate((video) => {
+      Object.defineProperty(video, 'currentTime', { configurable: true, get: () => 1, set: () => {} });
+      video.pause();
+    });
+    await expect(mark).toBeVisible();
+    await mediaArea.locator('video').evaluate((video) => {
+      video.dispatchEvent(new Event('play'));
+    });
+    await expect(mark).toBeHidden();
     await mediaArea.locator('video').evaluate((video) => {
       video.pause();
       video.dispatchEvent(new Event('ended'));
@@ -240,14 +259,25 @@ test.describe('Learn video result mark', () => {
     await jump(targets.videoPos);
     await expect(page.locator('#quiz .media-area video')).toHaveCount(1);
     await page.locator('.answers .answer-btn').first().click();
+    await expect(mark).toBeVisible();
     await page.locator('#quiz .media-area video').evaluate((video) => {
-      video.pause();
-      video.dispatchEvent(new Event('ended'));
+      video.dispatchEvent(new Event('play'));
     });
     await expect(mark).toBeVisible();
     await page.locator('.btn-next').click();
     await page.locator('.btn-prev').click();
     await expect(page.locator('#quiz .media-area video')).toHaveCount(1);
+    await expect(mark).toBeVisible();
+    await page.locator('#quiz .media-area video').evaluate((video) => {
+      video.dispatchEvent(new Event('play'));
+    });
+    await expect(mark).toBeVisible();
+    await page.locator('#quiz .media-area video').evaluate((video) => {
+      video.pause();
+      video.dispatchEvent(new Event('ended'));
+    });
+    await page.locator('#quiz .media-replay-btn').click();
+    await expect(mark).toBeHidden();
     await page.locator('#quiz .media-area video').evaluate((video) => {
       video.pause();
       video.dispatchEvent(new Event('ended'));

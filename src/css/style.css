@@ -1514,6 +1514,15 @@ footer a {
   pointer-events: none;
 }
 
+@font-face {
+  font-family: "Noto Sans Symbols";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../fonts/NotoSansSymbols-Regular.ttf") format("truetype");
+  unicode-range: U+2713, U+2717;
+}
+
 .learn-media-mark {
   position: absolute;
   inset: 0;
@@ -1522,7 +1531,8 @@ footer a {
   align-items: center;
   justify-content: center;
   pointer-events: none;
-  font-weight: 800;
+  font-family: "Noto Sans Symbols", sans-serif;
+  font-weight: 400;
   line-height: 1;
   font-size: 12rem;
   font-size: 72cqh;

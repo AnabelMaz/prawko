@@ -546,9 +546,19 @@ export function renderQuestion(question, container, options = {}) {
               replay.hidden = !visible;
               mediaArea.classList.toggle('is-replayable', visible);
             };
+            let hideMarkForReplayPlay = false;
+            const revealMarkAfterReplayStop = () => {
+              if (!hideMarkForReplayPlay) return;
+              if (!video.paused && !video.ended) return;
+              if (video.seeking) return;
+              if (!video.ended && video.currentTime < 0.05) return;
+              if (video.ended) hideMarkForReplayPlay = false;
+              onLearnMediaSettled(learnMediaMark);
+            };
             replay.addEventListener('click', (e) => {
               e.preventDefault();
               e.stopPropagation();
+              hideMarkForReplayPlay = true;
               video.currentTime = 0;
               video.muted = false;
               setReplayVisible(false);
@@ -557,9 +567,11 @@ export function renderQuestion(question, container, options = {}) {
             });
             video.addEventListener('play', () => {
               setReplayVisible(false);
-              setLearnMediaMarkHidden(true);
+              if (hideMarkForReplayPlay) setLearnMediaMarkHidden(true);
             });
+            video.addEventListener('pause', revealMarkAfterReplayStop);
             video.addEventListener('ended', () => {
+              hideMarkForReplayPlay = false;
               setReplayVisible(true);
               onLearnMediaSettled(learnMediaMark);
             });
@@ -567,6 +579,7 @@ export function renderQuestion(question, container, options = {}) {
             mediaArea.classList.add('has-learn-video');
             video.src = mediaUrl;
             mediaArea.append(video, replay);
+            onLearnMediaSettled(learnMediaMark);
             syncExamMediaAlign();
           }
         })();
@@ -753,13 +766,7 @@ export function showLearnMediaMark(isCorrect) {
   mark.classList.toggle('correct', isCorrect);
   mark.classList.toggle('incorrect', !isCorrect);
   mark.textContent = isCorrect ? '\u2713' : '\u2717';
-  mark.hidden = isLearnMediaPending(mediaArea);
-}
-
-function isLearnMediaPending(mediaArea) {
-  const video = mediaArea.querySelector('video');
-  if (video && !video.paused && !video.ended) return true;
-  return mediaArea.classList.contains('loading') && !mediaArea.querySelector('img, video');
+  mark.hidden = false;
 }
 
 function onLearnMediaSettled(learnMediaMark) {

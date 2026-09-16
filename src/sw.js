@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'prawko-v117';
+const CACHE_VERSION = 'prawko-v123';
 const APP_SHELL_CACHE = CACHE_VERSION + '-shell';
 const DATA_CACHE = CACHE_VERSION + '-data';
 const MEDIA_CACHE = CACHE_VERSION + '-media';
@@ -30,7 +30,8 @@ const APP_SHELL = [
   './icons/cursor-black.png',
   './icons/cursor-white.png',
   './icons/cursor-pointer-black.png',
-  './icons/cursor-pointer-white.png'
+  './icons/cursor-pointer-white.png',
+  './fonts/NotoSansSymbols-Regular.ttf'
 ];
 
 self.addEventListener('install', (event) => {
@@ -182,7 +183,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  if (url.pathname.includes('/icons/')) {
+  if (url.pathname.includes('/icons/') || url.pathname.includes('/fonts/')) {
     event.respondWith(
       caches.open(APP_SHELL_CACHE).then((cache) =>
         cache.match(event.request).then((cached) => {

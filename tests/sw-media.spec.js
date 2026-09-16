@@ -16,7 +16,7 @@ function handlerBlock(marker, nextMarker) {
 test('service worker lets local /media/ pass through unless the offline pack has the file', () => {
   const block = handlerBlock(
     'if (url.pathname.match(/\\/media\\//))',
-    "if (url.pathname.includes('/icons/'))"
+    "if (url.pathname.includes('/icons/') || url.pathname.includes('/fonts/'))"
   );
   expect(block).toMatch(/if \(!remoteMediaCached\(url\.href\)\) return;/);
   expect(block).not.toMatch(/safeCachePut/);
@@ -28,6 +28,11 @@ test('service worker lets CDN media pass through unless the offline pack has the
     '// Category JSON & translation files'
   );
   expect(block).toMatch(/if \(indexReady && !remoteMediaCached\(url\.href\)\) return;/);
+});
+
+test('service worker precaches the local Noto mark font and cache-firsts /fonts/', () => {
+  expect(SW).toMatch(/\.\/fonts\/NotoSansSymbols-Regular\.ttf/);
+  expect(SW).toMatch(/url\.pathname\.includes\('\/fonts\/'\)/);
 });
 
 test('service worker clones the app-shell response before opening the cache', () => {
