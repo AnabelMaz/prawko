@@ -758,7 +758,7 @@ STUB
   if [ "$EXCLUDE_DATA" -eq 0 ]; then
     if data_src="$(resolve_export_data_src)"; then
       mkdir -p "$dest_root/snapshot/data"
-      say_c "-> Snapshot data: $data_src"
+      say_c "-> Snapshot data: $data_src -> $dest_root/snapshot/data"
       rsync_progress -a "$data_src/" "$dest_root/snapshot/data/"
       has_data=1; src_data="$data_src"
     else
@@ -768,7 +768,7 @@ STUB
   if [ "$EXCLUDE_MEDIA" -eq 0 ]; then
     if media_src="$(resolve_export_media_root)"; then
       mkdir -p "$dest_root/snapshot/media"
-      say_c "-> Snapshot media: $media_src"
+      say_c "-> Snapshot media: $media_src -> $dest_root/snapshot/media"
       for sub in img vid; do
         [ -d "$media_src/$sub" ] || continue
         mkdir -p "$dest_root/snapshot/media/$sub"
@@ -784,18 +784,18 @@ STUB
       mkdir -p "$dest_root/snapshot"
       cp "$TARGET_DIR/src/local.json" "$dest_root/snapshot/local.json"
       has_local=1; src_local="$TARGET_DIR/src/local.json"
-      say_c "-> Snapshot local.json"
+      say_c "-> Snapshot local.json: $src_local -> $dest_root/snapshot/local.json"
     elif [ "$has_media" -eq 1 ]; then
       mkdir -p "$dest_root/snapshot"
       printf '{\n  "mediaBase": "media"\n}\n' > "$dest_root/snapshot/local.json"
       has_local=1; src_local="(generated)"
-      say_c "-> Snapshot local.json: generated mediaBase=media"
+      say_c "-> Snapshot local.json: generated mediaBase=media -> $dest_root/snapshot/local.json"
     fi
   fi
   if [ "$INCLUDE_GOV_CACHE" -eq 1 ]; then
     if dir_has_files "$GOV_DATA"; then
       mkdir -p "$dest_root/gov-cache/gov-data"
-      say_c "-> Gov cache: $GOV_DATA"
+      say_c "-> Gov cache: $GOV_DATA -> $dest_root/gov-cache/gov-data"
       rsync_progress -a "$GOV_DATA/" "$dest_root/gov-cache/gov-data/"
       has_gov=1; src_gov="$GOV_DATA"
     else
@@ -806,7 +806,7 @@ STUB
     say_d "-> Contrib is already in $dest_contrib (skipping copy)."
   else
     mkdir -p "$dest_contrib"
-    say_c "-> rsync contrib: $contrib -> $dest_contrib (code only)"
+    say_c "-> Contrib: $contrib -> $dest_contrib"
     _rsync_ex=(
       -a
       --exclude node_modules --exclude .git --exclude test-results

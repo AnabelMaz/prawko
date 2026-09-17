@@ -847,8 +847,9 @@ exit `$LASTEXITCODE
         $jsonSrc = Resolve-ExportLocalJsonSource
         if ($jsonSrc) {
             New-Item -ItemType Directory -Path $destSnapshot -Force | Out-Null
-            Copy-Item -LiteralPath $jsonSrc -Destination (Join-Path $destSnapshot "local.json") -Force
-            Write-Host "-> Snapshot local.json from $jsonSrc" -ForegroundColor Cyan
+            $jsonDst = Join-Path $destSnapshot "local.json"
+            Copy-Item -LiteralPath $jsonSrc -Destination $jsonDst -Force
+            Write-Host "-> Snapshot local.json: $jsonSrc -> $jsonDst" -ForegroundColor Cyan
             $components.localJson = $true
             $sources.localJson = $jsonSrc
             $locations.localJson = "snapshot"
@@ -856,7 +857,7 @@ exit `$LASTEXITCODE
             New-Item -ItemType Directory -Path $destSnapshot -Force | Out-Null
             $defaultLocal = Join-Path $destSnapshot "local.json"
             [IO.File]::WriteAllText($defaultLocal, "{`n  `"mediaBase`": `"media`"`n}`n", $utf8NoBom)
-            Write-Host "-> Snapshot local.json: generated mediaBase=media" -ForegroundColor Cyan
+            Write-Host "-> Snapshot local.json: generated mediaBase=media -> $defaultLocal" -ForegroundColor Cyan
             $components.localJson = $true
             $sources.localJson = "(generated)"
             $locations.localJson = "snapshot"
@@ -899,7 +900,7 @@ exit `$LASTEXITCODE
             $xdNames += "media"
             $robocopyXd += "media"
         }
-        Write-Host "-> robocopy contrib: $contribSrc -> $destContrib (code only; no node_modules/.git, no /MIR)" -ForegroundColor Cyan
+        Write-Host "-> Contrib: $contribSrc -> $destContrib" -ForegroundColor Cyan
         if ($skipContribData -or $skipContribMedia) {
             $omit = @()
             if ($skipContribData) { $omit += "src\data" }
