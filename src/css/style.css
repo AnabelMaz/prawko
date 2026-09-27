@@ -3098,30 +3098,30 @@ html[data-ui-mode="fit"] #categories.active .category-grid {
   margin: 0 auto;
   padding: 4px 16px 8px;
   display: grid;
-  grid-template-columns: repeat(var(--cat-cols, 4), minmax(0, var(--cat-cell, 1fr)));
-  grid-template-rows: repeat(var(--cat-rows, 3), minmax(0, var(--cat-cell, 1fr)));
+  grid-template-columns: repeat(var(--cat-cols, 4), minmax(0, var(--cat-card-w, 1fr)));
+  grid-template-rows: repeat(var(--cat-rows, 3), minmax(0, var(--cat-card-h, 1fr)));
   gap: 10px;
   justify-content: center;
   align-content: center;
   justify-items: stretch;
   align-items: stretch;
   overflow: hidden;
-  container-type: size;
 }
 
 html[data-ui-mode="fit"] #categories.active .category-grid .category-card {
   min-height: 0;
-  aspect-ratio: 1 / 1;
+  aspect-ratio: 199 / 146;
   width: 100%;
-  height: auto;
+  height: 100%;
   max-width: 100%;
   max-height: 100%;
   padding: clamp(6px, 8cqh, 14px) clamp(8px, 2cqw, 16px);
   box-sizing: border-box;
   container-type: size;
-  justify-content: center;
-  justify-self: center;
-  align-self: center;
+  justify-content: flex-start;
+  justify-self: stretch;
+  align-self: stretch;
+  overflow: hidden;
 }
 
 html[data-ui-mode="fit"] #categories.active .category-grid .category-card:hover {

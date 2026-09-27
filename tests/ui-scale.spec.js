@@ -101,7 +101,11 @@ test('short 1024 laptop window with browser chrome still scales', async ({ page 
 async function categoryGridMetrics(page) {
   await page.waitForFunction(() => {
     const grid = document.querySelector('#categories.active .category-grid');
-    return grid && Number(getComputedStyle(grid).getPropertyValue('--cat-cols')) > 0;
+    const card = grid?.querySelector('.category-card');
+    return grid
+      && Number(getComputedStyle(grid).getPropertyValue('--cat-cols')) > 0
+      && card
+      && card.getBoundingClientRect().width > 8;
   });
   return page.evaluate(() => {
     const grid = document.querySelector('.category-grid');
@@ -111,76 +115,116 @@ async function categoryGridMetrics(page) {
       return style.display !== 'none' && style.visibility !== 'hidden';
     });
     const cs = getComputedStyle(grid);
-    const gap = parseFloat(cs.rowGap || cs.columnGap || cs.gap) || 10;
-    const padX = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
-    const padY = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
-    const innerW = grid.clientWidth - padX;
-    const innerH = grid.clientHeight - padY;
-    const n = cards.length;
-    let bestSide = 0;
-    for (let cols = 1; cols <= Math.max(1, n); cols++) {
-      const rows = Math.ceil(n / cols);
-      const side = Math.min(
-        (innerW - gap * Math.max(0, cols - 1)) / cols,
-        (innerH - gap * Math.max(0, rows - 1)) / rows
-      );
-      if (side > bestSide) bestSide = side;
-    }
     return {
       cols: Number(cs.getPropertyValue('--cat-cols')),
       rows: Number(cs.getPropertyValue('--cat-rows')),
       cell: parseFloat(cs.getPropertyValue('--cat-cell')),
-      bestSide,
+      cardW: parseFloat(cs.getPropertyValue('--cat-card-w')),
+      cardH: parseFloat(cs.getPropertyValue('--cat-card-h')),
       orient: document.documentElement.getAttribute('data-ui-orient'),
-      n,
+      n: cards.length,
+      searchGap: (() => {
+        const search = document.querySelector('.category-search-wrap');
+        const card = grid.querySelector('.category-card');
+        if (!search || !card) return 0;
+        return card.getBoundingClientRect().top - search.getBoundingClientRect().bottom;
+      })(),
+      letters: [...grid.querySelectorAll('.category-letter')].map((el) => {
+        const r = el.getBoundingClientRect();
+        const g = grid.getBoundingClientRect();
+        const s = document.getElementById('categories').getBoundingClientRect();
+        return {
+          text: (el.textContent || '').trim(),
+          h: r.height,
+          visible: r.height > 6
+            && r.top >= s.top - 1
+            && r.bottom <= s.bottom + 1
+            && r.top >= g.top - 1
+            && r.bottom <= g.bottom + 1,
+        };
+      }),
       boxes: cards.map((c) => {
         const r = c.getBoundingClientRect();
-        return { w: r.width, h: r.height, ratio: r.width / Math.max(1, r.height) };
+        const name = c.querySelector('.category-name');
+        return {
+          id: c.dataset.category,
+          w: r.width,
+          h: r.height,
+          ratio: r.width / Math.max(1, r.height),
+          nameLines: name ? name.getClientRects().length : 0,
+        };
       }),
     };
   });
 }
 
-function expectLargestSquares(metrics, minPx) {
+const CARD_RATIO = 199 / 146;
+
+function expectCategoryTiles(metrics, minPx) {
   expect(metrics.n).toBeGreaterThanOrEqual(10);
   expect(metrics.cols * metrics.rows).toBeGreaterThanOrEqual(metrics.n);
-  expect(metrics.cell).toBeGreaterThanOrEqual(Math.floor(metrics.bestSide) - 1);
   for (const box of metrics.boxes) {
-    expect(box.ratio).toBeGreaterThan(0.75);
-    expect(box.ratio).toBeLessThan(1.35);
+    expect(box.ratio).toBeGreaterThan(CARD_RATIO - 0.08);
+    expect(box.ratio).toBeLessThan(CARD_RATIO + 0.08);
     expect(box.w).toBeGreaterThan(minPx);
     expect(box.h).toBeGreaterThan(minPx);
   }
+  const letters = metrics.letters || [];
+  expect(letters.length).toBe(metrics.n);
+  for (const letter of letters) {
+    expect(letter.visible).toBe(true);
+  }
+  expect(metrics.searchGap).toBeGreaterThanOrEqual(-1);
 }
 
-test('category cards pack as the largest squares in landscape', async ({ page }) => {
+test('category cards pack as largest fixed-ratio tiles in landscape', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('/');
   await goToCategories(page);
   const metrics = await categoryGridMetrics(page);
   expect(metrics.orient).toBe('landscape');
-  expectLargestSquares(metrics, 48);
-  expect(metrics.cols).toBeGreaterThanOrEqual(metrics.rows);
+  expectCategoryTiles(metrics, 48);
+  expect(metrics.cols).toBe(4);
+  expect(metrics.rows).toBe(3);
+  const carName = metrics.boxes.find((box) => box.id === 'B');
+  expect(carName?.nameLines).toBeLessThanOrEqual(1);
 });
 
-test('category cards pack as the largest squares in a short landscape window', async ({ page }) => {
+test('category cards keep the same ratio in a short landscape window', async ({ page }) => {
   await page.setViewportSize({ width: 1100, height: 520 });
   await page.goto('/');
   await goToCategories(page);
   const metrics = await categoryGridMetrics(page);
   expect(metrics.orient).toBe('landscape');
-  expectLargestSquares(metrics, 40);
-  expect(metrics.cols).toBeGreaterThanOrEqual(metrics.rows);
+  expectCategoryTiles(metrics, 40);
 });
 
-test('category cards pack as the largest squares in portrait', async ({ page }) => {
+test('category cards keep the same ratio in portrait', async ({ page }) => {
   await page.setViewportSize({ width: 450, height: 800 });
   await page.goto('/');
   await goToCategories(page);
   const metrics = await categoryGridMetrics(page);
   expect(metrics.orient).toBe('portrait');
-  expectLargestSquares(metrics, 40);
-  expect(metrics.rows).toBeGreaterThanOrEqual(metrics.cols);
+  expectCategoryTiles(metrics, 40);
+});
+
+test('category tiles stay the same after returning from learn', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/');
+  await goToCategories(page);
+  const fromHome = await categoryGridMetrics(page);
+  await page.click('.mode-btn[data-mode="learn"]');
+  await page.click('.category-grid .category-card[data-category="B"]');
+  await page.waitForSelector('#quiz.active.learn-active');
+  await page.click('.quiz-back');
+  await page.waitForSelector('#categories.active');
+  const fromLearn = await categoryGridMetrics(page);
+  expect(fromLearn.cols).toBe(fromHome.cols);
+  expect(fromLearn.rows).toBe(fromHome.rows);
+  expect(fromLearn.cell).toBe(fromHome.cell);
+  expect(fromLearn.cardW).toBe(fromHome.cardW);
+  expect(fromLearn.cardH).toBe(fromHome.cardH);
+  expectCategoryTiles(fromLearn, 48);
 });
 
 test('home keeps scaling the 1280 layout on a small laptop before wrapping', async ({ page }) => {

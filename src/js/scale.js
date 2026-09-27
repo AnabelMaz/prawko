@@ -4,6 +4,9 @@
 // Long-list screens (results, history, learn-progress) keep scroll.
 
 import { scheduleFitQuizDockText } from './fit-text.js';
+import './category-pack.js';
+
+const { packCategoryGrid } = globalThis.PrawkoCategoryPack;
 
 export const UI_DESIGN_WIDTH = 1280;
 export const UI_LANDSCAPE_HEIGHT = 800;
@@ -36,6 +39,7 @@ let lastMode = '';
 let lastStation = '';
 let lastChromeH = -1;
 let lastOrient = '';
+let categoryLayoutTries = 0;
 
 function viewportSize() {
   return {
@@ -91,55 +95,75 @@ function rememberCurrentScale(root) {
   lastChromeH = parseFloat(root.style.getPropertyValue('--ui-chrome-top')) || 0;
 }
 
-/** Largest equal squares of `n` items that fit in innerW × innerH. */
-function largestSquareGrid(n, innerW, innerH, gap) {
-  let bestCols = 1;
-  let bestSide = -Infinity;
-  let bestEmpty = Infinity;
-  for (let cols = 1; cols <= n; cols++) {
-    const rows = Math.ceil(n / cols);
-    const cellW = (innerW - gap * Math.max(0, cols - 1)) / cols;
-    const cellH = (innerH - gap * Math.max(0, rows - 1)) / rows;
-    const side = Math.min(cellW, cellH);
-    if (!(side > 0)) continue;
-    const empty = cols * rows - n;
-    const bigger = side > bestSide + 0.5;
-    const tighter = Math.abs(side - bestSide) <= 0.5 && empty < bestEmpty;
-    if (bigger || tighter) {
-      bestSide = side;
-      bestEmpty = empty;
-      bestCols = cols;
-    }
+/** Flex leftover for the grid: section height minus header/search/recent, not the grid's own box. */
+function categoryGridLeftover(section, grid) {
+  const sectionCs = getComputedStyle(section);
+  const sectionPadY = (parseFloat(sectionCs.paddingTop) || 0)
+    + (parseFloat(sectionCs.paddingBottom) || 0);
+  let used = 0;
+  for (const child of section.children) {
+    if (child === grid) continue;
+    const style = getComputedStyle(child);
+    if (child.hidden || style.display === 'none') continue;
+    used += child.offsetHeight;
+    used += parseFloat(style.marginTop) || 0;
+    used += parseFloat(style.marginBottom) || 0;
   }
+  const gridCs = getComputedStyle(grid);
+  const padX = (parseFloat(gridCs.paddingLeft) || 0) + (parseFloat(gridCs.paddingRight) || 0);
+  const padY = (parseFloat(gridCs.paddingTop) || 0) + (parseFloat(gridCs.paddingBottom) || 0);
+  const gap = parseFloat(gridCs.rowGap || gridCs.columnGap || gridCs.gap) || 10;
   return {
-    cols: bestCols,
-    rows: Math.ceil(n / bestCols),
-    cell: Math.max(1, Math.floor(bestSide)),
+    innerW: grid.clientWidth - padX,
+    innerH: section.clientHeight - sectionPadY - used - padY - 2,
+    gap,
   };
 }
 
-/** Pack visible category cards as the largest squares that fit the grid. */
+function scheduleCategoryGridLayout() {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => layoutCategoryGrid());
+  });
+}
+
+/** Pack visible category cards after the fill stage has a real leftover. */
 export function layoutCategoryGrid() {
   const section = document.getElementById('categories');
   const grid = document.querySelector('.category-grid');
   if (!section?.classList.contains('active') || !grid) return;
+  if (document.documentElement.getAttribute('data-ui-station') !== 'fill') return;
+
+  const designHNow = Number.parseFloat(
+    getComputedStyle(document.documentElement).getPropertyValue('--ui-design-height')
+  ) || 0;
+  if (designHNow > 0 && section.clientHeight > designHNow + 24) {
+    if (categoryLayoutTries < 4) {
+      categoryLayoutTries += 1;
+      requestAnimationFrame(() => layoutCategoryGrid());
+    }
+    return;
+  }
 
   const cards = [...grid.querySelectorAll('.category-card')].filter(
     (c) => !c.hidden && c.style.display !== 'none'
   );
   const n = Math.max(1, cards.length);
-  const cs = getComputedStyle(grid);
-  const padX = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
-  const padY = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
-  const gap = parseFloat(cs.rowGap || cs.columnGap || cs.gap) || 10;
-  const innerW = Math.max(1, grid.clientWidth - padX);
-  const innerH = Math.max(1, grid.clientHeight - padY);
-  if (innerW < 32 || innerH < 32) return;
+  const { innerW, innerH, gap } = categoryGridLeftover(section, grid);
+  if (innerW < 32 || innerH < 32) {
+    if (categoryLayoutTries < 4) {
+      categoryLayoutTries += 1;
+      requestAnimationFrame(() => layoutCategoryGrid());
+    }
+    return;
+  }
+  categoryLayoutTries = 0;
 
-  const { cols, rows, cell } = largestSquareGrid(n, innerW, innerH, gap);
+  const { cols, rows, cardW, cardH } = packCategoryGrid(n, innerW, innerH, gap);
   grid.style.setProperty('--cat-cols', String(cols));
   grid.style.setProperty('--cat-rows', String(rows));
-  grid.style.setProperty('--cat-cell', `${cell}px`);
+  grid.style.setProperty('--cat-card-w', `${cardW}px`);
+  grid.style.setProperty('--cat-card-h', `${cardH}px`);
+  grid.style.setProperty('--cat-cell', `${cardW}px`);
 
   const designH = Number.parseFloat(
     getComputedStyle(document.documentElement).getPropertyValue('--ui-design-height')
@@ -147,7 +171,7 @@ export function layoutCategoryGrid() {
   const compact = designH > 0 && designH < 760;
   const compactChanged = section.classList.contains('categories-compact') !== compact;
   section.classList.toggle('categories-compact', compact);
-  if (compactChanged) requestAnimationFrame(() => layoutCategoryGrid());
+  if (compactChanged) scheduleCategoryGridLayout();
 }
 
 function applyUiFitScale() {
@@ -217,8 +241,8 @@ function applyUiFitScale() {
     root.setAttribute('data-ui-station', lastStation || station);
     root.setAttribute('data-ui-mode', lastMode || mode);
     requestAnimationFrame(() => {
-      if (isCategoriesScreen()) layoutCategoryGrid();
       syncExamMediaAlign();
+      if (isCategoriesScreen()) scheduleCategoryGridLayout();
     });
     return;
   }
@@ -238,8 +262,8 @@ function applyUiFitScale() {
   root.setAttribute('data-ui-station', station);
   requestAnimationFrame(() => {
     applying = false;
-    if (isCategoriesScreen()) layoutCategoryGrid();
     syncExamMediaAlign();
+    if (isCategoriesScreen()) scheduleCategoryGridLayout();
   });
 }
 
