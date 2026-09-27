@@ -59,7 +59,7 @@ test.describe('Category media access', () => {
     expect(table[5]).toMatchObject({ available: false, offlineReady: false, canDownload: false });
   });
 
-  test('local.json mediaBase cdn treats this host like github.io', async ({ page }) => {
+  test('local.json mediaBase cdn keeps the published Backblaze host', async ({ page }) => {
     await page.route('**/local.json', async (route) => {
       await route.fulfill({
         status: 200,
@@ -100,16 +100,69 @@ test.describe('Category media access', () => {
     await expect(page.locator('html')).toHaveAttribute('data-local-media', 'true');
   });
 
-  test('local.json is applied even when the page is not named localhost', async () => {
+  test('without local.json media stays on the published CDN', async () => {
     const fs = require('fs');
     const path = require('path');
     const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'js', 'data.js'), 'utf8');
     expect(src).not.toMatch(/isLocalDevHost/);
-    expect(src).toMatch(/hostedOnGitHubPages/);
+    expect(src).not.toMatch(/hostedOnGitHubPages/);
+    expect(src).not.toMatch(/github\.io/);
+    expect(src).toMatch(/export let MEDIA_BASE = MEDIA_CDN/);
+    expect(src).toMatch(/export let OFFLINE_DOWNLOAD = 'packs'/);
     expect(src).toMatch(/fetch\(new URL\('local\.json'/);
+    expect(src).toMatch(/LOCAL_JSON_WAIT_MS/);
+    expect(src).toMatch(/signal: ctrl\.signal/);
+  });
+
+  test('a missing local.json does not switch to same-origin media', async ({ page }) => {
+    await page.route('**/local.json', async (route) => {
+      await route.fulfill({ status: 404, body: '' });
+    });
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    const urls = await page.evaluate(async () => {
+      const { getMediaUrls, usesLocalMedia, OFFLINE_DOWNLOAD } = await import(new URL('./js/data.js', location.href).href);
+      return {
+        local: usesLocalMedia(),
+        offline: OFFLINE_DOWNLOAD,
+        img: getMediaUrls('foo.webp', 'image').join(' '),
+        vid: getMediaUrls('bar.mp4', 'video').join(' '),
+      };
+    });
+    expect(urls.local).toBe(false);
+    expect(urls.offline).toBe('packs');
+    expect(urls.img).toMatch(/backblazeb2/);
+    expect(urls.vid).toMatch(/backblazeb2/);
+    expect(urls.img).not.toMatch(/\/media\/img\//);
+    await expect(page.locator('html')).toHaveAttribute('data-local-media', 'false');
+  });
+
+  test('a hanging local.json does not block the first screen', async ({ page }) => {
+    let pending;
+    await page.route('**/local.json', (route) => {
+      pending = route;
+    });
+    const started = Date.now();
+    await page.goto('/');
+    await expect(page.locator('#home.active')).toBeVisible();
+    await expect(page.locator('#home-spinner')).toHaveClass(/hidden/);
+    await expect(page.locator('html')).toHaveAttribute('data-local-media', 'false');
+    expect(Date.now() - started).toBeLessThan(5000);
+    if (pending) {
+      try {
+        await pending.fulfill({ status: 404, body: '' });
+      } catch { /* fetch already aborted */ }
+    }
   });
 
   test('local media marks every category available offline', async ({ page }) => {
+    await page.route('**/local.json', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ mediaBase: 'media' }),
+      });
+    });
     await openCategories(page);
     const local = await page.locator('html').getAttribute('data-local-media');
     test.skip(local !== 'true', 'this server uses remote CDN media');
@@ -676,6 +729,13 @@ test.describe('Opportunistic image cache while viewing', () => {
   });
 
   test('loopback local images are not copied into the offline cache', async ({ page }) => {
+    await page.route('**/local.json', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ mediaBase: 'media' }),
+      });
+    });
     const hits = [];
     await page.route('**/media/img/keep-local.webp', async (route) => {
       hits.push(route.request().url());

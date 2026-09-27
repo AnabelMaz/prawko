@@ -1,6 +1,6 @@
 importScripts('./js/media-assemble.js');
 
-const CACHE_VERSION = 'prawko-v129';
+const CACHE_VERSION = 'prawko-v131';
 const APP_SHELL_CACHE = CACHE_VERSION + '-shell';
 const DATA_CACHE = CACHE_VERSION + '-data';
 const MEDIA_CACHE = CACHE_VERSION + '-media';

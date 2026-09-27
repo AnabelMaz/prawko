@@ -656,12 +656,12 @@ async function applyAppUpdate(registration) {
 // ---- Init ----
 async function init() {
   setupUiFitScale();
+  const metaP = fetchMeta();
   await loadLocalConfig();
   await loadLearnLocalFlags();
-  // Load metadata
   const spinner = document.getElementById('home-spinner');
   try {
-    meta = await fetchMeta();
+    meta = await metaP;
     uniqueQuestionCount = await fetchUniqueQuestionCount();
     paintHomeTagline();
     renderCategories(meta, getDownloadedCategories());

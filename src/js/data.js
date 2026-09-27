@@ -3,20 +3,16 @@
 const cache = new Map();
 const inflight = new Map();
 
-// Media URLs. github.io uses B2 + R2. A self-hosted server uses same-origin
-// `media/` (and `local.json` can switch it to cdn / packs). That file is
-// gitignored — Pages 404s it; the installer writes it next to the app.
+// Media URLs. One start state for every host: the published CDN.
+// Same-origin `local.json` is optional. When the admin has files on this
+// server, the installer writes that file (`mediaBase: media`) and the app
+// switches to `/media/`. Missing or slow `local.json` does not block startup.
 export const MEDIA_CDN = 'https://f003.backblazeb2.com/file/prawko-maz';
 export const PACKS_CDN = 'https://pub-e8e3a36b9ab44034913636d87ee3f0ee.r2.dev';
 
-function hostedOnGitHubPages() {
-  if (typeof location === 'undefined') return false;
-  return /(?:^|\.)github\.io$/i.test(location.hostname);
-}
-
-export let MEDIA_BASE = hostedOnGitHubPages() ? MEDIA_CDN : 'media';
+export let MEDIA_BASE = MEDIA_CDN;
 export let PACKS_BASE = PACKS_CDN;
-export let OFFLINE_DOWNLOAD = hostedOnGitHubPages() ? 'packs' : 'files';
+export let OFFLINE_DOWNLOAD = 'packs';
 
 function applyLocalConfig(data) {
   if (!data || typeof data !== 'object') return;
@@ -41,17 +37,28 @@ function applyLocalConfig(data) {
 
 let localConfigPromise = null;
 
+/** Same-origin `local.json` is tiny when present. Bound the wait so a missing
+ *  file or a slow origin 404 cannot stall the first screen on any host. */
+export const LOCAL_JSON_WAIT_MS = 1000;
+
 export function loadLocalConfig() {
   if (!localConfigPromise) {
     localConfigPromise = (async () => {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), LOCAL_JSON_WAIT_MS);
       try {
-        const res = await fetch(new URL('local.json', document.baseURI), { cache: 'no-store' });
+        const res = await fetch(new URL('local.json', document.baseURI), {
+          cache: 'no-store',
+          signal: ctrl.signal,
+        });
         if (!res.ok) return {};
         const data = await res.json();
         applyLocalConfig(data);
         return data && typeof data === 'object' ? data : {};
       } catch {
         return {};
+      } finally {
+        clearTimeout(timer);
       }
     })();
   }
