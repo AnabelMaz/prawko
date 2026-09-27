@@ -1,6 +1,6 @@
 // stats.js — Exam history & learning progress persistence in localStorage
 
-import { profileGet, profileSet, profileRemove } from './profiles.js';
+import { profileGet, profileSet, profileRemove, getProfileEpoch } from './profiles.js';
 
 const STORAGE_KEY = 'prawko_stats';
 const LEARN_KEY = 'prawko_learn';
@@ -92,7 +92,12 @@ export function getCategoryStats(category) {
 
 export function getLearnKnownCount(category, questions) {
   if (!Array.isArray(questions) || !questions.length) return 0;
-  return questions.filter((q) => getLearnQuestionStatus(category, q) === 'known').length;
+  const data = loadLearnData();
+  let n = 0;
+  for (const q of questions) {
+    if (statusFromEntry(entryFromData(data, category, q.id), q) === 'known') n += 1;
+  }
+  return n;
 }
 
 function normalizeLearnEntry(raw) {
@@ -148,9 +153,12 @@ export function saveLearnAnswer(category, questionId, answer, isCorrect = null) 
 
   data[category][questionId] = nextEntry;
   try {
-    profileSet(LEARN_KEY, JSON.stringify(data));
+    const written = profileSet(LEARN_KEY, JSON.stringify(data));
+    if (!written) forgetLearnDataCache();
+    else rememberLearnData(data);
     return true;
   } catch (e) {
+    forgetLearnDataCache();
     if (e?.name === 'QuotaExceededError' || e?.code === 22) {
       console.warn('localStorage quota exceeded while saving learn progress:', e);
     }
@@ -158,14 +166,62 @@ export function saveLearnAnswer(category, questionId, answer, isCorrect = null) 
   }
 }
 
+let learnDataCache = null;
+let learnDataCacheEpoch = -1;
+
+function forgetLearnDataCache() {
+  learnDataCache = null;
+  learnDataCacheEpoch = -1;
+}
+
+function rememberLearnData(data) {
+  learnDataCache = data;
+  learnDataCacheEpoch = getProfileEpoch();
+}
+
 function loadLearnData() {
+  const epoch = getProfileEpoch();
+  if (learnDataCache && learnDataCacheEpoch === epoch) return learnDataCache;
   try {
     const parsed = JSON.parse(profileGet(LEARN_KEY));
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return {};
-    return parsed;
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      rememberLearnData({});
+      return learnDataCache;
+    }
+    rememberLearnData(parsed);
+    return learnDataCache;
   } catch {
-    return {};
+    rememberLearnData({});
+    return learnDataCache;
   }
+}
+
+function emptyLearnEntry() {
+  return { answer: null, streak: 0, dueAt: null, misses: 0 };
+}
+
+function entryFromData(data, category, questionId) {
+  const catData = data?.[category];
+  if (!catData || Array.isArray(catData)) return emptyLearnEntry();
+  return normalizeLearnEntry(catData[questionId]);
+}
+
+function learnEntry(category, questionId) {
+  return entryFromData(loadLearnData(), category, questionId);
+}
+
+function statusFromEntry(entry, question, answerOverride) {
+  const answer = answerOverride !== undefined ? answerOverride : entry.answer;
+  const streak = entry.streak || 0;
+  if (answer !== null && answer !== question.correct) return 'wrong';
+  if (answer === question.correct && streak >= LEARN_KNOWN_STREAK) return 'known';
+  if (answer === null) return 'new';
+  return 'learning';
+}
+
+function hardFromEntry(entry, question, answerOverride) {
+  if ((entry.misses || 0) < LEARN_HARD_MISSES) return false;
+  return statusFromEntry(entry, question, answerOverride) !== 'known';
 }
 
 export function getProfileSummary() {
@@ -206,21 +262,24 @@ export function getLearnTouchedCategories() {
 
 export function getLearnCategoryBreakdown(category, questions) {
   const list = Array.isArray(questions) ? questions : [];
+  const data = loadLearnData();
   const counts = { total: list.length, known: 0, wrong: 0, hard: 0, learning: 0, neu: 0, answered: 0 };
   list.forEach((q) => {
-    const status = getLearnQuestionStatus(category, q);
+    const entry = entryFromData(data, category, q.id);
+    const status = statusFromEntry(entry, q);
     if (status === 'known') counts.known += 1;
     else if (status === 'wrong') counts.wrong += 1;
     else if (status === 'learning') counts.learning += 1;
     else counts.neu += 1;
     if (status !== 'new') counts.answered += 1;
-    if (isLearnQuestionHard(category, q)) counts.hard += 1;
+    if (hardFromEntry(entry, q)) counts.hard += 1;
   });
   return counts;
 }
 
 /** Top summary chips: one count per question id across touched category banks. */
 export function getLearnUniqueFilterCounts(categoryBanks) {
+  const data = loadLearnData();
   const byId = new Map();
   for (const bank of categoryBanks || []) {
     const category = bank?.category;
@@ -228,8 +287,9 @@ export function getLearnUniqueFilterCounts(categoryBanks) {
     for (const q of list) {
       if (!q || q.id == null || !category) continue;
       const id = String(q.id);
-      const known = getLearnQuestionStatus(category, q) === 'known';
-      const hard = isLearnQuestionHard(category, q);
+      const entry = entryFromData(data, category, q.id);
+      const known = statusFromEntry(entry, q) === 'known';
+      const hard = hardFromEntry(entry, q);
       const prev = byId.get(id);
       if (!prev) {
         byId.set(id, { known, hard });
@@ -255,6 +315,7 @@ export function clearHistory() {
 
 export function clearLearnProgress() {
   try { profileRemove(LEARN_KEY); } catch {}
+  rememberLearnData({});
 }
 
 export function getLearnProgress(category) {
@@ -274,17 +335,11 @@ export function getLearnAnswered(category) {
 }
 
 export function getLearnAnswerForQuestion(category, questionId) {
-  const data = loadLearnData();
-  const catData = data[category];
-  if (!catData || Array.isArray(catData)) return null;
-  return normalizeLearnEntry(catData[questionId]).answer;
+  return learnEntry(category, questionId).answer;
 }
 
 export function getLearnMetaForQuestion(category, questionId) {
-  const data = loadLearnData();
-  const catData = data[category];
-  if (!catData || Array.isArray(catData)) return null;
-  const entry = normalizeLearnEntry(catData[questionId]);
+  const entry = learnEntry(category, questionId);
   if (entry.answer === null && entry.streak === 0 && entry.dueAt === null && entry.misses === 0) {
     return null;
   }
@@ -292,19 +347,9 @@ export function getLearnMetaForQuestion(category, questionId) {
 }
 
 export function getLearnQuestionStatus(category, question, answerOverride) {
-  const answer = answerOverride !== undefined
-    ? answerOverride
-    : getLearnAnswerForQuestion(category, question.id);
-  const meta = getLearnMetaForQuestion(category, question.id);
-  const streak = meta?.streak || 0;
-  if (answer !== null && answer !== question.correct) return 'wrong';
-  if (answer === question.correct && streak >= LEARN_KNOWN_STREAK) return 'known';
-  if (answer === null) return 'new';
-  return 'learning';
+  return statusFromEntry(learnEntry(category, question.id), question, answerOverride);
 }
 
 export function isLearnQuestionHard(category, question, answerOverride) {
-  const misses = getLearnMetaForQuestion(category, question.id)?.misses || 0;
-  if (misses < LEARN_HARD_MISSES) return false;
-  return getLearnQuestionStatus(category, question, answerOverride) !== 'known';
+  return hardFromEntry(learnEntry(category, question.id), question, answerOverride);
 }

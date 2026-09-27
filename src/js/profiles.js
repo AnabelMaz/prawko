@@ -141,6 +141,16 @@ function loadRegistry() {
   return normalizeRegistry(readJson(REGISTRY_KEY, null));
 }
 
+let profileEpoch = 0;
+
+export function getProfileEpoch() {
+  return profileEpoch;
+}
+
+function bumpProfileEpoch() {
+  profileEpoch += 1;
+}
+
 function saveRegistry(registry) {
   writeJson(REGISTRY_KEY, registry);
 }
@@ -195,6 +205,7 @@ export function setActiveProfile(id) {
   if (!registry.profiles.some((p) => p.id === id)) return false;
   registry.activeId = id;
   saveRegistry(registry);
+  bumpProfileEpoch();
   return true;
 }
 
@@ -210,6 +221,7 @@ export function createProfile(name) {
   registry.profiles.push({ id, name: clean, createdAt: Date.now() });
   registry.activeId = id;
   saveRegistry(registry);
+  bumpProfileEpoch();
   return id;
 }
 
@@ -234,6 +246,7 @@ export function deleteProfile(id) {
   if (registry.profiles.length <= 1) {
     if (id !== DEFAULT_PROFILE_ID) wipeProfileKeys(DEFAULT_PROFILE_ID);
     saveRegistry(defaultRegistry());
+    bumpProfileEpoch();
     return true;
   }
 
@@ -242,5 +255,6 @@ export function deleteProfile(id) {
     registry.activeId = registry.profiles[0].id;
   }
   saveRegistry(registry);
+  bumpProfileEpoch();
   return true;
 }

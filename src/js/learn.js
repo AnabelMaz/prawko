@@ -106,9 +106,10 @@ function questionMatchesFilter(q, filter, category) {
   const cat = category || state?.category;
   if (!cat || !q) return filter === 'all';
   const override = state?.sessionAnswers?.has(q.id) ? state.sessionAnswers.get(q.id) : undefined;
+  if (filter === 'hard') return isLearnQuestionHard(cat, q, override);
+  if (filter === 'all') return true;
   const status = getLearnQuestionStatus(cat, q, override);
   if (filter === 'unknown') return status !== 'known';
-  if (filter === 'hard') return isLearnQuestionHard(cat, q, override);
   if (filter === 'known') return status === 'known';
   return true;
 }
