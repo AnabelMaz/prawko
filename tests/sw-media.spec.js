@@ -13,21 +13,25 @@ function handlerBlock(marker, nextMarker) {
   return from.slice(0, end);
 }
 
-test('service worker lets local /media/ pass through unless the offline pack has the file', () => {
+test('service worker serves packed local /media/ and only intercepts uncached videos to assemble', () => {
   const block = handlerBlock(
     'if (url.pathname.match(/\\/media\\//))',
     "if (url.pathname.includes('/icons/') || url.pathname.includes('/fonts/'))"
   );
-  expect(block).toMatch(/if \(!remoteMediaCached\(url\.href\)\) return;/);
+  expect(block).toMatch(/if \(remoteMediaCached\(url\.href\)\) \{/);
+  expect(block).toMatch(/if \(isAssemblableVideo\(url\)\) \{/);
+  expect(block).toMatch(/passThroughAndAssemble\(event\)/);
   expect(block).not.toMatch(/safeCachePut/);
 });
 
-test('service worker lets CDN media pass through unless the offline pack has the file', () => {
+test('service worker serves packed CDN media and only intercepts uncached videos to assemble', () => {
   const block = handlerBlock(
     'if (url.origin !== self.location.origin)',
     '// Category JSON & translation files'
   );
-  expect(block).toMatch(/if \(indexReady && !remoteMediaCached\(url\.href\)\) return;/);
+  expect(block).toMatch(/if \(indexReady && !known\) \{/);
+  expect(block).toMatch(/if \(isAssemblableVideo\(url\)\) event\.respondWith\(passThroughAndAssemble\(event\)\)/);
+  expect(block).toMatch(/if \(isAssemblableVideo\(url\)\) return passThroughAndAssemble\(event\)/);
 });
 
 test('service worker precaches the local Noto mark font and cache-firsts /fonts/', () => {

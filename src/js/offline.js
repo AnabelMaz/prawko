@@ -6,6 +6,7 @@ import { forEachZipFile } from './zip.js';
 const DOWNLOAD_KEY = 'prawko_offline';
 const MANIFEST_KEY = 'prawko_offline_manifest';
 const PACKS_DONE_KEY = 'prawko_offline_packs';
+const IN_PROGRESS_KEY = 'prawko_offline_in_progress';
 const OFFLINE_CACHE = 'prawko-offline-media-v1';
 const IDB_NAME = 'prawko-offline-media';
 const IDB_STORE = 'files';
@@ -126,14 +127,41 @@ function mediaCacheIsPersistent() {
   return typeof isSecureContext === 'undefined' || isSecureContext !== false;
 }
 
+let offlineCacheHandle = null;
+
 async function openOfflineCache() {
   if (!mediaCacheIsPersistent()) return null;
   if (typeof caches === 'undefined') return null;
+  if (offlineCacheHandle) return offlineCacheHandle;
   try {
-    return await caches.open(OFFLINE_CACHE);
+    offlineCacheHandle = await caches.open(OFFLINE_CACHE);
+    return offlineCacheHandle;
   } catch {
+    offlineCacheHandle = null;
     return null;
   }
+}
+
+let cachedCacheKeys = null;
+let cachedIdbKeys = null;
+
+function invalidateOfflineMediaKeys() {
+  cachedCacheKeys = null;
+  cachedIdbKeys = null;
+}
+
+async function listOfflineCacheKeys(cache) {
+  if (cachedCacheKeys && cachedCacheKeys.cache === cache) return cachedCacheKeys.keys;
+  const keys = await cache.keys();
+  cachedCacheKeys = { cache, keys };
+  return keys;
+}
+
+async function listIdbMediaKeys() {
+  if (cachedIdbKeys) return cachedIdbKeys;
+  const keys = await idbKeys();
+  cachedIdbKeys = keys;
+  return keys;
 }
 
 function openMediaDb() {
@@ -215,6 +243,7 @@ async function clonePlayableBlob(value, name) {
   const type = (value.type && String(value.type)) || mediaMime(name) || 'application/octet-stream';
   if (value instanceof Blob) {
     if (value.size < 1) return null;
+    if (value.type === type) return value;
     const buf = await value.arrayBuffer();
     if (!buf.byteLength) return null;
     return new Blob([buf], { type });
@@ -252,7 +281,7 @@ async function idbGetMediaBlob(media, mediaType) {
   }
   let keys = [];
   try {
-    keys = await idbKeys();
+    keys = await listIdbMediaKeys();
   } catch {
     return null;
   }
@@ -291,6 +320,7 @@ export async function storeMediaBlob(url, blob) {
           'Content-Length': String(body.size),
         },
       }));
+      invalidateOfflineMediaKeys();
       return;
     } catch {
       /* Cache Storage can exist but reject puts; keep going to IndexedDB. */
@@ -298,6 +328,7 @@ export async function storeMediaBlob(url, blob) {
   }
   if (!tail) throw new Error('no media storage');
   await idbPut(tail, body);
+  invalidateOfflineMediaKeys();
 }
 
 async function matchCachedMediaResponse(cache, media, mediaType) {
@@ -316,7 +347,7 @@ async function matchCachedMediaResponse(cache, media, mediaType) {
   const { names, tails } = idbKeyCandidates(media, mediaType);
   let keys = [];
   try {
-    keys = await cache.keys();
+    keys = await listOfflineCacheKeys(cache);
   } catch {
     return null;
   }
@@ -359,6 +390,66 @@ export async function resolvePlayableMediaUrl(media, mediaType) {
   const minBytes = mediaType === 'video' ? 256 : 32;
   if (blob.size < minBytes) return null;
   return URL.createObjectURL(blob);
+}
+
+function isQuestionImageUrl(url) {
+  try {
+    const path = new URL(url, typeof location !== 'undefined' ? location.href : 'https://example.invalid/').pathname;
+    if (/\/vid\//i.test(path)) return false;
+    return /\/img\/[^/]+$/i.test(path) || /\.(webp|jpe?g|png|gif)$/i.test(path);
+  } catch {
+    return false;
+  }
+}
+
+function isCompleteImageResponse(res) {
+  if (!res || res.type === 'opaque' || !res.ok || res.status !== 200) return false;
+  if (res.status === 206) return false;
+  if (res.headers.get('Content-Range')) return false;
+  return true;
+}
+
+let viewedImageSwTimer = 0;
+
+function scheduleRememberViewedImage(url, blob) {
+  const run = () => {
+    storeMediaBlob(url, blob).then(() => {
+      if (viewedImageSwTimer) clearTimeout(viewedImageSwTimer);
+      viewedImageSwTimer = setTimeout(() => {
+        viewedImageSwTimer = 0;
+        notifyServiceWorkerOfflineMedia();
+      }, 400);
+    }).catch(() => {});
+  };
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: 1500 });
+  else setTimeout(run, 0);
+}
+
+/** Full image GET only. Never videos / 206. Same bytes for play + cache; store happens idle. */
+export async function captureViewedImage(url) {
+  if (!url || /^(blob|data):/i.test(url)) return null;
+  if (!isQuestionImageUrl(url)) return null;
+  let abs;
+  try {
+    abs = new URL(url, typeof location !== 'undefined' ? location.href : 'https://example.invalid/');
+  } catch {
+    return null;
+  }
+  const remote = abs.origin !== (typeof location !== 'undefined' ? location.origin : abs.origin);
+  if (!remote && usesLocalMedia() && isLoopbackHost()) return null;
+  try {
+    const res = await fetch(abs.href, { mode: 'cors', credentials: 'omit' });
+    if (!isCompleteImageResponse(res)) return null;
+    const blob = await res.blob();
+    if (!blob || blob.size < 32) return null;
+    const type = blob.type && blob.type.startsWith('image/') ? blob.type : mediaMime(url);
+    if (!String(type).startsWith('image/')) return null;
+    const body = blob.type === type ? blob : new Blob([blob], { type });
+    scheduleRememberViewedImage(abs.href, body);
+    return URL.createObjectURL(body);
+  } catch {
+    return null;
+  }
 }
 
 export function coverageFromUrls(neededUrls, cachedSet) {
@@ -491,6 +582,7 @@ export async function downloadCategoryMedia(categoryId, onProgress) {
     return activeDownload.promise;
   }
   cancelDownload();
+  setInProgressOfflineCategory(categoryId);
   activeDownload = {
     categoryId,
     done: 0,
@@ -519,6 +611,30 @@ function loadPacksDone() {
 
 function savePacksDone(map) {
   try { localStorage.setItem(PACKS_DONE_KEY, JSON.stringify(map)); } catch {}
+}
+
+export function getInProgressOfflineCategory() {
+  try {
+    const raw = localStorage.getItem(IN_PROGRESS_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const id = parsed?.categoryId;
+    return typeof id === 'string' && id ? id : null;
+  } catch {
+    return null;
+  }
+}
+
+function setInProgressOfflineCategory(categoryId) {
+  try {
+    if (categoryId) localStorage.setItem(IN_PROGRESS_KEY, JSON.stringify({ categoryId }));
+    else localStorage.removeItem(IN_PROGRESS_KEY);
+  } catch {}
+}
+
+function clearInProgressOfflineCategory(categoryId) {
+  if (!categoryId) return;
+  if (getInProgressOfflineCategory() === categoryId) setInProgressOfflineCategory(null);
 }
 
 function mediaMime(name) {
@@ -595,6 +711,7 @@ async function cacheZipEntry(cache, entryName, fileBytes, cachedSet) {
     addMediaCacheKeys(cachedSet, url);
   }
   cachedSet.add(file);
+  invalidateOfflineMediaKeys();
   return file;
 }
 
@@ -655,6 +772,7 @@ function finishCategoryDownload(categoryId, mediaUrls, cancelled, failed) {
   else delete manifest[categoryId];
   saveDownloaded(downloaded);
   saveManifest(manifest);
+  if (!cancelled) clearInProgressOfflineCategory(categoryId);
   notifyServiceWorkerOfflineMedia();
   return { success: !cancelled && failed === 0, total: mediaUrls.length, failed, cancelled };
 }
@@ -674,6 +792,7 @@ export async function downloadCategoryMediaFromPacks(categoryId, onProgress) {
 
   let cancelled = false;
   let failed = 0;
+  let lastErr = null;
   try {
     const man = await fetchPacksManifest(controller.signal);
     const packIds = man.categories?.[categoryId];
@@ -751,13 +870,15 @@ export async function downloadCategoryMediaFromPacks(categoryId, onProgress) {
     if (err?.name === 'AbortError') cancelled = true;
     else {
       failed = 1;
-      throw err;
+      lastErr = err;
     }
   } finally {
     if (activeController === controller) activeController = null;
   }
 
-  return finishCategoryDownload(categoryId, mediaUrls, cancelled, failed);
+  const result = finishCategoryDownload(categoryId, mediaUrls, cancelled, failed);
+  if (lastErr) throw lastErr;
+  return result;
 }
 
 export async function downloadCategoryMediaFromFiles(categoryId, onProgress) {
@@ -797,6 +918,7 @@ export async function downloadCategoryMediaFromFiles(categoryId, onProgress) {
         const cache = await openOfflineCache();
         if (!cache) throw new Error('opaque media needs Cache Storage');
         await cache.put(request, response.clone());
+        invalidateOfflineMediaKeys();
       } else {
         if (!response.ok) throw new Error(`media ${response.status}`);
         const blob = await response.blob();

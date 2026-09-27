@@ -3,7 +3,7 @@
 import { t, getLang, translateQuestion } from './i18n.js';
 import { getCategoryStats, getLearnProgress, loadHistory, getLearnTouchedCategories, getLearnCategoryBreakdown, getLearnUniqueFilterCounts } from './stats.js';
 import { getMediaUrls, fetchCategory, usesLocalMedia } from './data.js';
-import { getCategoryMediaAccess, getCategoriesOfflineCoverage, getDownloadedCategories, getActiveDownloadProgress, isAppOnline, offlineCoverageHue, resolvePlayableMediaUrl } from './offline.js';
+import { getCategoryMediaAccess, getCategoriesOfflineCoverage, getDownloadedCategories, getActiveDownloadProgress, isAppOnline, offlineCoverageHue, resolvePlayableMediaUrl, captureViewedImage } from './offline.js';
 import { refitUiScale, layoutCategoryGrid, syncExamMediaAlign } from './scale.js';
 
 export function showScreen(id) {
@@ -414,6 +414,10 @@ export function renderQuestion(question, container, options = {}) {
       if (!triedStored) {
         triedStored = true;
         const stored = await resolvePlayableMediaUrl(q.media, q.mediaType);
+        if (!stillCurrent()) {
+          if (stored) URL.revokeObjectURL(stored);
+          return null;
+        }
         if (stored) {
           playableBlobUrl = stored;
           return stored;
@@ -588,7 +592,7 @@ export function renderQuestion(question, container, options = {}) {
     } else if (q.mediaType === 'image') {
       const loadImage = () => {
         void (async () => {
-          const mediaUrl = await nextPlayableUrl();
+          let mediaUrl = await nextPlayableUrl();
           if (!stillCurrent()) return;
           if (!mediaUrl) {
             showMediaFallback(() => {
@@ -603,12 +607,22 @@ export function renderQuestion(question, container, options = {}) {
           mediaArea.innerHTML = '';
 
           const img = document.createElement('img');
+          const networkUrl = mediaUrl.startsWith('blob:') ? '' : mediaUrl;
           const onImageReady = () => {
+            if (!stillCurrent()) return;
             mediaArea.classList.remove('loading');
             onLearnMediaSettled(learnMediaMark);
+            if (networkUrl) {
+              void captureViewedImage(networkUrl).then((blobUrl) => {
+                if (blobUrl) URL.revokeObjectURL(blobUrl);
+              });
+            }
           };
           img.onload = onImageReady;
-          img.onerror = () => loadImage();
+          img.onerror = () => {
+            if (!stillCurrent()) return;
+            loadImage();
+          };
           img.alt = t('imgAlt');
           img.loading = 'eager';
           img.decoding = 'async';
@@ -1100,18 +1114,22 @@ export async function renderLearnProgress(meta) {
   if (introEl) introEl.style.display = '';
   if (clearBtn) clearBtn.style.display = '';
 
-  const rows = [];
-  const banks = [];
-  for (const cat of cats) {
+  const loaded = await Promise.all(cats.map(async (cat) => {
     try {
       const data = await fetchCategory(cat.id);
-      if (token !== _learnProgressRender) return;
-      const questions = data.questions;
-      banks.push({ category: cat.id, questions });
-      rows.push({ id: cat.id, ...getLearnCategoryBreakdown(cat.id, questions) });
+      return { id: cat.id, questions: data.questions };
     } catch {
-      if (token !== _learnProgressRender) return;
+      return null;
     }
+  }));
+  if (token !== _learnProgressRender) return;
+
+  const rows = [];
+  const banks = [];
+  for (const item of loaded) {
+    if (!item) continue;
+    banks.push({ category: item.id, questions: item.questions });
+    rows.push({ id: item.id, ...getLearnCategoryBreakdown(item.id, item.questions) });
   }
 
   if (!rows.length) {

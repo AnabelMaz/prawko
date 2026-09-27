@@ -5,7 +5,7 @@ import { startExam, setupExamListeners, cleanupExam, getLastExamCategory, refres
 import { startLearn, setupLearnListeners, cleanupLearn, refreshLearnQuestion, loadLearnLocalFlags } from './learn.js';
 import { showScreen, renderCategories, applyLanguage, renderHistory, renderLearnProgress, renderResults, showConfirmModal, refreshOfflineCoverage } from './ui.js';
 import { setLang, getLang, loadQuestionTranslations, nextLang, LANG_LABELS, t } from './i18n.js';
-import { downloadCategoryMedia, getDownloadedCategories, reconcileDownloadedCategories, offlineCoverageHue } from './offline.js';
+import { downloadCategoryMedia, getDownloadedCategories, reconcileDownloadedCategories, offlineCoverageHue, getInProgressOfflineCategory, getActiveDownloadProgress } from './offline.js';
 import { getProfileSummary, loadHistory, loadLastResult, clearHistory, clearLearnProgress } from './stats.js';
 import { setupUiFitScale, refitUiScale, revealUiScale, layoutCategoryGrid } from './scale.js';
 import {
@@ -257,6 +257,8 @@ function handleRoute() {
       dlBtn?.closest('.category-card')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
       startOfflineDownload(dlBtn);
     });
+  } else if (hash === 'categories') {
+    resumeOfflineDownloadIfNeeded();
   }
 }
 
@@ -330,6 +332,15 @@ async function startOfflineDownload(dlBtn) {
     renderRecentCategories();
     applyCategorySearch();
   }
+}
+
+function resumeOfflineDownloadIfNeeded() {
+  const catId = getInProgressOfflineCategory();
+  if (!catId || !meta) return;
+  if (getActiveDownloadProgress(catId)) return;
+  const dlBtn = document.querySelector(`.category-grid .offline-btn[data-category="${CSS.escape(catId)}"]`);
+  if (!dlBtn || dlBtn.classList.contains('unavailable') || dlBtn.classList.contains('downloaded')) return;
+  startOfflineDownload(dlBtn);
 }
 
 function updateLanguageButtons(lang) {
@@ -664,6 +675,7 @@ async function init() {
           renderRecentCategories();
           applyCategorySearch();
         }
+        resumeOfflineDownloadIfNeeded();
       })
       .catch(() => {});
     if (spinner) spinner.classList.add('hidden');

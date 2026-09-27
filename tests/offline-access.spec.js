@@ -489,3 +489,210 @@ test.describe('Category media access', () => {
     expect(mediaHits).toEqual([]);
   });
 });
+
+const TINY_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64',
+);
+
+test.describe('Opportunistic image cache while viewing', () => {
+  test('a viewed CDN image is stored once as a complete file', async ({ page }) => {
+    const imageHits = [];
+    await page.route('**/local.json', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ mediaBase: 'cdn' }),
+      });
+    });
+    await page.route('https://f003.backblazeb2.com/file/prawko-maz/img/viewed-once.webp', async (route) => {
+      if (route.request().method() === 'OPTIONS') {
+        await route.fulfill({
+          status: 204,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET',
+          },
+        });
+        return;
+      }
+      imageHits.push(route.request().headers()['range'] || '');
+      await route.fulfill({
+        status: 200,
+        contentType: 'image/png',
+        headers: { 'Access-Control-Allow-Origin': '*' },
+        body: TINY_PNG,
+      });
+    });
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    const result = await page.evaluate(async () => {
+      const { captureViewedImage, getStoredMediaBlob } = await import(new URL('./js/offline.js', location.href).href);
+      const { getMediaUrls } = await import(new URL('./js/data.js', location.href).href);
+      const url = getMediaUrls('viewed-once.webp', 'image')[0];
+      const playUrl = await captureViewedImage(url);
+      const deadline = Date.now() + 4000;
+      while (Date.now() < deadline) {
+        const stored = await getStoredMediaBlob('viewed-once.webp', 'image');
+        if (stored && stored.size > 0) break;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      const { renderQuestion } = await import(new URL('./js/ui.js', location.href).href);
+      renderQuestion({
+        id: 9001,
+        q: 'Cache this image?',
+        media: 'viewed-once.webp',
+        mediaType: 'image',
+        type: 'basic',
+        correct: 'T',
+      }, document.querySelector('.question-card'));
+      return {
+        url,
+        play: Boolean(playUrl && String(playUrl).startsWith('blob:')),
+      };
+    });
+    expect(result.url).toBe('https://f003.backblazeb2.com/file/prawko-maz/img/viewed-once.webp');
+    expect(result.play).toBe(true);
+    await expect(page.locator('#quiz .media-area img')).toHaveAttribute('src', /^blob:/);
+    expect(imageHits).toEqual(['']);
+    await expect.poll(async () => page.evaluate(async () => {
+      const { getStoredMediaBlob } = await import(new URL('./js/offline.js', location.href).href);
+      const blob = await getStoredMediaBlob('viewed-once.webp', 'image');
+      return blob ? blob.size : 0;
+    }), { timeout: 5000 }).toBe(TINY_PNG.length);
+  });
+
+  test('switching questions still paints the current image if the previous capture is slow', async ({ page }) => {
+    await page.route('**/local.json', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ mediaBase: 'cdn' }),
+      });
+    });
+    await page.route('https://f003.backblazeb2.com/file/prawko-maz/img/slow-first.webp', async (route) => {
+      if (route.request().method() === 'OPTIONS') {
+        await route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': '*' } });
+        return;
+      }
+      await new Promise((r) => setTimeout(r, 2500));
+      await route.fulfill({
+        status: 200,
+        contentType: 'image/png',
+        headers: { 'Access-Control-Allow-Origin': '*' },
+        body: TINY_PNG,
+      });
+    });
+    await page.route('https://f003.backblazeb2.com/file/prawko-maz/img/fast-second.webp', async (route) => {
+      if (route.request().method() === 'OPTIONS') {
+        await route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': '*' } });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'image/png',
+        headers: { 'Access-Control-Allow-Origin': '*' },
+        body: TINY_PNG,
+      });
+    });
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    await page.evaluate(async () => {
+      const { renderQuestion } = await import(new URL('./js/ui.js', location.href).href);
+      const card = document.querySelector('.question-card');
+      const base = { type: 'basic', correct: 'T', mediaType: 'image' };
+      renderQuestion({ ...base, id: 1, q: 'First', media: 'slow-first.webp' }, card);
+      renderQuestion({ ...base, id: 2, q: 'Second', media: 'fast-second.webp' }, card);
+    });
+    const img = page.locator('#quiz .media-area img');
+    await expect(img).toHaveAttribute('src', /fast-second\.webp/, { timeout: 3000 });
+  });
+
+  test('a 206 image response is not stored', async ({ page }) => {
+    await page.route('**/local.json', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ mediaBase: 'cdn' }),
+      });
+    });
+    await page.route('https://f003.backblazeb2.com/file/prawko-maz/img/partial.webp', async (route) => {
+      await route.fulfill({
+        status: 206,
+        contentType: 'image/webp',
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Content-Range': `bytes 0-3/${TINY_PNG.length}`,
+        },
+        body: TINY_PNG.subarray(0, 4),
+      });
+    });
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    const captured = await page.evaluate(async () => {
+      const { captureViewedImage, getStoredMediaBlob } = await import(new URL('./js/offline.js', location.href).href);
+      const url = 'https://f003.backblazeb2.com/file/prawko-maz/img/partial.webp';
+      const play = await captureViewedImage(url);
+      await new Promise((r) => setTimeout(r, 1600));
+      const blob = await getStoredMediaBlob('partial.webp', 'image');
+      if (play) URL.revokeObjectURL(play);
+      return { play: Boolean(play), stored: blob ? blob.size : 0 };
+    });
+    expect(captured.play).toBe(false);
+    expect(captured.stored).toBe(0);
+  });
+
+  test('watching a video does not write it into the offline cache', async ({ page }) => {
+    await stubRemoteMedia(page);
+    await page.route('https://cdn.example.test/prawko/vid/leave-me.mp4', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'video/mp4',
+        headers: { 'Access-Control-Allow-Origin': '*' },
+        body: Buffer.from([0, 0, 0, 0, 0, 0, 0, 0]),
+      });
+    });
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    const stored = await page.evaluate(async () => {
+      const { renderQuestion } = await import(new URL('./js/ui.js', location.href).href);
+      const { captureViewedImage, getStoredMediaBlob } = await import(new URL('./js/offline.js', location.href).href);
+      renderQuestion({
+        id: 9002,
+        q: 'Do not cache this film',
+        media: 'leave-me.mp4',
+        mediaType: 'video',
+        type: 'basic',
+        correct: 'T',
+      }, document.querySelector('#quiz .question-card') || document.querySelector('.question-card'));
+      const fromHelper = await captureViewedImage('https://cdn.example.test/prawko/vid/leave-me.mp4');
+      await new Promise((r) => setTimeout(r, 1600));
+      const blob = await getStoredMediaBlob('leave-me.mp4', 'video');
+      if (fromHelper) URL.revokeObjectURL(fromHelper);
+      return { helper: Boolean(fromHelper), size: blob ? blob.size : 0 };
+    });
+    expect(stored.helper).toBe(false);
+    expect(stored.size).toBe(0);
+  });
+
+  test('loopback local images are not copied into the offline cache', async ({ page }) => {
+    const hits = [];
+    await page.route('**/media/img/keep-local.webp', async (route) => {
+      hits.push(route.request().url());
+      await route.fulfill({
+        status: 200,
+        contentType: 'image/webp',
+        headers: { 'Access-Control-Allow-Origin': '*' },
+        body: TINY_PNG,
+      });
+    });
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    const result = await page.evaluate(async () => {
+      const { captureViewedImage } = await import(new URL('./js/offline.js', location.href).href);
+      return captureViewedImage(new URL('media/img/keep-local.webp', location.href).href);
+    });
+    expect(result).toBeNull();
+    expect(hits).toEqual([]);
+  });
+});

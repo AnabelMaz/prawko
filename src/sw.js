@@ -1,4 +1,6 @@
-const CACHE_VERSION = 'prawko-v123';
+importScripts('./js/media-assemble.js');
+
+const CACHE_VERSION = 'prawko-v129';
 const APP_SHELL_CACHE = CACHE_VERSION + '-shell';
 const DATA_CACHE = CACHE_VERSION + '-data';
 const MEDIA_CACHE = CACHE_VERSION + '-media';
@@ -18,6 +20,7 @@ const APP_SHELL = [
   './js/profiles.js',
   './js/i18n.js',
   './js/offline.js',
+  './js/media-assemble.js',
   './js/zip.js',
   './js/scale.js',
   './js/scale-boot.js',
@@ -33,6 +36,89 @@ const APP_SHELL = [
   './icons/cursor-pointer-white.png',
   './fonts/NotoSansSymbols-Regular.ttf'
 ];
+
+const videoAssembler = self.PrawkoVideoAssemble.createAssembler();
+const MAX_VIDEO_ASM = self.PrawkoVideoAssemble.MAX_VIDEO_ASM;
+
+function videoAssemblyKey(href) {
+  try {
+    const u = new URL(href);
+    u.search = '';
+    u.hash = '';
+    return u.href;
+  } catch {
+    return href;
+  }
+}
+
+function isAssemblableVideo(url) {
+  return self.PrawkoVideoAssemble.shouldAssembleVideo(
+    self.location.origin,
+    self.location.hostname,
+    url.href,
+  );
+}
+
+function rememberAssembledVideo(key, buf, mime) {
+  const type = mime && String(mime).startsWith('video/')
+    ? String(mime).split(';')[0].trim()
+    : (/\.webm$/i.test(key) ? 'video/webm' : 'video/mp4');
+  const headers = { 'Content-Type': type, 'Content-Length': String(buf.byteLength) };
+  return caches.open(OFFLINE_MEDIA_CACHE).then((cache) => (
+    cache.put(
+      new Request(key, { mode: 'cors' }),
+      new Response(buf, { status: 200, headers }),
+    )
+  )).then(() => {
+    offlineMediaUrls.add(key);
+    try {
+      const u = new URL(key);
+      offlineMediaUrls.add(u.origin + u.pathname);
+    } catch { /* ignore */ }
+    const tail = mediaPathTail(key);
+    if (tail && !offlineMediaByTail.has(tail)) offlineMediaByTail.set(tail, key);
+  }).catch(() => {});
+}
+
+async function fetchVideoForPlayer(request) {
+  const range = request.headers.get('Range');
+  try {
+    const headers = new Headers();
+    if (range) headers.set('Range', range);
+    const res = await fetch(new Request(request.url, {
+      method: 'GET',
+      mode: 'cors',
+      credentials: 'omit',
+      headers,
+    }));
+    if (res.type !== 'opaque' && (res.status === 200 || res.status === 206)) return res;
+  } catch { /* play without assembling */ }
+  return fetch(request);
+}
+
+async function passThroughAndAssemble(event) {
+  const key = videoAssemblyKey(event.request.url);
+  const res = await fetchVideoForPlayer(event.request);
+  if (!res.body || res.type === 'opaque') return res;
+  const [play, collect] = res.body.tee();
+  const status = res.status;
+  const mime = res.headers.get('Content-Type') || '';
+  const contentRange = res.headers.get('Content-Range') || '';
+  event.waitUntil((async () => {
+    try {
+      const chunk = new Uint8Array(await collect.arrayBuffer());
+      if (chunk.byteLength > MAX_VIDEO_ASM) {
+        videoAssembler.drop();
+        return;
+      }
+      const done = videoAssembler.pushChunk(key, status, contentRange, chunk, mime);
+      if (done) await rememberAssembledVideo(done.key, done.buf, done.mime);
+    } catch {
+      /* aborted mid-range: keep holes, never store a partial file */
+    }
+  })());
+  return new Response(play, { status: res.status, statusText: res.statusText, headers: res.headers });
+}
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -123,18 +209,24 @@ self.addEventListener('fetch', (event) => {
   if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
   if (url.pathname.endsWith('/sw.js')) return;
   if (url.pathname.endsWith('/local.json')) return;
-  // CDN media: intercept only when the offline pack has this file (by URL
-  // or by /vid|/img tail). Pack keys may be localhost media/… while <video>
-  // uses the B2 URL — still serve the cached blob, do not hit Backblaze.
+  // CDN media: serve from the offline pack when we already have the file.
+  // Uncached videos pass through and are stored only if every byte arrives.
+  // Images stay on the page capture path (no extra SW hop).
   if (url.origin !== self.location.origin) {
     if (!/\.(mp4|webm|webp|jpg|jpeg|png|gif)(\?|$)/i.test(url.pathname)) return;
     const indexReady = offlineMediaUrls.size > 0 || offlineMediaByTail.size > 0;
-    if (indexReady && !remoteMediaCached(url.href)) return;
+    const known = indexReady && remoteMediaCached(url.href);
+    if (indexReady && !known) {
+      if (isAssemblableVideo(url)) event.respondWith(passThroughAndAssemble(event));
+      return;
+    }
     event.respondWith((async () => {
       if (!indexReady) await rebuildOfflineMediaIndex();
-      if (!remoteMediaCached(url.href)) return fetch(event.request);
-      const cached = await matchOfflineMedia(event.request);
-      if (cached) return cached;
+      if (remoteMediaCached(url.href)) {
+        const cached = await matchOfflineMedia(event.request);
+        if (cached) return cached;
+      }
+      if (isAssemblableVideo(url)) return passThroughAndAssemble(event);
       return fetch(event.request);
     })());
     return;
@@ -167,19 +259,25 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Local /media/ — same as CDN: intercept only when the offline pack has
-  // this file. Wrapping a cache miss with fetch(event.request) shows up as
-  // two GETs in DevTools (page + sw.js) even though it is one origin hit.
+  // Local /media/ — serve a cached pack hit. On LAN (not localhost) also
+  // assemble uncached videos the same way as CDN. Loopback stays passthrough
+  // so this machine does not copy files it already has on disk.
   if (url.pathname.match(/\/media\//)) {
-    if (!remoteMediaCached(url.href)) return;
-    event.respondWith((async () => {
-      const cached = await matchOfflineMedia(event.request);
-      if (cached) return cached;
-      const mediaCache = await caches.open(MEDIA_CACHE);
-      const fromMedia = await mediaCache.match(event.request);
-      if (fromMedia) return fromMedia;
-      return fetch(event.request);
-    })());
+    if (remoteMediaCached(url.href)) {
+      event.respondWith((async () => {
+        const cached = await matchOfflineMedia(event.request);
+        if (cached) return cached;
+        const mediaCache = await caches.open(MEDIA_CACHE);
+        const fromMedia = await mediaCache.match(event.request);
+        if (fromMedia) return fromMedia;
+        return fetch(event.request);
+      })());
+      return;
+    }
+    if (isAssemblableVideo(url)) {
+      event.respondWith(passThroughAndAssemble(event));
+      return;
+    }
     return;
   }
 
