@@ -1,10 +1,12 @@
 # Prawko
 
-Aplikacja PWA do nauki i symulacji egzaminu teoretycznego na prawo jazdy w Polsce.
+Aplikacja PWA do nauki i symulacji egzaminu teoretycznego na prawo jazdy w Polsce. To **fork** [szkocot/prawko](https://github.com/szkocot/prawko): układ stacji WORD, skórki Panel/Stacja, profile lokalne i przebudowana nauka. Małe łatki mogą iść upstream; pełna wersja na **Windows**, **macOS** i **Linux** zostaje tutaj.
 
-To **fork** projektu [szkocot/prawko](https://github.com/szkocot/prawko) (demo źródła: https://szkocot.github.io/prawko/). Ta kopia: repozytorium [AnabelMaz/prawko](https://github.com/AnabelMaz/prawko), podgląd w przeglądarce [anabelmaz.github.io/prawko](https://anabelmaz.github.io/prawko/). Trzyma układ stacji WORD, skórki Panel/Stacja, profile lokalne i przebudowany tryb nauki. Małe, samodzielne łatki mogą iść do repozytorium źródłowego; tutaj zostaje pełna wersja na **Windows**, **macOS** i **Linux**.
+Do użytku **nie trzeba lokalnej instalacji**. Wejdź na [anabelmaz.github.io/prawko](https://anabelmaz.github.io/prawko/): to pełna aplikacja. Możesz dodać ją do ekranu głównego (PWA), w kategorii kliknąć **Pobierz offline** i uczyć się bez sieci. Przez limity Backblaze **zdjęcia i filmy bywają puste, dopóki nie ściągniesz paczki** na to urządzenie; po pobraniu działają lokalnie (zipy z Cloudflare R2).
 
-Baza w repozytorium to JSON z katalogu Ministerstwa Infrastruktury (**3518** unikalnych pytań). Zdjęcia i filmy nie są w gicie: **oglądanie** z Backblaze, **„Pobierz offline”** to zipy z Cloudflare R2. Publiczny katalog na [gov.pl](https://www.gov.pl/web/infrastruktura/prawo-jazdy): **lipiec 2026** (`KATALOG_dla_kandydatów_na_kierowców_072026.xlsx`).
+Własny serwer stawiaj tylko gdy chcesz trzymać aplikację u siebie albo **wgrać nowszy katalog pytań i mediów z ministerstwa** — publiczne zasoby mogą być starsze niż aktualny Excel na [gov.pl](https://www.gov.pl/web/infrastruktura/prawo-jazdy).
+
+Baza w repozytorium to JSON z tego katalogu (**3518** unikalnych pytań, **lipiec 2026**, `KATALOG_dla_kandydatów_na_kierowców_072026.xlsx`). Oglądanie mediów: Backblaze; **„Pobierz offline”**: zipy z R2.
 
 [Polski](#instalacja-na-windows) · [macOS](#instalacja-na-macos) · [Linux](#instalacja-na-linuxie) · [English](#install-on-windows)
 
@@ -485,11 +487,13 @@ Kod aplikacji jest na [ISC](LICENSE) (tak jak w `package.json` źródła). Przy 
 
 # Prawko — Polish driving licence exam
 
-A PWA for learning and simulating the Polish theoretical driving test.
+A PWA for learning and simulating the Polish theoretical driving test. This is a **fork** of [szkocot/prawko](https://github.com/szkocot/prawko): WORD station layout, Panel/Station skins, local profiles, and a rebuilt learn mode. Small fixes can still go upstream; the full **Windows**, **macOS**, and **Linux** product stays here.
 
-This is a **fork** of [szkocot/prawko](https://github.com/szkocot/prawko) (upstream demo: https://szkocot.github.io/prawko/). This copy: repository [AnabelMaz/prawko](https://github.com/AnabelMaz/prawko), browser preview [anabelmaz.github.io/prawko](https://anabelmaz.github.io/prawko/). It keeps a WORD station layout, Panel/Station skins, local profiles, and a rebuilt learn mode. Small standalone fixes can still go upstream; this repository holds the full **Windows**, **macOS**, and **Linux** product.
+You do **not** need a local install to use it. Open [anabelmaz.github.io/prawko](https://anabelmaz.github.io/prawko/): that is the full app. You can install it as a PWA, tap **Download offline** on a category, and study without a network. Because of Backblaze limits, **photos and films may stay empty until you download the pack** on that device; after that they run locally (zip packs from Cloudflare R2).
 
-The repo JSON has **3518** unique ministry questions. Photos and films are not in git: **playback** is Backblaze, **Download offline** is zip packs from Cloudflare R2. The public catalogue on [gov.pl](https://www.gov.pl/web/infrastruktura/prawo-jazdy) is **July 2026** (`KATALOG_dla_kandydatów_na_kierowców_072026.xlsx`).
+Run your own server only if you want the app on your machine or need to **load a newer ministry question and media catalogue** — the public files can lag behind the current Excel on [gov.pl](https://www.gov.pl/web/infrastruktura/prawo-jazdy).
+
+The repo JSON is that catalogue (**3518** unique questions, **July 2026**, `KATALOG_dla_kandydatów_na_kierowców_072026.xlsx`). Playback is Backblaze; **Download offline** is R2 zips.
 
 ## Install on Windows
 
