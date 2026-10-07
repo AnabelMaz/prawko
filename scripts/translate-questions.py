@@ -9,9 +9,10 @@ Key resolution (Gemini if any of these exist, else Google Translate):
   1. --gemini-api-key for this run
   2. GEMINI_API_KEY already in the environment
   3. .geminienv at the repo root (gitignored; template scripts/geminienv.example)
-With a key: Gemini only (same POST as a working AI Studio probe: gemini-3.5-flash-lite).
-Gemini failure aborts (progress saved). No key: Google Translate. A progress bar
-runs during the fill.
+With a key: Gemini only. GET v1beta/models, rank Flash (lite first). 404 and daily
+429 try the next model. Verify/empty q skips that ID. Auth errors or every Flash
+daily-exhausted: abort (progress saved). No Google mix. No key: Google Translate.
+A progress bar runs during the fill.
 
   python3 scripts/translate-questions.py
   python3 scripts/translate-questions.py --lang ua
@@ -26,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
 import socket
@@ -557,6 +559,19 @@ def mark_gemini_dead(model: str) -> None:
         _gemini_dead.add(model)
 
 
+def gemini_retry_delay_sec(msg: str) -> int:
+    found = re.search(r'retryDelay["\s:]*"?(\d+(?:\.\d+)?)s', msg or "", re.I)
+    if found:
+        return int(math.ceil(float(found.group(1))))
+    return 0
+
+
+def gemini_daily_quota(msg: str) -> bool:
+    if re.search(r"PerDay", msg or "", re.I):
+        return True
+    return gemini_retry_delay_sec(msg) >= 120
+
+
 def models_to_try(api_key: str) -> list[str]:
     all_ids = [m for m in load_gemini_model_ids(api_key) if m not in _gemini_dead]
     if _gemini_model and _gemini_model not in _gemini_dead:
@@ -752,7 +767,17 @@ def gemini_translate_ids(
                     mark_gemini_dead(model)
                     print(f"  Gemini model {model}: 404, trying next")
                     break
-                if exc.code in (429, 500, 502, 503, 504) or "RESOURCE_EXHAUSTED" in msg:
+                if exc.code == 429 or "RESOURCE_EXHAUSTED" in msg:
+                    if gemini_daily_quota(msg):
+                        mark_gemini_dead(model)
+                        print(f"  Gemini model {model}: daily quota, trying next")
+                        break
+                    wait = gemini_retry_delay_sec(msg) or min(60.0, 2 ** attempt)
+                    wait = min(float(wait), 60.0)
+                    print(f"  Gemini model {model}: rate limit, retry in {int(wait)}s")
+                    time.sleep(wait)
+                    continue
+                if exc.code in (500, 502, 503, 504):
                     time.sleep(min(60.0, 2 ** attempt))
                     continue
                 raise RuntimeError(msg) from exc
@@ -789,10 +814,30 @@ def gemini_translate_ids(
                 if "verify:" in msg:
                     print(f"  Gemini model {model}: {msg}, skip question")
                     raise RuntimeError(msg) from exc
-                if "429" in msg or "Too Many" in msg or "HTTP 5" in msg or "RESOURCE_EXHAUSTED" in msg:
+                if "429" in msg or "Too Many" in msg or "RESOURCE_EXHAUSTED" in msg:
+                    if gemini_daily_quota(msg):
+                        mark_gemini_dead(model)
+                        print(f"  Gemini model {model}: daily quota, trying next")
+                        break
+                    wait = gemini_retry_delay_sec(msg) or min(60.0, 2 ** attempt)
+                    wait = min(float(wait), 60.0)
+                    print(f"  Gemini model {model}: rate limit, retry in {int(wait)}s")
+                    time.sleep(wait)
+                    continue
+                if "HTTP 5" in msg:
                     time.sleep(min(60.0, 2 ** attempt))
                     continue
                 raise RuntimeError(msg) from exc
+        else:
+            if last and (
+                "429" in sanitize_error(str(last), api_key)
+                or "RESOURCE_EXHAUSTED" in sanitize_error(str(last), api_key)
+                or "HTTP 5" in sanitize_error(str(last), api_key)
+            ):
+                print(f"  Gemini model {model}: still limited, trying next")
+                continue
+    if not models_to_try(api_key):
+        raise RuntimeError("Gemini daily quota exhausted")
     raise RuntimeError(sanitize_error(str(last) if last else "Gemini models 404", api_key))
 
 
@@ -863,6 +908,10 @@ def fill_lang(
                         print(f"  Gemini fail {','.join(chunk)}: {msg}")
                         save_translations(lang, existing, data_dir)
                         die("Gemini failed; progress saved. Re-run without a key to use Google Translate.")
+                    if any(tok in msg for tok in ("daily quota exhausted", "429", "RESOURCE_EXHAUSTED")):
+                        print(f"  Gemini fail {','.join(chunk)}: daily quota exhausted")
+                        save_translations(lang, existing, data_dir)
+                        die("Gemini failed; progress saved. Daily quota exhausted; re-run later.")
                     batch_err = msg
                 for qid in chunk:
                     q = questions[qid]

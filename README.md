@@ -87,8 +87,8 @@ Zwykły użytkownik **nie potrzebuje** drugiego klona gita. `-SyncGov` nie kopiu
 | `-SyncScope Questions\|Media\|Full` | Zakres `-SyncGov`: tylko pytania / ZIP→TEMP→WebP·MP4 / pełne (domyślne) |
 | `-SyncUseCache` | Przy `-SyncGov`: nie woła gov.pl, gdy `gov-cache` ma Excel i ZIP-y |
 | `-DropMissingMedia` | Przy `-SyncGov` (Full/Media): wycina z JSON media bez pliku lokalnego. Domyślnie **wyłączone** |
-| `-SkipTranslateGaps` | Przy `-SyncGov` Questions/Full: nie uzupełniaj pustych EN/DE/UA. Domyślnie **uzupełnia** (Google Translate) |
-| `-GeminiApiKey <klucz>` | Przy `-SyncGov` Questions/Full: Gemini na ten run (nadpisuje `.geminienv`). Bez parametru: `.geminienv` jak `.b2env`, albo Google |
+| `-SkipTranslateGaps` | Przy `-SyncGov` Questions/Full: nie uzupełniaj pustych EN/DE/UA. Domyślnie **uzupełnia** (Gemini gdy jest klucz, inaczej Google Translate) |
+| `-GeminiApiKey <klucz>` | Przy `-SyncGov` Questions/Full: Gemini na ten run (nadpisuje `.geminienv`). Bez parametru: `.geminienv` jak `.b2env`. Przy kluczu tylko Gemini (dzienny 429 → kolejny Flash). Bez klucza: Google |
 | `-MergeGov` | Na stojącym serwerze: dopisuje z Excela MI tylko braki |
 | `-Export <ścieżka>` | Paczka przenośna: kod + **domyślnie** snapshot serwera (`data`, `media`, `local.json`, `manifest.json`) |
 | `-ExcludeData` / `-ExcludeMedia` / `-ExcludeLocalJson` | Przy `-Export`: wyklucz z paczki (domyślnie wszystko wchodzi) |
@@ -344,7 +344,7 @@ Zgodnie z rozporządzeniem (Dz.U. 2023 poz. 2659):
 
 Przełącznik w aplikacji cyklicznie: **PL → EN → DE → UA**. Pierwsza wizyta: język przeglądarki, inaczej angielski. Chrome UI: wybrany język → EN → PL. Treść pytania bez tłumaczenia w wybranym języku: **angielski**, potem polski.
 
-Treść pytań w językach obcych pochodzi z Excela MI (`Pytanie [EN]`, `Pytanie [D]`, `Pytanie [UA]`) i jest zapisana w `src/data/translations_{en,de,ua}.json` przez `parse-excel.ps1` (`ua` = ukraiński, nie mylić z UK). Parser **domyślnie** uzupełnia puste kolumny przez `translate-questions`. Gemini, gdy jest klucz: parametr `-GeminiApiKey` / `--gemini-api-key` na ten run, albo gitignored `.geminienv` w katalogu repo (szablon `scripts/geminienv.example`, jak `.b2env`), albo zmienna `GEMINI_API_KEY`. Przy kluczu **tylko Gemini** (lista modeli z API); jak Gemini padnie — zapis i stop, bez Google. Bez klucza: Google Translate. Wyłączenie: `-SkipTranslateGaps` / `--skip-translate-gaps`. Przy kolejnym Excelu **nie kasuje** tych uzupełnień, tylko nadpisuje ID, które MI już ma.
+Treść pytań w językach obcych pochodzi z Excela MI (`Pytanie [EN]`, `Pytanie [D]`, `Pytanie [UA]`) i jest zapisana w `src/data/translations_{en,de,ua}.json` przez `parse-excel.ps1` (`ua` = ukraiński, nie mylić z UK). Parser **domyślnie** uzupełnia puste kolumny przez `translate-questions`. Gemini, gdy jest klucz: parametr `-GeminiApiKey` / `--gemini-api-key` na ten run, albo gitignored `.geminienv` w katalogu repo (szablon `scripts/geminienv.example`, jak `.b2env`), albo zmienna `GEMINI_API_KEY`. Przy kluczu **tylko Gemini** (lista Flash z API, lite pierwsze); 404 i dzienny 429 idą na kolejny model; gdy wszystkie padną — zapis i stop, bez Google. Pytanie ze złym tłumaczeniem (verify) jest pomijane. Bez klucza: Google Translate. Wyłączenie: `-SkipTranslateGaps` / `--skip-translate-gaps`. Przy kolejnym Excelu **nie kasuje** tych uzupełnień, tylko nadpisuje ID, które MI już ma.
 
 ## Dane i multimedia
 
@@ -434,7 +434,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\parse-excel.ps1
 .\Install_Prawko.windows.ps1 -SyncGov -SyncScope Questions
 ```
 
-Albo klucz tylko na ten run, bez pliku: `-GeminiApiKey "WLEJ_KLUCZ"` / `--gemini-api-key`. Bez niczego zostaje Google Translate. Przy kluczu jak Gemini padnie — stop (postęp zapisany); Google tylko gdy odpalisz bez klucza.
+Albo klucz tylko na ten run, bez pliku: `-GeminiApiKey "WLEJ_KLUCZ"` / `--gemini-api-key`. Bez niczego zostaje Google Translate. Przy kluczu: dzienny 429 przełącza model; gdy wszystkie Flash-e wyczerpane albo błąd klucza — stop (postęp zapisany). Google tylko gdy odpalisz bez klucza.
 
 `-DropMissingMedia` zeruje w JSON odwołania do plików, których nie ma w lokalnym raw. Bez tego przełącznika nazwy z Excela zostają (CDN).
 
@@ -590,8 +590,8 @@ A normal user does **not** need a second git clone. `-SyncGov` does not duplicat
 | `-SyncScope Questions\|Media\|Full` | Scope for `-SyncGov`: questions only / ZIP→TEMP→WebP·MP4 / full (default) |
 | `-SyncUseCache` | Skip gov.pl when `gov-cache` already has Excel and ZIPs |
 | `-DropMissingMedia` | With `-SyncGov` (Full/Media): strip JSON media without local files. **Off** by default |
-| `-SkipTranslateGaps` | With `-SyncGov` Questions/Full: do not fill empty EN/DE/UA. **Fills** by default (Google Translate) |
-| `-GeminiApiKey <key>` | With `-SyncGov` Questions/Full: Gemini for this run (overrides `.geminienv`). Without the switch: `.geminienv` like `.b2env`, or Google |
+| `-SkipTranslateGaps` | With `-SyncGov` Questions/Full: do not fill empty EN/DE/UA. **Fills** by default (Gemini when a key is present, else Google Translate) |
+| `-GeminiApiKey <key>` | With `-SyncGov` Questions/Full: Gemini for this run (overrides `.geminienv`). Without the switch: `.geminienv` like `.b2env`. With a key: Gemini only (daily 429 → next Flash). No key: Google |
 | `-MergeGov` | On a running server: append ministry Excel rows that are missing |
 | `-Export <path>` | Portable pack: code + **default** server snapshot (`data`, `media`, `local.json`, `manifest.json`) |
 | `-ExcludeData` / `-ExcludeMedia` / `-ExcludeLocalJson` | Slim down `-Export` (all included by default) |
@@ -827,7 +827,7 @@ Per the regulation (Dz.U. 2023 item 2659):
 
 The in-app control cycles **PL → EN → DE → UA**. First visit: browser language, otherwise English. UI chrome: selected language → EN → PL. Question text missing in the selected language: **English**, then Polish.
 
-Non-Polish question text comes from the ministry Excel (`Pytanie [EN]`, `Pytanie [D]`, `Pytanie [UA]`) into `src/data/translations_{en,de,ua}.json` via `parse-excel.ps1` (`ua` = Ukrainian, not UK). The parser **by default** fills empty Excel columns through `translate-questions`. Gemini when a key is available: `-GeminiApiKey` / `--gemini-api-key` for this run, or gitignored `.geminienv` at the repo root (template `scripts/geminienv.example`, same idea as `.b2env`), or `GEMINI_API_KEY` in the environment. No key: Google Translate. With a key: Gemini only (models from the API); Gemini failure saves and aborts, no Google. Opt out: `-SkipTranslateGaps` / `--skip-translate-gaps`. A later parse **keeps** those fills and only overwrites IDs the ministry already has.
+Non-Polish question text comes from the ministry Excel (`Pytanie [EN]`, `Pytanie [D]`, `Pytanie [UA]`) into `src/data/translations_{en,de,ua}.json` via `parse-excel.ps1` (`ua` = Ukrainian, not UK). The parser **by default** fills empty Excel columns through `translate-questions`. Gemini when a key is available: `-GeminiApiKey` / `--gemini-api-key` for this run, or gitignored `.geminienv` at the repo root (template `scripts/geminienv.example`, same idea as `.b2env`), or `GEMINI_API_KEY` in the environment. No key: Google Translate. With a key: Gemini only (Flash list from the API, lite first); 404 and daily 429 try the next model; when every Flash is exhausted — save and stop, no Google. A verify failure skips that question. Opt out: `-SkipTranslateGaps` / `--skip-translate-gaps`. A later parse **keeps** those fills and only overwrites IDs the ministry already has.
 
 ## Data and media
 
@@ -917,7 +917,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\parse-excel.ps1
 .\Install_Prawko.windows.ps1 -SyncGov -SyncScope Questions
 ```
 
-Or this run only, no file: `-GeminiApiKey "PASTE_KEY"` / `--gemini-api-key`. With neither, Google Translate stays. With a key, Gemini failure saves and stops; Google only if you run without a key.
+Or this run only, no file: `-GeminiApiKey "PASTE_KEY"` / `--gemini-api-key`. With neither, Google Translate stays. With a key: daily 429 switches model; when every Flash is exhausted or the key fails — stop (progress saved). Google only if you run without a key.
 
 `-DropMissingMedia` clears JSON media names whose files are missing from local raw. Without it, Excel names stay (CDN).
 

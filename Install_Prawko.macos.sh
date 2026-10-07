@@ -63,9 +63,9 @@ FLAGS (same as Install_Prawko.windows.ps1 on Windows)
                          Scope: --sync-scope questions|media|full (default full).
                          --sync-use-cache skips gov.pl when gov-cache has Excel and ZIPs.
   --drop-missing-media   Only with --sync-gov (full/media): strip missing media from JSON.
-  --skip-translate-gaps  With --sync-gov questions/full: do not fill missing EN/DE/UA. Default fills (Google Translate).
+  --skip-translate-gaps  With --sync-gov questions/full: do not fill missing EN/DE/UA. Default fills (Gemini when a key is available, else Google Translate).
   --gemini-api-key KEY   Optional. Google AI Studio key for this run (overrides .geminienv).
-                         With --sync-gov questions/full: Gemini first, Google Translate fallback.
+                         With --sync-gov questions/full and a key: Gemini only (daily 429 tries the next Flash; all exhausted saves and stops).
                          Omit: .geminienv / GEMINI_API_KEY, else Google Translate only.
   --merge-gov            On a running server: fills gaps from ministry Excel.
   --patch                Overlays code from a local checkout (--dev, next to the script,

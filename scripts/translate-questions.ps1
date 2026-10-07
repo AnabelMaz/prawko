@@ -8,8 +8,10 @@
 # environment, else .geminienv at the repo root (gitignored; template
 # scripts/geminienv.example). No key = Google Translate only. With a key:
 # Gemini only (v1beta generateContent — that is Google's REST surface,
-# not a beta/preview model). One bad question is skipped; abort only on
-# auth/key errors (progress saved).
+# not a beta/preview model). Lists Flash from the API (lite first). 404 and
+# daily 429 mark that id dead and try the next. Skip a question on verify or
+# empty q. Abort on auth/key errors or when every Flash is daily-exhausted
+# (progress saved). No Google mix when a key is present.
 #
 # Helpers load with:
 #   . scripts\translate-questions.ps1 -LibraryOnly
@@ -687,6 +689,17 @@ function Add-TrGeminiDead ([string]$model) {
     if (-not $script:TrGeminiDead.Contains($model)) { [void]$script:TrGeminiDead.Add($model) }
 }
 
+function Get-TrRetryDelaySec ([string]$msg) {
+    $m = [regex]::Match([string]$msg, 'retryDelay["\s:]*"?(\d+(?:\.\d+)?)s', 'IgnoreCase')
+    if ($m.Success) { return [int][Math]::Ceiling([double]$m.Groups[1].Value) }
+    return 0
+}
+
+function Test-TrGeminiDailyQuota ([string]$msg) {
+    if ([string]$msg -match 'PerDay') { return $true }
+    return ((Get-TrRetryDelaySec $msg) -ge 120)
+}
+
 function Get-TrGeminiTryOrder ([string]$apiKey) {
     $list = New-Object System.Collections.Generic.List[string]
     Add-TrModelName $list $script:TrGeminiModel
@@ -1012,14 +1025,39 @@ function Invoke-GeminiTranslateIds ($questions, $ids, [string]$langName, [string
                     Write-Host ("  Gemini model {0}: {1}, skip question" -f $model, $msg) -ForegroundColor DarkYellow
                     throw (New-Object System.Exception $msg)
                 }
-                if ($msg -match '429|Too Many|RESOURCE_EXHAUSTED|5\d\d') {
+                if ($msg -match '429|Too Many|RESOURCE_EXHAUSTED') {
+                    if (Test-TrGeminiDailyQuota $msg) {
+                        Add-TrGeminiDead $model
+                        Write-Host ("  Gemini model {0}: daily quota, trying next" -f $model) -ForegroundColor DarkYellow
+                        $tryNext = $true
+                        break
+                    }
+                    $wait = Get-TrRetryDelaySec $msg
+                    if ($wait -lt 1) { $wait = [int][Math]::Min(60, [Math]::Pow(2, $attempt)) }
+                    elseif ($wait -gt 60) { $wait = 60 }
+                    Write-Host ("  Gemini model {0}: rate limit, retry in {1}s" -f $model, $wait) -ForegroundColor DarkYellow
+                    Start-Sleep -Seconds $wait
+                    continue
+                }
+                if ($msg -match '5\d\d') {
                     Start-Sleep -Seconds ([Math]::Min(60, [Math]::Pow(2, $attempt)))
                     continue
                 }
                 throw (New-Object System.Exception $msg)
             }
         }
-        if (-not $tryNext -and $last) { break }
+        if (-not $tryNext -and $last) {
+            $lastMsg = Protect-TrErrorMessage ([string]$last) $apiKey
+            if ($lastMsg -match '429|Too Many|RESOURCE_EXHAUSTED|5\d\d') {
+                Write-Host ("  Gemini model {0}: still limited, trying next" -f $model) -ForegroundColor DarkYellow
+                $tryNext = $true
+            } else {
+                break
+            }
+        }
+    }
+    if ((Get-TrLen (Get-TrGeminiTryOrder $apiKey)) -eq 0) {
+        throw (New-Object System.Exception "Gemini daily quota exhausted")
     }
     throw (New-Object System.Exception (Protect-TrErrorMessage ([string]$last) $apiKey))
 }
@@ -1102,6 +1140,11 @@ function Fill-MissingQuestionTranslations {
                     Write-Host ("  Gemini fail {0}: {1}" -f ($chunk -join ','), $emsg) -ForegroundColor DarkYellow
                     Save-TranslationMap $name $existing
                     throw "Gemini failed; progress saved. Re-run without a key to use Google Translate."
+                }
+                if ($emsg -match 'daily quota exhausted|429|RESOURCE_EXHAUSTED') {
+                    Write-Host ("  Gemini fail {0}: daily quota exhausted" -f ($chunk -join ',')) -ForegroundColor DarkYellow
+                    Save-TranslationMap $name $existing
+                    throw "Gemini failed; progress saved. Daily quota exhausted; re-run later."
                 }
                 $batchErr = $emsg
                 $script:TrLastBatch = $null

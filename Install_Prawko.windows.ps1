@@ -92,12 +92,14 @@ SWITCHES
                     from JSON media whose file is missing in local raw. Default: NO.
 
   -SkipTranslateGaps With -SyncGov Questions/Full: do not fill missing EN/DE/UA
-                    after parse-excel. Default: fill gaps (Google Translate).
+                    after parse-excel. Default: fill gaps (Gemini when a key
+                    is available, else Google Translate).
 
   -GeminiApiKey     Optional. Google AI Studio key for this run (overrides
-                    .geminienv). With -SyncGov Questions/Full: Gemini first,
-                    Google Translate fallback. Omit: .geminienv / GEMINI_API_KEY
-                    next to the repo or the server, else Google Translate only.
+                    .geminienv). With -SyncGov Questions/Full and a key: Gemini
+                    only (daily 429 tries the next Flash; all exhausted saves
+                    and stops). Omit: .geminienv / GEMINI_API_KEY next to the
+                    repo or the server, else Google Translate only.
 
   -MergeGov         On a running server: appends from ministry Excel only the gaps.
                     No server = install with no switches first.
