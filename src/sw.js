@@ -1,6 +1,6 @@
 importScripts('./js/media-assemble.js');
 
-const CACHE_VERSION = 'prawko-v136';
+const CACHE_VERSION = 'prawko-v138';
 const APP_SHELL_CACHE = CACHE_VERSION + '-shell';
 const DATA_CACHE = CACHE_VERSION + '-data';
 const MEDIA_CACHE = CACHE_VERSION + '-media';
@@ -29,7 +29,7 @@ const APP_SHELL = [
   './data/meta.json',
   './data/translations_en.json',
   './data/translations_de.json',
-  './data/translations_uk.json',
+  './data/translations_ua.json',
   './manifest.json',
   './icons/cursor-black.png',
   './icons/cursor-white.png',

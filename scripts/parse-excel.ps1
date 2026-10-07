@@ -10,9 +10,12 @@
 #
 # Default: keep media file names even if the local pack is missing (CDN).
 # -DropMissingMedia only when asked: then missing raw files clear media in JSON.
+# Default: fill missing EN/DE/UA strings via translate-questions.ps1 (Gemini from
+# -GeminiApiKey, else .geminienv / GEMINI_API_KEY, else Google Translate).
+# -SkipTranslateGaps: Excel columns only (installer -MergeGov uses this; temp JSON).
 #
 # powershell -ExecutionPolicy Bypass -File scripts/parse-excel.ps1
-# powershell -ExecutionPolicy Bypass -File scripts/parse-excel.ps1 -Excel gov-data\baza_pytan.xlsx -OutDir src\data
+# powershell -ExecutionPolicy Bypass -File scripts/parse-excel.ps1 -OutDir src\data
 # Installer: Install_Prawko.windows.ps1 -SyncGov (repo root)
 # Drop missing media: parse-excel.ps1 -DropMissingMedia or Install_Prawko.windows.ps1 -SyncGov -DropMissingMedia
 
@@ -20,14 +23,17 @@ param(
     [string]$Excel,
     [string]$OutDir,
     [string]$MediaDir,
-    [switch]$DropMissingMedia
+    [switch]$DropMissingMedia,
+    [switch]$SkipTranslateGaps,
+    [string]$GeminiApiKey
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-if (-not $Excel) { $Excel = Join-Path $repoRoot "gov-data\baza_pytan.xlsx" }
+. (Join-Path $PSScriptRoot "download-gov.ps1") -LibraryOnly
+if (-not $Excel) { $Excel = Join-Path (Get-GovDataDir) "baza_pytan.xlsx" }
 if (-not $OutDir) { $OutDir = Join-Path $repoRoot "src\data" }
 if (-not [IO.Path]::IsPathRooted($Excel)) { $Excel = Join-Path $repoRoot $Excel }
 if (-not [IO.Path]::IsPathRooted($OutDir)) { $OutDir = Join-Path $repoRoot $OutDir }
@@ -246,7 +252,7 @@ if (-not (Test-Path -LiteralPath $Excel)) {
 $mediaLookup = $null
 if ($DropMissingMedia) {
     if (-not $MediaDir) {
-        $MediaDir = Join-Path $repoRoot "gov-data\raw"
+        $MediaDir = Get-GovRawTempDir
         $legacyMedia = Join-Path $repoRoot "Pytania egzaminacyjne na prawo jazdy 2025"
         if (-not (Test-Path -LiteralPath $MediaDir) -and (Test-Path -LiteralPath $legacyMedia)) {
             $MediaDir = $legacyMedia
@@ -296,7 +302,25 @@ $forcedSpecialist = 0
 $translations = @{
     en = [ordered]@{}
     de = [ordered]@{}
-    uk = [ordered]@{}
+    ua = [ordered]@{}
+}
+
+function Merge-ExistingQuestionTranslations ($map, [string]$path, $uniqueIds) {
+    if (-not (Test-Path -LiteralPath $path)) { return }
+    $raw = [IO.File]::ReadAllText($path)
+    if ([string]::IsNullOrWhiteSpace($raw)) { return }
+    $existing = $raw | ConvertFrom-Json
+    foreach ($p in $existing.PSObject.Properties) {
+        $id = [string]$p.Name
+        if (-not $uniqueIds.Contains($id)) { continue }
+        if ($map.Contains($id)) { continue }
+        $tr = [ordered]@{}
+        foreach ($field in @('q', 'a', 'b', 'c')) {
+            $val = $p.Value.$field
+            if ($val) { $tr[$field] = [string]$val }
+        }
+        if ($tr.Count -gt 0) { $map[$id] = $tr }
+    }
 }
 
 function Add-QuestionTranslation ($map, [string]$id, [string]$q, [string]$a, [string]$b, [string]$c, [string]$qType) {
@@ -371,7 +395,7 @@ for ($r = 1; $r -lt $rows.Count; $r++) {
     $qid = [string]$qObj.id
     Add-QuestionTranslation $translations.en $qid (Get-ExcelCell $row $colEnQ) (Get-ExcelCell $row $colEnA) (Get-ExcelCell $row $colEnB) (Get-ExcelCell $row $colEnC) $qType
     Add-QuestionTranslation $translations.de $qid (Get-ExcelCell $row $colDeQ) (Get-ExcelCell $row $colDeA) (Get-ExcelCell $row $colDeB) (Get-ExcelCell $row $colDeC) $qType
-    Add-QuestionTranslation $translations.uk $qid (Get-ExcelCell $row $colUkQ) (Get-ExcelCell $row $colUkA) (Get-ExcelCell $row $colUkB) (Get-ExcelCell $row $colUkC) $qType
+    Add-QuestionTranslation $translations.ua $qid (Get-ExcelCell $row $colUkQ) (Get-ExcelCell $row $colUkA) (Get-ExcelCell $row $colUkB) (Get-ExcelCell $row $colUkC) $qType
 
     foreach ($cat in ($rawCats -split ',')) {
         $cat = $cat.Trim()
@@ -416,14 +440,24 @@ $meta = [ordered]@{ uniqueQuestionCount = $uniqueIds.Count; categories = $metaCa
 Write-Host "Wrote meta.json ($($uniqueIds.Count) unique, $total category assignments)." -ForegroundColor Green
 
 $script:PrawkoJsonCompact = $true
-foreach ($pair in @(@('en', 'translations_en.json'), @('de', 'translations_de.json'), @('uk', 'translations_uk.json'))) {
+foreach ($pair in @(@('en', 'translations_en.json'), @('de', 'translations_de.json'), @('ua', 'translations_ua.json'))) {
     $lang = $pair[0]
     $file = $pair[1]
     $map = $translations[$lang]
+    Merge-ExistingQuestionTranslations $map (Join-Path $OutDir $file) $uniqueIds
+    if ($lang -eq 'ua') {
+        Merge-ExistingQuestionTranslations $map (Join-Path $OutDir 'translations_uk.json') $uniqueIds
+    }
     [IO.File]::WriteAllText((Join-Path $OutDir $file), (ConvertTo-PrawkoJson $map), $utf8)
     Write-Host "Wrote $file ($($map.Count) questions)." -ForegroundColor Green
 }
 $script:PrawkoJsonCompact = $false
+
+if (-not $SkipTranslateGaps) {
+    Write-Host "Filling translation gaps (Gemini if a key is available, else Google Translate; -SkipTranslateGaps to skip)..." -ForegroundColor Cyan
+    . (Join-Path $PSScriptRoot "translate-questions.ps1") -LibraryOnly
+    Fill-MissingQuestionTranslations -DataDir $OutDir -GeminiApiKey $GeminiApiKey
+}
 
 if ($forcedSpecialist) {
     Write-Host "Treated $forcedSpecialist PODSTAWOWY rows as specialist (correct answer A/B/C)." -ForegroundColor Yellow

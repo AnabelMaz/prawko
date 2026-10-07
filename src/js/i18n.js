@@ -625,7 +625,7 @@ const translations = {
     profileResetConfirm: 'Ja, zurücksetzen',
     langToggle: 'Sprache',
   },
-  uk: {
+  ua: {
     appName: 'Prawko',
     tagline: 'Усі {n} офіційних екзаменаційних питань',
     featureLearn: 'Режим навчання',
@@ -835,13 +835,13 @@ const translations = {
   },
 };
 
-export const LANG_CYCLE = ['pl', 'en', 'de', 'uk'];
-export const LANG_LABELS = { pl: 'PL', en: 'EN', de: 'DE', uk: 'UA' };
+export const LANG_CYCLE = ['pl', 'en', 'de', 'ua'];
+export const LANG_LABELS = { pl: 'PL', en: 'EN', de: 'DE', ua: 'UA' };
 const SUPPORTED_LANGS = LANG_CYCLE;
 const QUESTION_TRANSLATION_FILES = {
   en: 'data/translations_en.json',
   de: 'data/translations_de.json',
-  uk: 'data/translations_uk.json',
+  ua: 'data/translations_ua.json',
 };
 
 export function nextLang(lang) {
@@ -849,9 +849,13 @@ export function nextLang(lang) {
   return LANG_CYCLE[(i + 1) % LANG_CYCLE.length];
 }
 
+function htmlLangAttr(lang) {
+  return lang === 'ua' ? 'uk' : lang;
+}
+
 function normalizeLang(raw) {
   const primary = String(raw || '').toLowerCase().split('-')[0];
-  if (primary === 'ua') return 'uk';
+  if (primary === 'uk' || primary === 'ua') return 'ua';
   return primary;
 }
 
@@ -883,7 +887,7 @@ export function getLang() {
 export function setLang(lang) {
   currentLang = SUPPORTED_LANGS.includes(lang) ? lang : 'en';
   try { localStorage.setItem('prawko_lang', currentLang); } catch {}
-  document.documentElement.lang = currentLang === 'uk' ? 'uk' : currentLang;
+  document.documentElement.lang = htmlLangAttr(currentLang);
 }
 
 export function t(key) {
@@ -893,44 +897,51 @@ export function t(key) {
     || key;
 }
 
+async function loadQuestionFile(lang) {
+  if (questionTranslationsByLang[lang]) return questionTranslationsByLang[lang];
+  const file = QUESTION_TRANSLATION_FILES[lang];
+  if (!file) {
+    questionTranslationsByLang[lang] = {};
+    return questionTranslationsByLang[lang];
+  }
+  try {
+    const res = await fetch(file);
+    const data = await res.json();
+    questionTranslationsByLang[lang] = data && typeof data === 'object' ? data : {};
+    return questionTranslationsByLang[lang];
+  } catch (err) {
+    console.warn('Failed to load question translations:', err);
+    questionTranslationsByLang[lang] = {};
+    window.dispatchEvent(new CustomEvent('translation-load-error', { detail: err }));
+    return questionTranslationsByLang[lang];
+  }
+}
+
 export async function loadQuestionTranslations(lang = currentLang) {
   if (lang === 'pl') {
     questionTranslations = null;
     return {};
   }
-  if (questionTranslationsByLang[lang]) {
-    questionTranslations = questionTranslationsByLang[lang];
-    return questionTranslations;
-  }
-  const file = QUESTION_TRANSLATION_FILES[lang];
-  if (!file) {
-    questionTranslations = {};
-    return questionTranslations;
-  }
-  try {
-    const res = await fetch(file);
-    const data = await res.json();
-    questionTranslationsByLang[lang] = data;
-    questionTranslations = data;
-    return questionTranslations;
-  } catch (err) {
-    console.warn('Failed to load question translations, falling back to Polish:', err);
-    questionTranslationsByLang[lang] = {};
-    questionTranslations = {};
-    window.dispatchEvent(new CustomEvent('translation-load-error', { detail: err }));
-    return questionTranslations;
-  }
+  const files = lang === 'en' ? ['en'] : [lang, 'en'];
+  await Promise.all(files.map(loadQuestionFile));
+  questionTranslations = questionTranslationsByLang[lang] || {};
+  return questionTranslations;
+}
+
+function questionField(id, field, fallback) {
+  const tr = questionTranslationsByLang[currentLang]?.[id];
+  const en = questionTranslationsByLang.en?.[id];
+  return (tr && tr[field]) || (en && en[field]) || fallback;
 }
 
 export function translateQuestion(question) {
-  if (currentLang === 'pl' || !questionTranslations) return question;
-  const tr = questionTranslations[String(question.id)];
-  if (!tr) return question;
+  if (currentLang === 'pl') return question;
+  const id = String(question.id);
   return {
     ...question,
-    q: tr.q || question.q,
-    a: tr.a || question.a,
-    b: tr.b || question.b,
-    c: tr.c || question.c,
+    q: questionField(id, 'q', question.q),
+    a: questionField(id, 'a', question.a),
+    b: questionField(id, 'b', question.b),
+    c: questionField(id, 'c', question.c),
   };
 }

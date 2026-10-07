@@ -5,7 +5,7 @@ Day-to-day product is the local service at http://localhost:5173 (`C:\ProgramDat
 ## Project Structure
 - `src/` — PWA (vanilla JS). Served locally; also published to GitHub Pages on push to `main`
 - `scripts/` — data pipeline (Excel→JSON, media conversion)
-- Source Excel / ZIP / raw (Windows): `%LOCALAPPDATA%\prawko\gov-data` (not the git working copy, not ProgramData). Overflow: `gov-data/` in the checkout if that disk has space. macOS: `~/Library/Application Support/prawko/gov-data`. Linux: `~/.local/share/prawko/gov-data`
+- Ministry Excel + media ZIPs: `C:\ProgramData\prawko\gov-cache` (Windows), `/usr/local/prawko/gov-cache` (macOS), `/opt/prawko/gov-cache` (Linux). Survives uninstall. Unpack JPG/WMV only in TEMP for convert-media, then delete. JSON and WebP/MP4 go to `src/data` and `src/media` on the server (git `src/data` only when you parse into the checkout). Low disk: scripts abort.
 - Converted media for the app: `C:\ProgramData\prawko\src\media` (Windows), `/usr/local/prawko/src/media` (macOS), `/opt/prawko/src/media` (Linux). Git `src/media` stays empty.
 
 ## Key Rules
@@ -13,7 +13,7 @@ Day-to-day product is the local service at http://localhost:5173 (`C:\ProgramDat
 - Vanilla JS (ES modules), no frameworks, no build step
 - UI languages: Polish (default), English, German, Ukrainian — switchable via the language toggle
 - Dark/light theme toggle (persisted in localStorage)
-- i18n: `data-i18n` for chrome; question strings in `translations_{lang}.json` come from the ministry Excel (EN/DE/UA columns), not machine translation
+- i18n: `data-i18n` for chrome; question strings in `translations_{en,de,ua}.json` come from the ministry Excel first. `parse-excel` fills empty columns via `translate-questions` unless `-SkipTranslateGaps` / `--skip-translate-gaps`. Gemini if a key is available (`-GeminiApiKey` / `--gemini-api-key` this run, else gitignored `.geminienv` like `.b2env`, else `GEMINI_API_KEY`); GET `v1beta/models` (paged) and rank Flash `generateContent` ids (lite first, then newer version). 404 on generate skips that id and tries the next; list failure falls back to `gemini-3.5-flash-lite` then `gemini-3.8-flash`. Same POST `generateContent` as a working AI Studio probe. A bad question is skipped (empty q / timeout / verify); abort only on auth/key errors (progress saved), no Google. Fills are checked (length, structure, numbers, script) unless `-SkipVerifyAi` / `--skip-verify-ai`. Progress bar during the fill. No key = Google only. Standalone: `translate-questions.ps1` / `.py` (`-LibraryOnly` / `fill_missing`). Parse merges: Excel overwrites the same IDs, fills for missing IDs stay. App code `ua` = Ukrainian (file `translations_ua.json`); HTML `lang` stays `uk`.
 - Exam: 32 questions (20 basic TAK/NIE + 12 specialist A/B/C), 25 min, 74 pts max, 68 to pass
 - Points: basic [10×3, 6×2, 4×1], specialist [6×3, 4×2, 2×1]
 - Per-question timers: basic 20s, specialist 50s (shown separately from total timer with labels)
@@ -28,17 +28,17 @@ Day-to-day product is the local service at http://localhost:5173 (`C:\ProgramDat
 - PWA with service worker; “Download offline” unpacks R2 zips into Cache Storage only when media is remote (`mediaBase: cdn`). Same-origin `media/` on the machine running the server is already on disk (no download). Remote clients need “Download offline” from that host. Missing files are a config error, not a silent CDN fallback
 
 ## i18n Architecture
-- `src/js/i18n.js` — translations dict, `getLang()`, `setLang()`, `t(key)`, `translateQuestion()`
-- `src/data/translations_en.json`, `translations_de.json`, `translations_uk.json` — ministry Excel columns `Pytanie [EN]`, `[D]`, `[UA]`, written by `parse-excel.ps1`
+- `src/js/i18n.js` — translations dict, `getLang()`, `setLang()`, `t(key)`, `translateQuestion()`. UI chrome: selected lang → English → Polish. Question text: selected lang → English → Polish. First visit: browser language, else English.
+- `src/data/translations_en.json`, `translations_de.json`, `translations_ua.json` — ministry Excel columns `Pytanie [EN]`, `[D]`, `[UA]`, written by `parse-excel.ps1`; missing IDs filled by `translate-questions` (Google, or Gemini when a key is passed)
 - Language persisted in `localStorage` key `prawko_lang`
 - Question translations lazy-loaded when a non-Polish language is selected
-- A new question language needs a new Excel column and a matching entry in parse-excel / i18n.js — do not machine-translate the banks
+- A new question language needs a new Excel column and a matching entry in parse-excel / i18n.js. Fill Excel gaps with `translate-questions` from Polish; do not overwrite ministry wording. Agent skill: `.cursor/skills/translate-questions/SKILL.md`.
 
 ## File Structure
 - `src/js/` — app.js (router), data.js, exam.js, learn.js, ui.js, timer.js, stats.js, i18n.js, profiles.js, offline.js, zip.js, scale.js, scale-boot.js, fit-text.js
-- `src/data/` — meta.json, {category}.json, translations_{en,de,uk}.json
+- `src/data/` — meta.json, {category}.json, translations_{en,de,ua}.json
 - `src/media/` — empty in git; img/ (WebP) and vid/ (MP4) live only on the server after `-SyncGov`
-- `Install_Prawko.windows.ps1` / `Install_Prawko.macos.sh` / `Install_Prawko.linux.sh` — one downloaded file per OS. Default: ZIP of AnabelMaz/prawko + Node + service (no Git). `-Dev` / `--dev`: Git clone only (no Node, no server). macOS: launchd, `/usr/local/prawko`. Linux: systemd, `/opt/prawko`. `-SyncGov` / `--sync-gov` uses `download-gov.ps1` (Windows) or `download-gov.py` (macOS/Linux) for gov-data paths, then convert-media and parse-excel.
+- `Install_Prawko.windows.ps1` / `Install_Prawko.macos.sh` / `Install_Prawko.linux.sh` — one downloaded file per OS. Default: ZIP of AnabelMaz/prawko + Node + service (no Git). `-Dev` / `--dev`: Git clone only (no Node, no server). macOS: launchd, `/usr/local/prawko`. Linux: systemd, `/opt/prawko`. `-SyncGov` / `--sync-gov` uses `download-gov.ps1` (Windows) or `download-gov.py` (macOS/Linux) for gov-cache (Excel + ZIPs next to the install), then convert-media (TEMP unpack) and parse-excel.
 - `scripts/` — Windows `.ps1` (no Python). macOS/Linux pipeline `.py`. Installers stay `.ps1` / `.sh`. No Node in the data pipeline.
 
 ## Data Pipeline
@@ -47,6 +47,7 @@ Windows: PowerShell only (no Python, no Node in `scripts/`). macOS/Linux: instal
 ```bash
 # Windows
 powershell -File scripts/parse-excel.ps1
+powershell -File scripts/translate-questions.ps1
 powershell -File scripts/convert-media.ps1
 powershell -File scripts/merge-gov.ps1
 powershell -File scripts/filter-no-media.ps1
@@ -57,6 +58,7 @@ powershell -File scripts/build-media-packs.ps1
 
 # macOS / Linux
 python3 scripts/parse-excel.py
+python3 scripts/translate-questions.py
 python3 scripts/convert-media.py
 python3 scripts/filter-no-media.py
 python3 scripts/merge-gov.py --gov-dir DIR --out-dir DIR

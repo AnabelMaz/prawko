@@ -1,0 +1,5 @@
+# Copy to the repo root as .geminienv (gitignored). Do not commit keys.
+# https://aistudio.google.com — Get API key.
+# translate-questions / parse-excel / -SyncGov read this when -GeminiApiKey is omitted.
+# No file and no parameter = Google Translate only.
+GEMINI_API_KEY=

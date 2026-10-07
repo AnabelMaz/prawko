@@ -71,7 +71,8 @@ Po wgraniu nowszej wersji kodu w otwartej karcie może pojawić się baner „Do
 | Co | Ścieżka |
 |---|---|
 | Aplikacja i usługa | `C:\ProgramData\prawko` |
-| ZIP / surowe JPG·WMV z gov.pl | `%LOCALAPPDATA%\prawko\gov-data` |
+| Excel + ZIP-y mediów z gov.pl | `C:\ProgramData\prawko\gov-cache` (zostaje po `-Uninstall`) |
+| Rozpakowanie JPG/WMV (scratch) | `%TEMP%\prawko\raw` (kasowane po konwersji) |
 | Skonwertowane WebP / MP4 i JSON z Excela | `C:\ProgramData\prawko\src\media` oraz `src\data` |
 | FFmpeg przenośny (przy `-SyncGov` / `-MergeGov`, gdy nie ma w PATH) | `C:\ProgramData\prawko\tools` |
 
@@ -83,17 +84,19 @@ Zwykły użytkownik **nie potrzebuje** drugiego klona gita. `-SyncGov` nie kopiu
 |---|---|
 | *(brak)* | Serwer: ZIP z GitHuba, pytania z repo, media z CDN |
 | `-SyncGov` | Gov.pl → staging → serwer. Domyślnie **Full** (Excel + ZIP + WebP/MP4 + JSON). **Nie** pobiera PJM (~10 GB) |
-| `-SyncScope Questions\|Media\|Full` | Zakres `-SyncGov`: tylko pytania / tylko konwersja raw / pełne (domyślne) |
-| `-SyncUseCache` | Przy `-SyncGov`: nie woła gov.pl, gdy staging ma Excel i raw |
+| `-SyncScope Questions\|Media\|Full` | Zakres `-SyncGov`: tylko pytania / ZIP→TEMP→WebP·MP4 / pełne (domyślne) |
+| `-SyncUseCache` | Przy `-SyncGov`: nie woła gov.pl, gdy `gov-cache` ma Excel i ZIP-y |
 | `-DropMissingMedia` | Przy `-SyncGov` (Full/Media): wycina z JSON media bez pliku lokalnego. Domyślnie **wyłączone** |
+| `-SkipTranslateGaps` | Przy `-SyncGov` Questions/Full: nie uzupełniaj pustych EN/DE/UA. Domyślnie **uzupełnia** (Google Translate) |
+| `-GeminiApiKey <klucz>` | Przy `-SyncGov` Questions/Full: Gemini na ten run (nadpisuje `.geminienv`). Bez parametru: `.geminienv` jak `.b2env`, albo Google |
 | `-MergeGov` | Na stojącym serwerze: dopisuje z Excela MI tylko braki |
 | `-Export <ścieżka>` | Paczka przenośna: kod + **domyślnie** snapshot serwera (`data`, `media`, `local.json`, `manifest.json`) |
 | `-ExcludeData` / `-ExcludeMedia` / `-ExcludeLocalJson` | Przy `-Export`: wyklucz z paczki (domyślnie wszystko wchodzi) |
-| `-IncludeGovCache` | Przy `-Export`: dołóż `%LOCALAPPDATA%\prawko\gov-data` (Excel, raw, cache) |
+| `-IncludeGovCache` | Przy `-Export`: dołóż `gov-cache` (Excel + ZIP-y; nie snapshot serwera) |
 | `-Import <ścieżka>` | Przywróć z paczki exportu (serwer musi już stać). `-ImportScope Auto\|Code\|Runtime`, `-ImportForce` |
 | `-Dev <folder>` | Tylko Git + klon. **Bez** Node i serwera |
 | `-Patch` | Overlay kodu z lokalnego klona (`-Dev`; `src\`, bez `data\` i `media\`) |
-| `-Uninstall` | Usuwa usługę i `C:\ProgramData\prawko` |
+| `-Uninstall` | Usuwa usługę i `C:\ProgramData\prawko` **oprócz** `gov-cache` |
 | `-NonInteractive` / `-Help` | Bez pauzy Enter / pełna pomoc |
 
 Administrator tylko przy **pierwszej instalacji serwera** albo `-Uninstall`.
@@ -114,7 +117,7 @@ Tylko pytania, filmy z CDN:
 powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -SyncGov -SyncScope Questions
 ```
 
-Staging (ZIP, raw) → `%LOCALAPPDATA%\prawko\gov-data`. WebP/MP4 i JSON → `C:\ProgramData\prawko\src\`.
+Excel i ZIP-y → `C:\ProgramData\prawko\gov-cache`. Rozpakowanie JPG/WMV w TEMP, potem kasowane. WebP/MP4 i JSON → `C:\ProgramData\prawko\src\`.
 
 ### Export i import (USB / nowy PC)
 
@@ -162,7 +165,7 @@ powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -Patch
 powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -Uninstall
 ```
 
-Znika usługa i `C:\ProgramData\prawko` (w tym FFmpeg z `-SyncGov`). `%LOCALAPPDATA%\prawko\gov-data` oraz Git / Node / NSSM zostają.
+Znika usługa i `C:\ProgramData\prawko` (w tym FFmpeg z `-SyncGov`). `C:\ProgramData\prawko\gov-cache` oraz Git / Node / NSSM zostają.
 
 ---
 
@@ -218,7 +221,8 @@ Gdy usługa już stoi, ponowne odpalenie **bez przełączników nic nie nadpisuj
 | Co | Ścieżka |
 |---|---|
 | Aplikacja i launchd | `/usr/local/prawko` |
-| ZIP / surowe JPG·WMV z gov.pl | `~/Library/Application Support/prawko/gov-data` |
+| Excel + ZIP-y mediów z gov.pl | `/usr/local/prawko/gov-cache` |
+| Rozpakowanie JPG/WMV (scratch) | `$TMPDIR/prawko/raw` (kasowane po konwersji) |
 | Skonwertowane WebP / MP4 i JSON z Excela | `/usr/local/prawko/src/media` oraz `src/data` |
 | plist | `/Library/LaunchDaemons/pl.prawko.word.plist` |
 
@@ -299,7 +303,8 @@ Pełna lista: `bash Install_Prawko.linux.sh --help`. Przełączniki jak na macOS
 |---|---|
 | Aplikacja i systemd | `/opt/prawko` |
 | Unit | `/etc/systemd/system/prawko.service` |
-| ZIP / surowe JPG·WMV z gov.pl | `~/.local/share/prawko/gov-data` |
+| Excel + ZIP-y mediów z gov.pl | `/opt/prawko/gov-cache` |
+| Rozpakowanie JPG/WMV (scratch) | `$TMPDIR/prawko/raw` (kasowane po konwersji) |
 | Skonwertowane WebP / MP4 i JSON z Excela | `/opt/prawko/src/media` oraz `src/data` |
 | Tarball Node (gdy brak paczki 18+) | `/opt/prawko/tools/node` |
 
@@ -337,9 +342,9 @@ Zgodnie z rozporządzeniem (Dz.U. 2023 poz. 2659):
 
 ## Języki
 
-Przełącznik w aplikacji cyklicznie: **PL → EN → DE → UA**.
+Przełącznik w aplikacji cyklicznie: **PL → EN → DE → UA**. Pierwsza wizyta: język przeglądarki, inaczej angielski. Chrome UI: wybrany język → EN → PL. Treść pytania bez tłumaczenia w wybranym języku: **angielski**, potem polski.
 
-Treść pytań w językach obcych pochodzi z Excela MI (`Pytanie [EN]`, `Pytanie [D]`, `Pytanie [UA]`) i jest zapisana w `src/data/translations_{en,de,uk}.json` przez `parse-excel.ps1`. Nie używamy maszynowego tłumaczenia banku pytań.
+Treść pytań w językach obcych pochodzi z Excela MI (`Pytanie [EN]`, `Pytanie [D]`, `Pytanie [UA]`) i jest zapisana w `src/data/translations_{en,de,ua}.json` przez `parse-excel.ps1` (`ua` = ukraiński, nie mylić z UK). Parser **domyślnie** uzupełnia puste kolumny przez `translate-questions`. Gemini, gdy jest klucz: parametr `-GeminiApiKey` / `--gemini-api-key` na ten run, albo gitignored `.geminienv` w katalogu repo (szablon `scripts/geminienv.example`, jak `.b2env`), albo zmienna `GEMINI_API_KEY`. Przy kluczu **tylko Gemini** (lista modeli z API); jak Gemini padnie — zapis i stop, bez Google. Bez klucza: Google Translate. Wyłączenie: `-SkipTranslateGaps` / `--skip-translate-gaps`. Przy kolejnym Excelu **nie kasuje** tych uzupełnień, tylko nadpisuje ID, które MI już ma.
 
 ## Dane i multimedia
 
@@ -347,7 +352,8 @@ Treść pytań w językach obcych pochodzi z Excela MI (`Pytanie [EN]`, `Pytanie
 |---|---|---|---|---|
 | Pytania JSON | `src/data/` | `C:\ProgramData\prawko\src\data` | `/usr/local/prawko/src/data` | `/opt/prawko/src/data` |
 | Zdjęcia / filmy | nie (pusty `src/media`) | CDN albo `C:\ProgramData\prawko\src\media` | CDN albo `/usr/local/prawko/src/media` | CDN albo `/opt/prawko/src/media` |
-| Excel / ZIP / JPG / WMV | nie | `%LOCALAPPDATA%\prawko\gov-data` | `~/Library/Application Support/prawko/gov-data` | `~/.local/share/prawko/gov-data` |
+| Excel + ZIP-y mediów | nie | `C:\ProgramData\prawko\gov-cache` | `/usr/local/prawko/gov-cache` | `/opt/prawko/gov-cache` |
+| JPG / WMV (scratch) | nie | `%TEMP%\prawko\raw` | `$TMPDIR/prawko/raw` | `$TMPDIR/prawko/raw` |
 
 Czysty clone **nie wymaga** `-SyncGov`. JSON jest w `src/data`. Domyślnie (github.io i localhost bez mediów na dysku):
 
@@ -366,8 +372,8 @@ PJM (tłumaczenia migowe) na gov.pl jest **wylistywane, nie pobierane**.
 
 | Krok | Skąd | Co | Dokąd | Narzędzie |
 |---|---|---|---|---|
-| 1 | [gov.pl — prawo jazdy](https://www.gov.pl/web/infrastruktura/prawo-jazdy) | Excel + ZIP-y JPG/WMV (sytuacyjne) | `%LOCALAPPDATA%\prawko\gov-data` (`baza_pytan.xlsx`, `raw\`, `cache\`) | `download-gov.ps1` albo `-SyncGov` |
-| 2 | `gov-data\raw` | JPG → WebP, WMV → MP4 | `C:\ProgramData\prawko\src\media\img` i `vid` (bez serwera: `%LOCALAPPDATA%\prawko\media`) | `convert-media.ps1` |
+| 1 | [gov.pl — prawo jazdy](https://www.gov.pl/web/infrastruktura/prawo-jazdy) | Excel + ZIP-y JPG/WMV (sytuacyjne) | `C:\ProgramData\prawko\gov-cache` (`baza_pytan.xlsx`, `zip\`) | `download-gov.ps1` albo `-SyncGov` |
+| 2 | te ZIP-y | rozpakowanie w TEMP → WebP/MP4 | `C:\ProgramData\prawko\src\media\img` i `vid` | `convert-media.ps1` |
 | 3 | Excel | JSON pytań (nazwy plików mediów) | `src\data\` (i kopia na serwerze) | `parse-excel.ps1` |
 | 4 | `src\media` z kroku 2 | pojedyncze WebP i MP4 | Backblaze B2 `prawko-maz` → `img/` i `vid/` (oglądanie online, `MEDIA_CDN`) | `upload-media.ps1` (`.b2env`; `b2 sync --skipNewer`) |
 | 5 | JSON + te same `img/` `vid/` | zipy kategorii + `manifest.json` | `%LOCALAPPDATA%\prawko\packs` | `build-media-packs.ps1` |
@@ -376,7 +382,7 @@ PJM (tłumaczenia migowe) na gov.pl jest **wylistywane, nie pobierane**.
 
 Kolejność 1 → 2 → 3 → 4 i 5 → 6. Krok 4 i 5 mogą iść równolegle (oba czytają skonwertowane media). 6 po 5. 7 na końcu, jeśli chcesz archiwum na B2.
 
-Na macOS/Linux ta sama kolejność: `download-gov.py` → `convert-media.py` → `parse-excel.py` → `upload-media.py` / `build-media-packs.py` → panel R2. Ścieżki: `~/Library/Application Support/prawko/gov-data` albo `~/.local/share/prawko/gov-data`; media serwera `/usr/local/prawko/src/media` albo `/opt/prawko/src/media`.
+Na macOS/Linux ta sama kolejność: `download-gov.py` → `convert-media.py` → `parse-excel.py` → `upload-media.py` / `build-media-packs.py` → panel R2. Ścieżki: `/usr/local/prawko/gov-cache` albo `/opt/prawko/gov-cache`; media serwera `/usr/local/prawko/src/media` albo `/opt/prawko/src/media`.
 
 Na **zainstalowanym serwerze** przeglądarka pobiera opcjonalny `src/local.json` (gitignore; na github.io go nie ma) z tego samego originu co aplikacja. Klucze: `learnQuestionJump`, `mediaBase` (`media` = pliki na serwerze, `cdn` = Backblaze), `offlineDownload` (`packs` / `files`), opcjonalnie `packsBase` (własny host zipów). Bez pliku: github.io używa B2+R2; serwer bez mediów na dysku wymaga `mediaBase: "cdn"` albo `-SyncGov`.
 
@@ -394,28 +400,41 @@ Wymagania poza instalatorem: **FFmpeg** i **cwebp** (`-SyncGov` kładzie przeno�
 
 | Skrypt | Zadanie |
 |---|---|
-| `scripts/download-gov.ps1` | Excel + ZIP z gov.pl → `%LOCALAPPDATA%\prawko\gov-data` |
-| `scripts/parse-excel.ps1` | Excel → `src/data/*.json` oraz `translations_{en,de,uk}.json` |
-| `scripts/convert-media.ps1` | JPG → WebP, WMV → MP4 (nie rusza PJM) |
+| `scripts/download-gov.ps1` | Excel + ZIP z gov.pl → `C:\ProgramData\prawko\gov-cache` |
+| `scripts/parse-excel.ps1` | Excel → `src/data/*.json` oraz `translations_{en,de,ua}.json`; domyślnie wypełnia braki (`-SkipTranslateGaps` wyłącza; `-GeminiApiKey` opcjonalnie) |
+| `scripts/translate-questions.ps1` | To samo uzupełnianie osobno albo `. -LibraryOnly` + `Fill-MissingQuestionTranslations` (`-GeminiApiKey` albo sam Google) |
+| `scripts/convert-media.ps1` | ZIP → TEMP → JPG→WebP, WMV→MP4 (TEMP kasowane; nie rusza PJM) |
 | `scripts/merge-gov.ps1` | Dopisywanie braków MI (`-MergeGov`); też `. scripts\merge-gov.ps1 -LibraryOnly` |
 | `scripts/filter-no-media.ps1` | **Raport** pytań z `media: null`. Kasowanie wierszy tylko z `-Remove` |
 | `scripts/upload-media.ps1` | Sync `img/` `vid/` na B2 `prawko-maz` (online). Domyślnie ProgramData / LocalAppData / repo; `-MediaDir`. `--skipNewer` |
 | `scripts/build-media-packs.ps1` | Zipy + `manifest.json` → `%LOCALAPPDATA%\prawko\packs` (nie git) |
 | `scripts/upload-packs.ps1` | Opcjonalne archiwum zipów na B2 — **nie** host „Pobierz offline” |
 
-Przykład — JSON z Excela już leżącego na dysku:
+Przykład — JSON z Excela już leżącego na dysku. Parser czyta `C:\ProgramData\prawko\gov-cache\baza_pytan.xlsx` i zapisuje gitowy katalog `src\data`:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\parse-excel.ps1
 ```
 
-Domyślna ścieżka Excela to `gov-data\baza_pytan.xlsx` obok repo. Po `-SyncGov` plik jest w LocalAppData — wtedy podaj `-Excel`:
+Inny Excel / inny katalog wyjścia:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\parse-excel.ps1 `
-  -Excel "$env:LOCALAPPDATA\prawko\gov-data\baza_pytan.xlsx" `
+  -Excel "C:\ProgramData\prawko\gov-cache\baza_pytan.xlsx" `
   -OutDir src\data
 ```
+
+Gemini — ten sam układ co B2: skopiuj `scripts/geminienv.example` → `.geminienv` w katalogu repo (gitignore) i wklej klucz z [Google AI Studio](https://aistudio.google.com). Potem zwykłe komendy, **bez** parametru:
+
+```powershell
+Copy-Item scripts\geminienv.example .geminienv
+# wpisz GEMINI_API_KEY=... w .geminienv
+powershell -ExecutionPolicy Bypass -File .\scripts\translate-questions.ps1 -Lang ua
+powershell -ExecutionPolicy Bypass -File .\scripts\parse-excel.ps1
+.\Install_Prawko.windows.ps1 -SyncGov -SyncScope Questions
+```
+
+Albo klucz tylko na ten run, bez pliku: `-GeminiApiKey "WLEJ_KLUCZ"` / `--gemini-api-key`. Bez niczego zostaje Google Translate. Przy kluczu jak Gemini padnie — stop (postęp zapisany); Google tylko gdy odpalisz bez klucza.
 
 `-DropMissingMedia` zeruje w JSON odwołania do plików, których nie ma w lokalnym raw. Bez tego przełącznika nazwy z Excela zostają (CDN).
 
@@ -444,13 +463,14 @@ Aktualizacja pytań na stojącym serwerze: `-SyncGov -SyncScope Questions` albo 
 
 ## Pipeline danych na macOS i Linuxie
 
-Instalator to **`.sh`**. Reszta pipeline to **Python** (`python3`), bez Node i bez bliźniaków `.sh` / `.js` w `scripts/`. Node jest tylko do serwera aplikacji (`serve`). Ścieżka `gov-data`: `python3 scripts/download-gov.py --print-gov-data-dir`. Ręcznie (z checkoutu):
+Instalator to **`.sh`**. Reszta pipeline to **Python** (`python3`), bez Node i bez bliźniaków `.sh` / `.js` w `scripts/`. Node jest tylko do serwera aplikacji (`serve`). Ścieżka `gov-cache`: `python3 scripts/download-gov.py --print-gov-data-dir`. Ręcznie (z checkoutu):
 
 | Skrypt | Zadanie |
 |---|---|
-| `scripts/download-gov.py` | Excel + ZIP z gov.pl → macOS: `~/Library/Application Support/prawko/gov-data`; Linux: `~/.local/share/prawko/gov-data` |
-| `scripts/parse-excel.py` | Excel → JSON (ten sam zestaw reguł co `parse-excel.ps1`) |
-| `scripts/convert-media.py` | JPG → WebP, WMV → MP4 (VideoToolbox, gdy jest; nie rusza PJM) |
+| `scripts/download-gov.py` | Excel + ZIP z gov.pl → macOS: `/usr/local/prawko/gov-cache`; Linux: `/opt/prawko/gov-cache` |
+| `scripts/parse-excel.py` | Excel → JSON (ten sam zestaw reguł co `parse-excel.ps1`; `--skip-translate-gaps` wyłącza fill; `--gemini-api-key` opcjonalnie) |
+| `scripts/translate-questions.py` | To samo uzupełnianie osobno albo `fill_missing(data_dir, gemini_api_key=…)` |
+| `scripts/convert-media.py` | ZIP → TEMP → JPG→WebP, WMV→MP4 (TEMP kasowane; VideoToolbox, gdy jest; nie rusza PJM) |
 | `scripts/filter-no-media.py` | Raport; kasowanie tylko z `--remove` |
 | `scripts/merge-gov.py` | Dopisywanie braków MI (`--merge-gov`) |
 | `scripts/upload-media.py` | Sync `img/` `vid/` na B2 (online). `--skipNewer`. `--media-dir` |
@@ -459,9 +479,9 @@ Instalator to **`.sh`**. Reszta pipeline to **Python** (`python3`), bez Node i b
 
 ```bash
 python3 scripts/download-gov.py --excel-only
-python3 scripts/parse-excel.py \
-  --excel "$HOME/Library/Application Support/prawko/gov-data/baza_pytan.xlsx" \
-  --out-dir src/data
+python3 scripts/parse-excel.py --out-dir src/data
+# python3 scripts/parse-excel.py --out-dir src/data --gemini-api-key KEY
+# python3 scripts/translate-questions.py --lang ua --gemini-api-key KEY
 python3 scripts/convert-media.py
 # python3 scripts/upload-media.py
 # python3 scripts/build-media-packs.py
@@ -554,7 +574,8 @@ After a code overlay, an open tab may show an "Update available" banner — use 
 | What | Path |
 |---|---|
 | App and service | `C:\ProgramData\prawko` |
-| ZIP / raw JPG·WMV from gov.pl | `%LOCALAPPDATA%\prawko\gov-data` |
+| Excel + media ZIPs from gov.pl | `C:\ProgramData\prawko\gov-cache` (kept after `-Uninstall`) |
+| JPG/WMV unpack (scratch) | `%TEMP%\prawko\raw` (deleted after convert) |
 | Converted WebP / MP4 and Excel JSON | `C:\ProgramData\prawko\src\media` and `src\data` |
 | Portable FFmpeg (if `-SyncGov` / `-MergeGov` and none on PATH) | `C:\ProgramData\prawko\tools` |
 
@@ -566,17 +587,19 @@ A normal user does **not** need a second git clone. `-SyncGov` does not duplicat
 |---|---|
 | *(none)* | Server: GitHub ZIP, repo questions, CDN media |
 | `-SyncGov` | Gov.pl → staging → server. Default **Full** (Excel + ZIP + WebP/MP4 + JSON). No PJM (~10 GB) |
-| `-SyncScope Questions\|Media\|Full` | Scope for `-SyncGov` |
-| `-SyncUseCache` | Skip gov.pl when staging already has Excel + raw |
+| `-SyncScope Questions\|Media\|Full` | Scope for `-SyncGov`: questions only / ZIP→TEMP→WebP·MP4 / full (default) |
+| `-SyncUseCache` | Skip gov.pl when `gov-cache` already has Excel and ZIPs |
 | `-DropMissingMedia` | With `-SyncGov` (Full/Media): strip JSON media without local files. **Off** by default |
+| `-SkipTranslateGaps` | With `-SyncGov` Questions/Full: do not fill empty EN/DE/UA. **Fills** by default (Google Translate) |
+| `-GeminiApiKey <key>` | With `-SyncGov` Questions/Full: Gemini for this run (overrides `.geminienv`). Without the switch: `.geminienv` like `.b2env`, or Google |
 | `-MergeGov` | On a running server: append ministry Excel rows that are missing |
 | `-Export <path>` | Portable pack: code + **default** server snapshot (`data`, `media`, `local.json`, `manifest.json`) |
 | `-ExcludeData` / `-ExcludeMedia` / `-ExcludeLocalJson` | Slim down `-Export` (all included by default) |
-| `-IncludeGovCache` | Add `%LOCALAPPDATA%\prawko\gov-data` to export |
+| `-IncludeGovCache` | Add `gov-cache` (Excel + ZIPs) to export; not the server snapshot |
 | `-Import <path>` | Restore from export pack (server must already be up). `-ImportScope Auto\|Code\|Runtime`, `-ImportForce` |
 | `-Dev <folder>` | Git clone only — **no** Node, **no** server |
 | `-Patch` | Overlay code from local clone (`-Dev`; `src\`, skip `data\` and `media\`) |
-| `-Uninstall` | Remove service and `C:\ProgramData\prawko` |
+| `-Uninstall` | Remove the service and `C:\ProgramData\prawko` **except** `gov-cache` |
 | `-NonInteractive` / `-Help` | No Enter pause / full help |
 
 Administrator only for the **first server install** or `-Uninstall`.
@@ -590,7 +613,7 @@ powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -SyncGov
 powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -SyncGov -SyncScope Questions
 ```
 
-Staging → `%LOCALAPPDATA%\prawko\gov-data`. WebP/MP4 and JSON → `C:\ProgramData\prawko\src\`.
+Excel and ZIPs → `C:\ProgramData\prawko\gov-cache`. Unpack JPG/WMV in TEMP, then delete. WebP/MP4 and JSON → `C:\ProgramData\prawko\src\`.
 
 ### Export and import (USB / new PC)
 
@@ -627,7 +650,7 @@ powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -Patch
 powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -Uninstall
 ```
 
-Removes the service and `C:\ProgramData\prawko` (including FFmpeg from `-SyncGov`). `%LOCALAPPDATA%\prawko\gov-data` and Git / Node / NSSM remain.
+Removes the service and `C:\ProgramData\prawko` (including FFmpeg from `-SyncGov`). `C:\ProgramData\prawko\gov-cache` and Git / Node / NSSM remain.
 
 ---
 
@@ -683,7 +706,8 @@ If the service is already running, a second run **with no switches does not over
 | What | Path |
 |---|---|
 | App and launchd | `/usr/local/prawko` |
-| ZIP / raw JPG·WMV from gov.pl | `~/Library/Application Support/prawko/gov-data` |
+| Excel + media ZIPs from gov.pl | `/usr/local/prawko/gov-cache` |
+| JPG/WMV unpack (scratch) | `$TMPDIR/prawko/raw` (deleted after convert) |
 | Converted WebP / MP4 and Excel JSON | `/usr/local/prawko/src/media` and `src/data` |
 | plist | `/Library/LaunchDaemons/pl.prawko.word.plist` |
 
@@ -762,7 +786,8 @@ All switches: `bash Install_Prawko.linux.sh --help`. Same flags as macOS (`--syn
 |---|---|
 | App and systemd | `/opt/prawko` |
 | Unit | `/etc/systemd/system/prawko.service` |
-| ZIP / raw JPG·WMV from gov.pl | `~/.local/share/prawko/gov-data` |
+| Excel + media ZIPs from gov.pl | `/opt/prawko/gov-cache` |
+| JPG/WMV unpack (scratch) | `$TMPDIR/prawko/raw` (deleted after convert) |
 | Converted WebP / MP4 and Excel JSON | `/opt/prawko/src/media` and `src/data` |
 | Node tarball (if no distro Node 18+) | `/opt/prawko/tools/node` |
 
@@ -800,9 +825,9 @@ Per the regulation (Dz.U. 2023 item 2659):
 
 ## Languages
 
-The in-app control cycles **PL → EN → DE → UA**.
+The in-app control cycles **PL → EN → DE → UA**. First visit: browser language, otherwise English. UI chrome: selected language → EN → PL. Question text missing in the selected language: **English**, then Polish.
 
-Non-Polish question text comes from the ministry Excel (`Pytanie [EN]`, `Pytanie [D]`, `Pytanie [UA]`) into `src/data/translations_{en,de,uk}.json` via `parse-excel.ps1`. The question banks are not machine-translated.
+Non-Polish question text comes from the ministry Excel (`Pytanie [EN]`, `Pytanie [D]`, `Pytanie [UA]`) into `src/data/translations_{en,de,ua}.json` via `parse-excel.ps1` (`ua` = Ukrainian, not UK). The parser **by default** fills empty Excel columns through `translate-questions`. Gemini when a key is available: `-GeminiApiKey` / `--gemini-api-key` for this run, or gitignored `.geminienv` at the repo root (template `scripts/geminienv.example`, same idea as `.b2env`), or `GEMINI_API_KEY` in the environment. No key: Google Translate. With a key: Gemini only (models from the API); Gemini failure saves and aborts, no Google. Opt out: `-SkipTranslateGaps` / `--skip-translate-gaps`. A later parse **keeps** those fills and only overwrites IDs the ministry already has.
 
 ## Data and media
 
@@ -810,7 +835,8 @@ Non-Polish question text comes from the ministry Excel (`Pytanie [EN]`, `Pytanie
 |---|---|---|---|---|
 | Question JSON | `src/data/` | `C:\ProgramData\prawko\src\data` | `/usr/local/prawko/src/data` | `/opt/prawko/src/data` |
 | Photos / films | no (empty `src/media`) | CDN or `C:\ProgramData\prawko\src\media` | CDN or `/usr/local/prawko/src/media` | CDN or `/opt/prawko/src/media` |
-| Excel / ZIP / JPG / WMV | no | `%LOCALAPPDATA%\prawko\gov-data` | `~/Library/Application Support/prawko/gov-data` | `~/.local/share/prawko/gov-data` |
+| Excel + media ZIPs | no | `C:\ProgramData\prawko\gov-cache` | `/usr/local/prawko/gov-cache` | `/opt/prawko/gov-cache` |
+| JPG / WMV (scratch) | no | `%TEMP%\prawko\raw` | `$TMPDIR/prawko/raw` | `$TMPDIR/prawko/raw` |
 
 A clean clone does **not** need `-SyncGov`. JSON is in `src/data`. Defaults (github.io and localhost without files on disk):
 
@@ -829,8 +855,8 @@ PJM (sign-language) links on gov.pl are **listed, not downloaded**.
 
 | Step | From | What | To | Tool |
 |---|---|---|---|---|
-| 1 | [gov.pl — driving licence](https://www.gov.pl/web/infrastruktura/prawo-jazdy) | Excel + JPG/WMV ZIPs (situational) | `%LOCALAPPDATA%\prawko\gov-data` (`baza_pytan.xlsx`, `raw\`, `cache\`) | `download-gov.ps1` or `-SyncGov` |
-| 2 | `gov-data\raw` | JPG → WebP, WMV → MP4 | `C:\ProgramData\prawko\src\media\img` and `vid` (no server: `%LOCALAPPDATA%\prawko\media`) | `convert-media.ps1` |
+| 1 | [gov.pl — driving licence](https://www.gov.pl/web/infrastruktura/prawo-jazdy) | Excel + JPG/WMV ZIPs (situational) | `C:\ProgramData\prawko\gov-cache` (`baza_pytan.xlsx`, `zip\`) | `download-gov.ps1` or `-SyncGov` |
+| 2 | those ZIPs | unpack in TEMP → WebP/MP4 | `C:\ProgramData\prawko\src\media\img` and `vid` | `convert-media.ps1` |
 | 3 | Excel | question JSON (media file names) | `src\data\` (and the server copy) | `parse-excel.ps1` |
 | 4 | `src\media` from step 2 | individual WebP and MP4 | Backblaze B2 `prawko-maz` → `img/` and `vid/` (online play, `MEDIA_CDN`) | `upload-media.ps1` (`.b2env`; `b2 sync --skipNewer`) |
 | 5 | JSON + the same `img/` `vid/` | category zips + `manifest.json` | `%LOCALAPPDATA%\prawko\packs` | `build-media-packs.ps1` |
@@ -839,7 +865,7 @@ PJM (sign-language) links on gov.pl are **listed, not downloaded**.
 
 Order: 1 → 2 → 3 → 4 and 5 → 6. Steps 4 and 5 can run in parallel (both read converted media). 6 after 5. 7 last, if you want a B2 archive.
 
-On macOS/Linux the same order: `download-gov.py` → `convert-media.py` → `parse-excel.py` → `upload-media.py` / `build-media-packs.py` → R2 dashboard. Paths: `~/Library/Application Support/prawko/gov-data` or `~/.local/share/prawko/gov-data`; server media `/usr/local/prawko/src/media` or `/opt/prawko/src/media`.
+On macOS/Linux the same order: `download-gov.py` → `convert-media.py` → `parse-excel.py` → `upload-media.py` / `build-media-packs.py` → R2 dashboard. Paths: `/usr/local/prawko/gov-cache` or `/opt/prawko/gov-cache`; server media `/usr/local/prawko/src/media` or `/opt/prawko/src/media`.
 
 On an **installed server** the browser fetches optional `src/local.json` (gitignored; not on github.io) from the same origin as the app. Keys: `learnQuestionJump`, `mediaBase` (`media` = files on the server, `cdn` = Backblaze), `offlineDownload` (`packs` / `files`), optional `packsBase` (your zip host). Without the file: github.io uses B2+R2; a server with no media on disk needs `mediaBase: "cdn"` or `-SyncGov`.
 
@@ -857,28 +883,41 @@ Besides the installer: media conversion needs **FFmpeg** and **cwebp** (`-SyncGo
 
 | Script | Job |
 |---|---|
-| `scripts/download-gov.ps1` | Excel + ZIPs from gov.pl → `%LOCALAPPDATA%\prawko\gov-data` |
-| `scripts/parse-excel.ps1` | Excel → `src/data/*.json` and `translations_{en,de,uk}.json` |
-| `scripts/convert-media.ps1` | JPG → WebP, WMV → MP4 (does not touch PJM) |
+| `scripts/download-gov.ps1` | Excel + ZIPs from gov.pl → `C:\ProgramData\prawko\gov-cache` |
+| `scripts/parse-excel.ps1` | Excel → `src/data/*.json` and `translations_{en,de,ua}.json`; fills gaps by default (`-SkipTranslateGaps` disables; optional `-GeminiApiKey`) |
+| `scripts/translate-questions.ps1` | Same fill standalone, or `. -LibraryOnly` + `Fill-MissingQuestionTranslations` (`-GeminiApiKey` or Google only) |
+| `scripts/convert-media.ps1` | ZIP → TEMP → JPG→WebP, WMV→MP4 (TEMP deleted; does not touch PJM) |
 | `scripts/merge-gov.ps1` | Append missing ministry rows (`-MergeGov`); also `. scripts\merge-gov.ps1 -LibraryOnly` |
 | `scripts/filter-no-media.ps1` | **Report** questions with `media: null`. Drops rows only with `-Remove` |
 | `scripts/upload-media.ps1` | Sync `img/` `vid/` to B2 `prawko-maz` (online). Default ProgramData / LocalAppData / repo; `-MediaDir`. `--skipNewer` |
 | `scripts/build-media-packs.ps1` | Zips + `manifest.json` → `%LOCALAPPDATA%\prawko\packs` (not git) |
 | `scripts/upload-packs.ps1` | Optional zip archive on B2 — **not** the “Download offline” host |
 
-Parse an Excel file already on disk:
+Parse an Excel file already on disk. The parser reads `C:\ProgramData\prawko\gov-cache\baza_pytan.xlsx` and writes the git catalog `src\data`:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\parse-excel.ps1
 ```
 
-The default Excel path is `gov-data\baza_pytan.xlsx` next to the repo. After `-SyncGov` the file lives under LocalAppData — pass `-Excel`:
+Another Excel / output folder:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\parse-excel.ps1 `
-  -Excel "$env:LOCALAPPDATA\prawko\gov-data\baza_pytan.xlsx" `
+  -Excel "C:\ProgramData\prawko\gov-cache\baza_pytan.xlsx" `
   -OutDir src\data
 ```
+
+Gemini — same pattern as B2: copy `scripts/geminienv.example` → `.geminienv` at the repo root (gitignored) and paste the key from [Google AI Studio](https://aistudio.google.com). Then the usual commands, **no** parameter:
+
+```powershell
+Copy-Item scripts\geminienv.example .geminienv
+# set GEMINI_API_KEY=... in .geminienv
+powershell -ExecutionPolicy Bypass -File .\scripts\translate-questions.ps1 -Lang ua
+powershell -ExecutionPolicy Bypass -File .\scripts\parse-excel.ps1
+.\Install_Prawko.windows.ps1 -SyncGov -SyncScope Questions
+```
+
+Or this run only, no file: `-GeminiApiKey "PASTE_KEY"` / `--gemini-api-key`. With neither, Google Translate stays. With a key, Gemini failure saves and stops; Google only if you run without a key.
 
 `-DropMissingMedia` clears JSON media names whose files are missing from local raw. Without it, Excel names stay (CDN).
 
@@ -907,13 +946,14 @@ To refresh questions on a running server: `-SyncGov -SyncScope Questions` or `-S
 
 ## Data pipeline on macOS and Linux
 
-The installer is **`.sh`**. The rest of the pipeline is **Python** (`python3`), with no Node and no `.sh` / `.js` twins under `scripts/`. Node is only for the app server (`serve`). Gov-data path: `python3 scripts/download-gov.py --print-gov-data-dir`. To run them yourself from a checkout:
+The installer is **`.sh`**. The rest of the pipeline is **Python** (`python3`), with no Node and no `.sh` / `.js` twins under `scripts/`. Node is only for the app server (`serve`). `gov-cache` path: `python3 scripts/download-gov.py --print-gov-data-dir`. To run them yourself from a checkout:
 
 | Script | Job |
 |---|---|
-| `scripts/download-gov.py` | Excel + ZIPs from gov.pl → macOS: `~/Library/Application Support/prawko/gov-data`; Linux: `~/.local/share/prawko/gov-data` |
-| `scripts/parse-excel.py` | Excel → JSON (same rules as `parse-excel.ps1`) |
-| `scripts/convert-media.py` | JPG → WebP, WMV → MP4 (VideoToolbox when available; skips PJM) |
+| `scripts/download-gov.py` | Excel + ZIPs from gov.pl → macOS: `/usr/local/prawko/gov-cache`; Linux: `/opt/prawko/gov-cache` |
+| `scripts/parse-excel.py` | Excel → JSON (same rules as `parse-excel.ps1`; `--skip-translate-gaps` skips fill; optional `--gemini-api-key`) |
+| `scripts/translate-questions.py` | Same fill standalone, or `fill_missing(data_dir, gemini_api_key=…)` |
+| `scripts/convert-media.py` | ZIP → TEMP → JPG→WebP, WMV→MP4 (TEMP deleted; VideoToolbox when available; skips PJM) |
 | `scripts/filter-no-media.py` | Report; delete rows only with `--remove` |
 | `scripts/merge-gov.py` | Add missing ministry rows (`--merge-gov`) |
 | `scripts/upload-media.py` | Sync `img/` `vid/` to B2 (online). `--skipNewer`. `--media-dir` |
@@ -922,9 +962,9 @@ The installer is **`.sh`**. The rest of the pipeline is **Python** (`python3`), 
 
 ```bash
 python3 scripts/download-gov.py --excel-only
-python3 scripts/parse-excel.py \
-  --excel "$HOME/Library/Application Support/prawko/gov-data/baza_pytan.xlsx" \
-  --out-dir src/data
+python3 scripts/parse-excel.py --out-dir src/data
+# python3 scripts/parse-excel.py --out-dir src/data --gemini-api-key KEY
+# python3 scripts/translate-questions.py --lang ua --gemini-api-key KEY
 python3 scripts/convert-media.py
 # python3 scripts/upload-media.py
 # python3 scripts/build-media-packs.py

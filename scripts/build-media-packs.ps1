@@ -46,7 +46,7 @@ Add-Type -AssemblyName System.Web.Extensions
 Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 
-$script:SkipJson = @("meta.json", "translations_en.json", "translations_de.json", "translations_uk.json", "translations_pl.json")
+$script:SkipJson = @("meta.json", "translations_en.json", "translations_de.json", "translations_ua.json", "translations_uk.json", "translations_pl.json")
 $script:RepoRoot = Split-Path -Parent $PSScriptRoot
 
 function Get-DefaultMediaDir {

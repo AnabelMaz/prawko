@@ -38,6 +38,7 @@ SKIP_JSON = frozenset({
     "meta.json",
     "translations_en.json",
     "translations_de.json",
+    "translations_ua.json",
     "translations_uk.json",
     "translations_pl.json",
 })

@@ -25,6 +25,8 @@ SYNC_USE_CACHE=0
 MERGE_GOV=0
 PATCH=0
 DROP_MISSING_MEDIA=0
+SKIP_TRANSLATE_GAPS=0
+GEMINI_API_KEY=""
 EXPORT=""
 IMPORT=""
 IMPORT_SCOPE="auto"
@@ -59,8 +61,12 @@ FLAGS (same as Install_Prawko.windows.ps1 on Windows)
                          from the prawko-maz CDN. If the server is already running, nothing is overwritten.
   --sync-gov             Ministry data from gov.pl → staging → server.
                          Scope: --sync-scope questions|media|full (default full).
-                         --sync-use-cache skips gov.pl when staging has Excel/raw.
+                         --sync-use-cache skips gov.pl when gov-cache has Excel and ZIPs.
   --drop-missing-media   Only with --sync-gov (full/media): strip missing media from JSON.
+  --skip-translate-gaps  With --sync-gov questions/full: do not fill missing EN/DE/UA. Default fills (Google Translate).
+  --gemini-api-key KEY   Optional. Google AI Studio key for this run (overrides .geminienv).
+                         With --sync-gov questions/full: Gemini first, Google Translate fallback.
+                         Omit: .geminienv / GEMINI_API_KEY, else Google Translate only.
   --merge-gov            On a running server: fills gaps from ministry Excel.
   --patch                Overlays code from a local checkout (--dev, next to the script,
                          ../prawko-contrib). Skips data/ and media/.
@@ -77,7 +83,7 @@ FLAGS (same as Install_Prawko.windows.ps1 on Windows)
                          Does not install Node or launchd — even if the server is not running.
                          Git is used only here. Localhost: run the script with no flags first.
                          Folder must be empty or not exist yet.
-  --uninstall            Removes launchd and ${TARGET_DIR}. Homebrew / Git / Node stay.
+  --uninstall            Removes launchd and ${TARGET_DIR} except gov-cache (Excel + media ZIPs). Homebrew / Git / Node stay.
   --non-interactive      No Enter pause at the end.
   --help                 This help.
 
@@ -120,6 +126,12 @@ while [ $# -gt 0 ]; do
     --merge-gov|-MergeGov) MERGE_GOV=1; shift ;;
     --patch|-Patch) PATCH=1; shift ;;
     --drop-missing-media|-DropMissingMedia) DROP_MISSING_MEDIA=1; shift ;;
+    --skip-translate-gaps|-SkipTranslateGaps) SKIP_TRANSLATE_GAPS=1; shift ;;
+    --gemini-api-key|-GeminiApiKey)
+      [ $# -ge 2 ] || die "--gemini-api-key requires a key"
+      GEMINI_API_KEY="$2"
+      shift 2
+      ;;
     --export|-Export)
       [ $# -ge 2 ] || die "--export requires a path"
       EXPORT="$2"
@@ -173,7 +185,7 @@ else
 fi
 export PRAWKO_USER_HOME="$REAL_HOME"
 _prawko_gov_data_preset="${PRAWKO_GOV_DATA:-}"
-GOV_DATA="${_prawko_gov_data_preset:-$REAL_HOME/Library/Application Support/prawko/gov-data}"
+GOV_DATA="${_prawko_gov_data_preset:-$TARGET_DIR/gov-cache}"
 export PRAWKO_GOV_DATA="$GOV_DATA"
 DEV_WORK_ROOT=""
 
@@ -345,7 +357,7 @@ copy_gov_json_to_server() {
       cp "$gov_dir/$cat.json" "$TARGET_DIR/src/data/$cat.json" || return 2
     fi
   done
-  for tr in translations_en.json translations_de.json translations_uk.json; do
+  for tr in translations_en.json translations_de.json translations_ua.json; do
     if [ -f "$gov_dir/$tr" ]; then
       cp "$gov_dir/$tr" "$TARGET_DIR/src/data/$tr" || return 2
     fi
@@ -470,17 +482,29 @@ ensure_python_openpyxl() {
   as_user python3 -c "import openpyxl" || die "openpyxl is not available (python3 -m pip install --user openpyxl)."
 }
 
+gov_raw_temp_dir() {
+  python3 -c "import tempfile; from pathlib import Path; print(Path(tempfile.gettempdir()) / 'prawko' / 'raw')"
+}
+
 run_parse_excel() {
   local excel="$1" out="$2"
   shift 2
-  local py extra=()
+  local py extra=() raw
   py="$(resolve_pipeline parse-excel.py)" || die "Missing scripts/parse-excel.py"
   extra=(--excel "$excel" --out-dir "$out")
   if [ "$DROP_MISSING_MEDIA" -eq 1 ]; then
-    extra+=(--drop-missing-media --media-dir "$GOV_DATA/raw")
-    say_y "DropMissingMedia: questions without a local file in raw lose their media reference."
+    raw="$(gov_raw_temp_dir)"
+    extra+=(--drop-missing-media --media-dir "$raw")
+    say_y "DropMissingMedia: questions without a local file in the temp unpack lose their media reference."
+  fi
+  extra+=("$@")
+  if [ "$SKIP_TRANSLATE_GAPS" -eq 1 ]; then
+    extra+=(--skip-translate-gaps)
   fi
   say_c "-> parse-excel.py ${extra[*]}"
+  if [ -n "$GEMINI_API_KEY" ]; then
+    extra+=(--gemini-api-key "$GEMINI_API_KEY")
+  fi
   as_user python3 "$py" "${extra[@]}"
 }
 
@@ -492,7 +516,7 @@ assert_gov_parsed() {
   if [ "${qtotal:-0}" -lt 100 ]; then
     die "Excel parser wrote too few questions ($qtotal). Check the column layout in $excel."
   fi
-  say_g "-> In gov-data: $qtotal question assignments. Originals in contrib/src/data are left as-is."
+  say_g "-> On the server: $qtotal question assignments. Originals in contrib/src/data are left as-is."
 }
 
 resolve_node() {
@@ -794,9 +818,9 @@ STUB
   fi
   if [ "$INCLUDE_GOV_CACHE" -eq 1 ]; then
     if dir_has_files "$GOV_DATA"; then
-      mkdir -p "$dest_root/gov-cache/gov-data"
-      say_c "-> Gov cache: $GOV_DATA -> $dest_root/gov-cache/gov-data"
-      rsync_progress -a "$GOV_DATA/" "$dest_root/gov-cache/gov-data/"
+      mkdir -p "$dest_root/gov-cache"
+      say_c "-> Gov cache: $GOV_DATA -> $dest_root/gov-cache"
+      rsync_progress -a "$GOV_DATA/" "$dest_root/gov-cache/"
       has_gov=1; src_gov="$GOV_DATA"
     else
       say_y "-> Gov cache: nothing to export."
@@ -887,10 +911,18 @@ import_pack() {
     fi
     stamp_cache "$TARGET_DIR" "prawko-import"
   fi
-  if [ -d "$pack_root/gov-cache/gov-data" ]; then
+  if [ -d "$pack_root/gov-cache" ]; then
     mkdir -p "$GOV_DATA"
     say_c "-> Restore gov-cache"
-    rsync_progress -a "$pack_root/gov-cache/gov-data/" "$GOV_DATA/"
+    if [ -f "$pack_root/gov-cache/baza_pytan.xlsx" ]; then
+      rsync_progress -a "$pack_root/gov-cache/" "$GOV_DATA/"
+    elif [ -f "$pack_root/gov-cache/gov-cache/baza_pytan.xlsx" ]; then
+      rsync_progress -a "$pack_root/gov-cache/gov-cache/" "$GOV_DATA/"
+    elif [ -d "$pack_root/gov-cache/gov-data" ]; then
+      rsync_progress -a "$pack_root/gov-cache/gov-data/" "$GOV_DATA/"
+    else
+      rsync_progress -a "$pack_root/gov-cache/" "$GOV_DATA/"
+    fi
   fi
   say_g "Done. Refresh the app in the browser."
 }
@@ -900,34 +932,33 @@ do_uninstall() {
   stop_launchd
   rm -f "$LAUNCH_PLIST"
   if [ -d "$TARGET_DIR" ]; then
-    say_y "Removing $TARGET_DIR ..."
-    rm -rf "$TARGET_DIR"
+    say_y "Removing $TARGET_DIR (keeping gov-cache) ..."
+    find "$TARGET_DIR" -mindepth 1 -maxdepth 1 ! -name gov-cache -exec rm -rf {} +
+    if [ ! -e "$TARGET_DIR/gov-cache" ]; then
+      rm -rf "$TARGET_DIR"
+    fi
   fi
-  [ ! -e "$TARGET_DIR" ] || die "Could not remove $TARGET_DIR."
+  if [ -e "$TARGET_DIR" ] && [ ! -e "$TARGET_DIR/gov-cache" ]; then
+    die "Could not remove $TARGET_DIR."
+  fi
   say_g "Removed service $LAUNCH_LABEL and the application directory."
   say_d "Homebrew, Git, and Node stay. Homebrew FFmpeg too (it is not under $TARGET_DIR/tools)."
-  say_d "gov-data staging stays in $GOV_DATA"
+  say_d "gov-cache (Excel + ZIPs) stays in $TARGET_DIR/gov-cache if it existed."
 }
 
 publish_gov_questions() {
-  local excel="$GOV_DATA/baza_pytan.xlsx" copy_rc=0
+  local excel="$GOV_DATA/baza_pytan.xlsx"
+  server_installed || die "Install the server first, then --sync-gov --sync-scope questions."
   ensure_python_openpyxl
   remove_legacy_server_raw
-  say_c "SyncGov Questions: Excel from gov.pl → $GOV_DATA (contrib/src/data left untouched)"
+  say_c "SyncGov Questions: Excel from gov.pl → $GOV_DATA; JSON → $TARGET_DIR/src/data"
   say_d "No media ZIP, no src/media, no CDN change."
   run_pipeline download-gov.py --excel-only
-  run_parse_excel "$excel" "$GOV_DATA"
-  assert_gov_parsed "$GOV_DATA" "$excel"
-  copy_gov_json_to_server "$GOV_DATA" "prawko-govq" || copy_rc=$?
-  if [ "$copy_rc" -eq 0 ]; then
-    say_g "Done. Server reads ministry JSON. --patch will not revert this (it skips data/)."
-    say_d "Originals remain in contrib/src/data. Videos from the CDN."
-  elif [ "$copy_rc" -eq 1 ]; then
-    say_y "Server is not installed — ministry JSON only in gov-data. After install, run --sync-gov --sync-scope questions again."
-  else
-    say_y "Ministry JSON is in gov-data, but could not be written to the server."
-    say_d "contrib/src/data left untouched. Check permissions on $TARGET_DIR or copy gov-data by hand."
-  fi
+  run_parse_excel "$excel" "$TARGET_DIR/src/data"
+  assert_gov_parsed "$TARGET_DIR/src/data" "$excel"
+  stamp_cache "$TARGET_DIR" "prawko-govq"
+  say_g "Done. Server reads ministry JSON. --patch will not revert this (it skips data/)."
+  say_d "Originals remain in contrib/src/data. Videos from the CDN."
 }
 
 publish_gov_install() {
@@ -944,7 +975,7 @@ publish_gov_install() {
     fi
   fi
   ensure_python_openpyxl
-  say_c "SyncGov Full: Excel + situational-media ZIP from gov.pl → $GOV_DATA"
+  say_c "SyncGov Full: Excel + ZIP → $GOV_DATA; unpack TEMP; WebP/MP4+JSON → $TARGET_DIR/src"
   say_d "Not downloading PJM (sign-language) packs."
   if [ "$skip_dl" -eq 0 ]; then
     run_pipeline download-gov.py
@@ -952,71 +983,41 @@ publish_gov_install() {
     say_d "Skipping gov.pl download (--sync-use-cache / cached staging)."
   fi
   [ -f "$excel" ] || die "Missing $excel — the question bank from gov.pl was not downloaded."
-  if server_installed; then
-    img_out="$TARGET_DIR/src/media/img"
-    vid_out="$TARGET_DIR/src/media/vid"
-  else
-    img_out="$REAL_HOME/Library/Application Support/prawko/media/img"
-    vid_out="$REAL_HOME/Library/Application Support/prawko/media/vid"
-  fi
+  server_installed || die "Install the server first, then --sync-gov."
+  ls "$GOV_DATA/zip"/*.zip >/dev/null 2>&1 || die "No ministry ZIPs in $GOV_DATA/zip. Run --sync-gov --sync-scope full, or --import a pack with --include-gov-cache."
+  img_out="$TARGET_DIR/src/media/img"
+  vid_out="$TARGET_DIR/src/media/vid"
   say_c "=== Converting situational media (JPG→WebP, WMV→MP4) ==="
   ffmpeg="$(command -v ffmpeg)"
-  run_pipeline convert-media.py --source "$GOV_DATA/raw" --img-out "$img_out" --vid-out "$vid_out" --ffmpeg "$ffmpeg"
-  say_c "=== JSON from Excel → gov-data ==="
-  run_parse_excel "$excel" "$GOV_DATA"
-  assert_gov_parsed "$GOV_DATA" "$excel"
+  if [ "$DROP_MISSING_MEDIA" -eq 1 ]; then
+    run_pipeline convert-media.py --img-out "$img_out" --vid-out "$vid_out" --ffmpeg "$ffmpeg" --keep-raw
+  else
+    run_pipeline convert-media.py --img-out "$img_out" --vid-out "$vid_out" --ffmpeg "$ffmpeg"
+  fi
+  say_c "=== JSON from Excel → $TARGET_DIR/src/data ==="
+  run_parse_excel "$excel" "$TARGET_DIR/src/data"
+  assert_gov_parsed "$TARGET_DIR/src/data" "$excel"
+  if [ "$DROP_MISSING_MEDIA" -eq 1 ]; then
+    rm -rf "$(gov_raw_temp_dir)"
+  fi
   remove_legacy_server_raw
-  if ! server_installed; then
-    say_y "Server is not installed — Excel/JSON/media in $GOV_DATA. After install, run --sync-gov again."
-    return 0
-  fi
-  say_c "Copying ministry JSON onto the server (git/ contrib/src/data left untouched)..."
-  copy_gov_json_to_server "$GOV_DATA" "prawko-govmedia" || copy_rc=$?
-  if [ "$copy_rc" -ne 0 ]; then
-    say_y "JSON/media are in staging, but could not be written to the server."
-    say_d "Check permissions on $TARGET_DIR."
-    return 0
-  fi
-  mkdir -p "$TARGET_DIR/src/media/img" "$TARGET_DIR/src/media/vid"
-  if [ "$img_out" != "$TARGET_DIR/src/media/img" ]; then
-    say_c "Copying WebP/MP4: $img_out + $vid_out → $TARGET_DIR/src/media"
-    rsync -a "$img_out/" "$TARGET_DIR/src/media/img/" || {
-      say_y "JSON is on the server, but the media copy did not land. Check permissions on $TARGET_DIR."
-      return 0
-    }
-    rsync -a "$vid_out/" "$TARGET_DIR/src/media/vid/" || {
-      say_y "JSON is on the server, but the media copy did not land. Check permissions on $TARGET_DIR."
-      return 0
-    }
-  fi
+  stamp_cache "$TARGET_DIR" "prawko-govmedia"
   set_local_media_base "$TARGET_DIR"
   say_g "Done. Server: JSON + media from gov.pl. --patch will not overwrite data/ or media/."
+  say_d "Excel and ZIPs stay in $GOV_DATA after --uninstall."
 }
 
 publish_sync_gov_media() {
-  local img_out vid_out ffmpeg raw_dir="$GOV_DATA/raw"
-  dir_has_files "$raw_dir" || die "No situational raw in $GOV_DATA/raw. Run --sync-gov --sync-scope full first."
+  local img_out vid_out ffmpeg
+  server_installed || die "Install the server first, then --sync-gov --sync-scope media."
+  ls "$GOV_DATA/zip"/*.zip >/dev/null 2>&1 || die "No ministry ZIPs in $GOV_DATA/zip. Run --sync-gov --sync-scope full first."
   ensure_cmd ffmpeg ffmpeg
-  if server_installed; then
-    img_out="$TARGET_DIR/src/media/img"
-    vid_out="$TARGET_DIR/src/media/vid"
-  else
-    img_out="$REAL_HOME/Library/Application Support/prawko/media/img"
-    vid_out="$REAL_HOME/Library/Application Support/prawko/media/vid"
-  fi
-  say_c "SyncGov Media: convert existing raw → WebP/MP4 (no Excel download)."
+  img_out="$TARGET_DIR/src/media/img"
+  vid_out="$TARGET_DIR/src/media/vid"
+  say_c "SyncGov Media: unpack cached ZIPs in TEMP → WebP/MP4 on the server."
   ffmpeg="$(command -v ffmpeg)"
-  run_pipeline convert-media.py --source "$raw_dir" --img-out "$img_out" --vid-out "$vid_out" --ffmpeg "$ffmpeg"
+  run_pipeline convert-media.py --img-out "$img_out" --vid-out "$vid_out" --ffmpeg "$ffmpeg"
   remove_legacy_server_raw
-  server_installed || {
-    say_y "Server is not installed — media in staging. After install, run --sync-gov --sync-scope media again."
-    return 0
-  }
-  mkdir -p "$TARGET_DIR/src/media/img" "$TARGET_DIR/src/media/vid"
-  if [ "$img_out" != "$TARGET_DIR/src/media/img" ]; then
-    rsync -a "$img_out/" "$TARGET_DIR/src/media/img/"
-    rsync -a "$vid_out/" "$TARGET_DIR/src/media/vid/"
-  fi
   set_local_media_base "$TARGET_DIR"
   say_g "Done. Server uses local media (mediaBase=media)."
 }
@@ -1026,8 +1027,8 @@ invoke_sync_gov() {
     questions) publish_gov_questions ;;
     media) publish_sync_gov_media ;;
     full)
-      if [ "$SYNC_USE_CACHE" -eq 1 ] && [ -f "$GOV_DATA/baza_pytan.xlsx" ] && dir_has_files "$GOV_DATA/raw"; then
-        say_d "SyncUseCache: staging has Excel and raw — skipping gov.pl download."
+      if [ "$SYNC_USE_CACHE" -eq 1 ] && [ -f "$GOV_DATA/baza_pytan.xlsx" ] && ls "$GOV_DATA/zip"/*.zip >/dev/null 2>&1; then
+        say_d "SyncUseCache: gov-cache has Excel and ZIPs — skipping gov.pl download."
         publish_gov_install skip_download
       else
         publish_gov_install
@@ -1038,25 +1039,26 @@ invoke_sync_gov() {
 }
 
 do_merge() {
-  local excel="$GOV_DATA/baza_pytan.xlsx" py ffmpeg="" media_args=()
+  local excel="$GOV_DATA/baza_pytan.xlsx" py ffmpeg="" media_args=() json_tmp
   ensure_python_openpyxl
   remove_legacy_server_raw
   run_pipeline download-gov.py --excel-only
   [ -f "$excel" ] || die "Missing $excel — no downloaded ministry bank to merge."
-  run_parse_excel "$excel" "$GOV_DATA"
+  json_tmp="$(mktemp -d "${TMPDIR:-/tmp}/prawko-gov-json.XXXXXX")"
+  run_parse_excel "$excel" "$json_tmp" --skip-translate-gaps
   py="$(resolve_pipeline merge-gov.py)" || die "Missing scripts/merge-gov.py"
   if command -v ffmpeg >/dev/null 2>&1; then
     ffmpeg="$(command -v ffmpeg)"
   else
     say_y "-> FFmpeg missing — merge without frame comparison (media filename only)."
   fi
-  media_args=(--gov-dir "$GOV_DATA" --out-dir "$TARGET_DIR/src/data")
+  media_args=(--gov-dir "$json_tmp" --out-dir "$TARGET_DIR/src/data")
   [ -n "$ffmpeg" ] && media_args+=(--ffmpeg "$ffmpeg")
-  [ -d "$GOV_DATA/raw" ] && media_args+=(--media-dir "$GOV_DATA/raw")
   [ -d "$TARGET_DIR/src/media/img" ] && media_args+=(--media-dir "$TARGET_DIR/src/media/img")
   [ -d "$TARGET_DIR/src/media/vid" ] && media_args+=(--media-dir "$TARGET_DIR/src/media/vid")
   say_c "-> merge-gov.py ${media_args[*]}"
   python3 "$py" "${media_args[@]}"
+  rm -rf "$json_tmp"
   restore_media_base_if_needed "$TARGET_DIR"
 }
 
@@ -1161,6 +1163,8 @@ if ! is_root && need_root_for_default; then
   [ "$MERGE_GOV" -eq 1 ] && args+=(--merge-gov)
   [ "$PATCH" -eq 1 ] && args+=(--patch)
   [ "$DROP_MISSING_MEDIA" -eq 1 ] && args+=(--drop-missing-media)
+  [ "$SKIP_TRANSLATE_GAPS" -eq 1 ] && args+=(--skip-translate-gaps)
+  [ -n "$GEMINI_API_KEY" ] && args+=(--gemini-api-key "$GEMINI_API_KEY")
   [ -n "$EXPORT" ] && args+=(--export "$EXPORT")
   [ -n "$IMPORT" ] && args+=(--import "$IMPORT")
   [ "$EXCLUDE_DATA" -eq 1 ] && args+=(--exclude-data)

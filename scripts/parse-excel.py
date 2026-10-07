@@ -8,13 +8,16 @@ Same rules as scripts/parse-excel.ps1:
     (Excel "Zakres struktury" is sometimes wrong)
   - keep media file names even if the local pack is missing (CDN)
   - --drop-missing-media only when asked: then missing raw files clear media
+  - fill missing EN/DE/UA via translate-questions.py unless --skip-translate-gaps
+    (Gemini from --gemini-api-key, else .geminienv / GEMINI_API_KEY, else Google)
 
 Usage:
   python3 scripts/parse-excel.py
-  python3 scripts/parse-excel.py --excel gov-data/baza_pytan.xlsx --out-dir src/data
+  python3 scripts/parse-excel.py --out-dir src/data
 """
 
 import argparse
+import importlib.util
 import json
 import os
 import re
@@ -107,6 +110,26 @@ def resolve_media(raw_filename, lookup, drop_missing):
     return media_name, media_type, False
 
 
+def merge_existing_translations(store, path: Path, unique_ids: set[str]) -> None:
+    if not path.is_file():
+        return
+    try:
+        existing = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+    if not isinstance(existing, dict):
+        return
+    for qid, tr in existing.items():
+        qid = str(qid)
+        if qid not in unique_ids or qid in store:
+            continue
+        if not isinstance(tr, dict):
+            continue
+        kept = {k: v for k, v in tr.items() if k in ("q", "a", "b", "c") and v}
+        if kept:
+            store[qid] = kept
+
+
 def add_translation(store, qid, q, a, b, c, q_type):
     if not qid or qid in store:
         return
@@ -126,15 +149,40 @@ def add_translation(store, qid, q, a, b, c, q_type):
         store[qid] = tr
 
 
+def load_pipeline(name: str):
+    path = Path(__file__).with_name(name)
+    spec = importlib.util.spec_from_file_location(name.replace(".", "_"), path)
+    if spec is None or spec.loader is None:
+        sys.exit(f"Cannot load {path}")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def load_download_gov():
+    return load_pipeline("download-gov.py")
+
+
 def main():
+    dg = load_download_gov()
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--excel", default="gov-data/baza_pytan.xlsx")
+    parser.add_argument("--excel", default=str(dg.gov_data_dir() / "baza_pytan.xlsx"))
     parser.add_argument("--out-dir", default="src/data")
     parser.add_argument("--media-dir", default="")
     parser.add_argument(
         "--drop-missing-media",
         action="store_true",
         help="Clear media when the local raw file is missing. Default keeps Excel names for CDN.",
+    )
+    parser.add_argument(
+        "--skip-translate-gaps",
+        action="store_true",
+        help="Do not fill missing EN/DE/UA after parsing. Default fills gaps.",
+    )
+    parser.add_argument(
+        "--gemini-api-key",
+        dest="gemini_api_key",
+        help="Google AI Studio key for this run (overrides .geminienv). Omit to use .geminienv or Google Translate.",
     )
     args = parser.parse_args()
 
@@ -145,7 +193,7 @@ def main():
     if args.media_dir:
         media_dir = Path(args.media_dir) if os.path.isabs(args.media_dir) else project_root / args.media_dir
     elif args.drop_missing_media:
-        preferred = project_root / "gov-data" / "raw"
+        preferred = dg.gov_raw_temp_dir()
         legacy = project_root / "Pytania egzaminacyjne na prawo jazdy 2025"
         media_dir = preferred if preferred.exists() else legacy
 
@@ -188,7 +236,7 @@ def main():
     col_uk_c = find_header(header, "Odpowied C [UA]", regex=r"^Odpowied.+ C \[UA\]$", required=False)
 
     cat_questions = {cat: [] for cat in CATEGORIES}
-    translations = {"en": {}, "de": {}, "uk": {}}
+    translations = {"en": {}, "de": {}, "ua": {}}
     unique_ids = set()
     missing_media = 0
     forced_specialist = 0
@@ -249,7 +297,7 @@ def main():
             cell(row, col_de_q), cell(row, col_de_a), cell(row, col_de_b), cell(row, col_de_c), q_type,
         )
         add_translation(
-            translations["uk"], qid,
+            translations["ua"], qid,
             cell(row, col_uk_q), cell(row, col_uk_a), cell(row, col_uk_b), cell(row, col_uk_c), q_type,
         )
 
@@ -292,10 +340,19 @@ def main():
         f.write("\n")
     print(f"Wrote meta.json ({len(unique_ids)} unique, {total} category assignments).")
 
-    for lang, filename in (("en", "translations_en.json"), ("de", "translations_de.json"), ("uk", "translations_uk.json")):
+    for lang, filename in (("en", "translations_en.json"), ("de", "translations_de.json"), ("ua", "translations_ua.json")):
+        merge_existing_translations(translations[lang], out_dir / filename, unique_ids)
+        if lang == "ua":
+            merge_existing_translations(translations[lang], out_dir / "translations_uk.json", unique_ids)
         with open(out_dir / filename, "w", encoding="utf-8") as f:
             json.dump(translations[lang], f, ensure_ascii=False, separators=(",", ":"))
         print(f"Wrote {filename} ({len(translations[lang])} questions).")
+
+    if not args.skip_translate_gaps:
+        print("Filling translation gaps (Gemini if a key is available, else Google Translate; --skip-translate-gaps to skip)...")
+        load_pipeline("translate-questions.py").fill_missing(
+            out_dir, gemini_api_key=args.gemini_api_key
+        )
 
     if forced_specialist:
         print(f"Treated {forced_specialist} PODSTAWOWY rows as specialist (correct answer A/B/C).")

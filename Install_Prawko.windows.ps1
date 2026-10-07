@@ -10,6 +10,8 @@ param(
     [switch]$MergeGov,
     [switch]$Patch,
     [switch]$DropMissingMedia,
+    [switch]$SkipTranslateGaps,
+    [string]$GeminiApiKey,
     [string]$Export,
     [string]$Import,
     [ValidateSet('Auto', 'Code', 'Runtime')]
@@ -79,15 +81,23 @@ SWITCHES
 
   -SyncGov          Ministry data from gov.pl → staging → server. Scope with -SyncScope:
                     Questions = Excel + JSON only (CDN for media).
-                    Media = convert existing raw JPG/WMV → WebP/MP4 on the server.
+                    Media = unpack cached ZIPs in TEMP → WebP/MP4 on the server.
                     Full = Excel + ZIP + convert + JSON + media (default scope).
-                    -SyncUseCache skips gov.pl when staging already has Excel/raw.
+                    -SyncUseCache skips gov.pl when gov-cache already has Excel and ZIPs.
                     Does not download PJM. Does not touch src\data in git/contrib.
                     With media on the server, sets mediaBase=media in local.json.
                     No administrator, no service reinstall.
 
   -DropMissingMedia Only with -SyncGov -SyncScope Full or Media: the parser strips
                     from JSON media whose file is missing in local raw. Default: NO.
+
+  -SkipTranslateGaps With -SyncGov Questions/Full: do not fill missing EN/DE/UA
+                    after parse-excel. Default: fill gaps (Google Translate).
+
+  -GeminiApiKey     Optional. Google AI Studio key for this run (overrides
+                    .geminienv). With -SyncGov Questions/Full: Gemini first,
+                    Google Translate fallback. Omit: .geminienv / GEMINI_API_KEY
+                    next to the repo or the server, else Google Translate only.
 
   -MergeGov         On a running server: appends from ministry Excel only the gaps.
                     No server = install with no switches first.
@@ -103,7 +113,7 @@ SWITCHES
                     snapshot\data, snapshot\media, snapshot\local.json, plus code-only
                     contrib (src\data and src\media omitted when they are in snapshot).
                     Opt out: -ExcludeData, -ExcludeMedia, -ExcludeLocalJson.
-                    Optional gov staging: -IncludeGovCache.
+                    Optional ministry Excel+ZIPs: -IncludeGovCache (C:\ProgramData\prawko\gov-cache).
                     Also writes manifest.json. Does not touch the live server.
 
   -Import <path>    Restore from a pack. -ImportScope Auto (default), Code, or Runtime.
@@ -118,9 +128,9 @@ SWITCHES
                     run the installer with no switches, then -Dev.
                     Does not clone into C:\ProgramData\prawko. Media are not in git.
 
-  -Uninstall        Removes the PrawkoWORDService service and the
-                    C:\ProgramData\prawko directory (including FFmpeg downloaded there
-                    by -SyncGov). Git/Node/NSSM stay on the system.
+  -Uninstall        Removes the PrawkoWORDService service and C:\ProgramData\prawko
+                    except gov-cache (Excel + media ZIPs). FFmpeg in tools\ goes away.
+                    Git/Node/NSSM stay on the system.
 
   -NonInteractive   No Enter pause at the end (scripts, scheduled task).
 
@@ -246,7 +256,15 @@ function Invoke-PrawkoScript {
     if (-not $path) {
         throw "Missing script $Name (looked in scripts\ next to the installer, in contrib, and in $targetDir\scripts)."
     }
-    Write-Host "-> $Name $($ArgumentList -join ' ')" -ForegroundColor Cyan
+    $logParts = New-Object System.Collections.Generic.List[string]
+    for ($li = 0; $li -lt $ArgumentList.Count; $li++) {
+        $logParts.Add($ArgumentList[$li])
+        if ($ArgumentList[$li] -match '^-GeminiApiKey$' -and ($li + 1) -lt $ArgumentList.Count -and $ArgumentList[$li + 1] -notmatch '^-') {
+            $logParts.Add('***')
+            $li++
+        }
+    }
+    Write-Host "-> $Name $($logParts -join ' ')" -ForegroundColor Cyan
     # Array splat (& $path @("-FfmpegExe", $x)) is positional in Windows PowerShell 5.1.
     # convert-media.ps1 then binds SourceDir="-FfmpegExe". Named params need a hashtable.
     $splat = @{}
@@ -275,7 +293,7 @@ function Assert-GovDataParsed ([string]$govDir, [string]$excelPath) {
     if ($qTotal -lt 100) {
         throw "Excel parser wrote too few questions ($qTotal). Check the column layout in $excelPath."
     }
-    Write-Host "-> In gov-data: $qTotal question assignments. Originals in contrib\src\data are left as-is." -ForegroundColor Green
+    Write-Host "-> On the server: $qTotal question assignments. Originals in contrib\src\data are left as-is." -ForegroundColor Green
 }
 
 function Remove-LegacyServerRawMediaDir {
@@ -698,14 +716,8 @@ function Resolve-ExportLocalJsonSource {
 
 function Get-GovCacheExportSources {
     $dirs = New-Object System.Collections.Generic.List[string]
-    $local = Join-Path $env:LOCALAPPDATA "prawko\gov-data"
+    $local = Join-Path $targetDir "gov-cache"
     if (Test-DirHasFiles $local) { [void]$dirs.Add($local) }
-    try {
-        $overflow = Join-Path (Get-ContribRoot) "gov-data"
-        if ((Test-Path -LiteralPath $overflow) -and -not (Test-SamePath $overflow $local)) {
-            if (Test-DirHasFiles $overflow) { [void]$dirs.Add($overflow) }
-        }
-    } catch { }
     return $dirs.ToArray()
 }
 
@@ -869,11 +881,8 @@ exit `$LASTEXITCODE
         if ($govSources.Count -gt 0) {
             New-Item -ItemType Directory -Path $destGovCache -Force | Out-Null
             foreach ($gs in $govSources) {
-                $leaf = [IO.Path]::GetFileName($gs.TrimEnd('\', '/'))
-                if ([string]::IsNullOrWhiteSpace($leaf)) { $leaf = "gov-data" }
-                $govDst = Join-Path $destGovCache $leaf
-                Write-Host "-> Gov cache: $gs -> $govDst" -ForegroundColor Cyan
-                Invoke-SafeRobocopy -Activity "Gov cache" -Source $gs -Destination $govDst -ArgumentList @(
+                Write-Host "-> Gov cache: $gs -> $destGovCache" -ForegroundColor Cyan
+                Invoke-SafeRobocopy -Activity "Gov cache" -Source $gs -Destination $destGovCache -ArgumentList @(
                     "/E", "/R:2", "/W:1", "/NFL", "/NDL", "/NJH", "/NJS", "/nc", "/ns", "/np"
                 )
             }
@@ -1033,24 +1042,20 @@ function Import-PrawkoPack {
     }
 
     if (Test-Path -LiteralPath $govCache) {
-        $govDst = Join-Path $env:LOCALAPPDATA "prawko\gov-data"
-        $cacheChildren = @(Get-ChildItem -LiteralPath $govCache -Directory -ErrorAction SilentlyContinue)
-        if ($cacheChildren.Count -eq 1) {
-            Write-Host "-> Restore gov-cache -> $govDst" -ForegroundColor Cyan
-            New-Item -ItemType Directory -Path $govDst -Force | Out-Null
-            Invoke-SafeRobocopy -Activity "Import gov-cache" -Source $cacheChildren[0].FullName -Destination $govDst -ArgumentList @(
-                "/E", "/R:2", "/W:1", "/NFL", "/NDL", "/NJH", "/NJS", "/nc", "/ns", "/np"
-            )
-        } elseif ($cacheChildren.Count -gt 1) {
-            foreach ($child in $cacheChildren) {
-                $target = if ($child.Name -eq "gov-data") { $govDst } else { Join-Path $govDst $child.Name }
-                New-Item -ItemType Directory -Path (Split-Path $target -Parent) -Force | Out-Null
-                Write-Host "-> Restore gov-cache/$($child.Name)" -ForegroundColor Cyan
-                Invoke-SafeRobocopy -Activity "Import gov-cache ($($child.Name))" -Source $child.FullName -Destination $target -ArgumentList @(
-                    "/E", "/R:2", "/W:1", "/NFL", "/NDL", "/NJH", "/NJS", "/nc", "/ns", "/np"
-                )
-            }
+        $govDst = Join-Path $targetDir "gov-cache"
+        $from = $govCache
+        if (Test-Path -LiteralPath (Join-Path $govCache "baza_pytan.xlsx")) {
+            $from = $govCache
+        } elseif (Test-Path -LiteralPath (Join-Path $govCache "gov-cache\baza_pytan.xlsx")) {
+            $from = Join-Path $govCache "gov-cache"
+        } elseif (Test-Path -LiteralPath (Join-Path $govCache "gov-data\baza_pytan.xlsx")) {
+            $from = Join-Path $govCache "gov-data"
         }
+        Write-Host "-> Restore gov-cache -> $govDst" -ForegroundColor Cyan
+        New-Item -ItemType Directory -Path $govDst -Force | Out-Null
+        Invoke-SafeRobocopy -Activity "Import gov-cache" -Source $from -Destination $govDst -ArgumentList @(
+            "/E", "/R:2", "/W:1", "/NFL", "/NDL", "/NJH", "/NJS", "/nc", "/ns", "/np"
+        )
     }
 
     Write-Host "Done. Refresh the app in the browser (Update available banner)." -ForegroundColor Green
@@ -1102,6 +1107,7 @@ if (($Uninstall -or $installingServer) -and -not (Test-IsAdmin)) {
     if ($SyncGov) { $argList += "-SyncGov"; if ($SyncScope -ne 'Full') { $argList += "-SyncScope"; $argList += $SyncScope } }
     if ($SyncUseCache) { $argList += "-SyncUseCache" }
     if ($DropMissingMedia) { $argList += "-DropMissingMedia" }
+    if ($SkipTranslateGaps) { $argList += "-SkipTranslateGaps" }
     if ($MergeGov) { $argList += "-MergeGov" }
     if ($Patch) { $argList += "-Patch" }
     if ($PSBoundParameters.ContainsKey("Export") -and $Export) { $argList += "-Export"; $argList += "`"$Export`"" }
@@ -2196,7 +2202,7 @@ function Copy-GovJsonToServer ([string]$govDir, [string]$swPrefix) {
             Copy-Item -LiteralPath $srcJson -Destination (Join-Path $dstData "$cat.json") -Force
         }
     }
-    foreach ($tr in @("translations_en.json", "translations_de.json", "translations_uk.json")) {
+    foreach ($tr in @("translations_en.json", "translations_de.json", "translations_ua.json")) {
         $srcTr = Join-Path $govDir $tr
         if (Test-Path -LiteralPath $srcTr) {
             Copy-Item -LiteralPath $srcTr -Destination (Join-Path $dstData $tr) -Force
@@ -2218,44 +2224,41 @@ function Copy-GovJsonToServer ([string]$govDir, [string]$swPrefix) {
 
 function Publish-GovQuestions {
     Import-PrawkoGovLibrary
+    if (-not (Test-PrawkoServerInstalled)) {
+        throw "Install the server first (installer with no switches), then -SyncGov -SyncScope Questions."
+    }
     $govDir = Get-GovDataDir
     $excelPath = Join-Path $govDir "baza_pytan.xlsx"
+    $serverData = Join-Path $targetDir "src\data"
 
-    Write-Host "SyncGov Questions: Excel from gov.pl → $govDir (contrib\src\data left untouched)" -ForegroundColor Cyan
+    Write-Host "SyncGov Questions: Excel from gov.pl → $govDir; JSON → $serverData (contrib\src\data left untouched)" -ForegroundColor Cyan
     Write-Host "No media ZIP, no src\media, no CDN change." -ForegroundColor Gray
     Invoke-PrawkoScript "download-gov.ps1" @("-ExcelOnly")
-    Invoke-PrawkoScript "parse-excel.ps1" @("-Excel", $excelPath, "-OutDir", $govDir)
-    Assert-GovDataParsed -govDir $govDir -excelPath $excelPath
-
+    $qParse = @("-Excel", $excelPath, "-OutDir", $serverData)
+    if ($SkipTranslateGaps) { $qParse += "-SkipTranslateGaps" }
+    if (([string]$GeminiApiKey).Trim()) { $qParse += @("-GeminiApiKey", $GeminiApiKey) }
+    Invoke-PrawkoScript "parse-excel.ps1" $qParse
+    Assert-GovDataParsed -govDir $serverData -excelPath $excelPath
+    Set-ServerCacheVersion -Root $targetDir -Prefix "prawko-govq"
     Remove-LegacyServerRawMediaDir
-
-    try {
-        if (Copy-GovJsonToServer -govDir $govDir -swPrefix "prawko-govq") {
-            Write-Host "Done. Server reads JSON from the ministry. -Patch will not undo this (it skips data\)." -ForegroundColor Green
-            Write-Host "Originals remain in contrib\src\data. Videos from CDN. Offline: Download offline on the category." -ForegroundColor Gray
-        } else {
-            Write-Host "Server is not installed — ministry JSON only in gov-data. After install, run -SyncGov -SyncScope Questions again." -ForegroundColor DarkYellow
-            Write-Host "Done. Originals in contrib\src\data; they reach the server only after -SyncGov." -ForegroundColor Green
-        }
-    } catch {
-        Write-Host "Ministry JSON is in gov-data, but could not write it to the server: $($_.Exception.Message)" -ForegroundColor DarkYellow
-        Write-Host "contrib\src\data left untouched. Run as administrator or copy gov-data by hand." -ForegroundColor DarkYellow
-    }
+    Write-Host "Done. Server reads JSON from the ministry. -Patch will not undo this (it skips data\)." -ForegroundColor Green
+    Write-Host "Originals remain in contrib\src\data. Videos from CDN." -ForegroundColor Gray
 }
 
 function Publish-GovInstall {
     param([switch]$SkipGovDownload)
 
     Import-PrawkoGovLibrary
+    if (-not (Test-PrawkoServerInstalled)) {
+        throw "Install the server first (installer with no switches), then -SyncGov."
+    }
     $govDir = Get-GovDataDir
     $excelPath = Join-Path $govDir "baza_pytan.xlsx"
-    $serverReady = Test-PrawkoServerInstalled
-    $mediaRoot = if ($serverReady) { $targetDir } else { Join-Path $env:LOCALAPPDATA "prawko" }
-    $imgOut = Join-Path $mediaRoot $(if ($serverReady) { "src\media\img" } else { "media\img" })
-    $vidOut = Join-Path $mediaRoot $(if ($serverReady) { "src\media\vid" } else { "media\vid" })
+    $serverData = Join-Path $targetDir "src\data"
+    $imgOut = Join-Path $targetDir "src\media\img"
+    $vidOut = Join-Path $targetDir "src\media\vid"
 
-    Write-Host "SyncGov Full: Excel + situational media ZIP from gov.pl → $govDir (not ProgramData, not git)." -ForegroundColor Cyan
-    Write-Host "download-gov → raw; convert-media → src\media; parse-excel → JSON." -ForegroundColor Gray
+    Write-Host "SyncGov Full: Excel+ZIP → $govDir; unpack TEMP; WebP/MP4+JSON → $targetDir\src" -ForegroundColor Cyan
     Write-Host "Not downloading Polish Sign Language (PJM) translations. A clean install without this switch = AnabelMaz/prawko + CDN." -ForegroundColor Gray
 
     Update-SessionPath
@@ -2278,87 +2281,51 @@ function Publish-GovInstall {
         throw "Missing $excelPath — the question bank from gov.pl was not downloaded."
     }
 
-    $rawForConvert = Get-ContribRawMediaDir
-    if (-not (Test-DirHasFiles $rawForConvert)) {
-        $overflowRaw = Join-Path (Get-GovDataOverflowRoot) "raw"
-        if ((Test-Path -LiteralPath $overflowRaw) -and (Test-DirHasFiles $overflowRaw)) {
-            $rawForConvert = $overflowRaw
-        }
+    if (-not (Test-GovCacheHasZips)) {
+        throw "No ministry media ZIPs in $(Get-GovZipCacheDir). Run -SyncGov -SyncScope Full, or -Import a pack with -IncludeGovCache."
+    }
+
+    $rawForConvert = $null
+    if ($DropMissingMedia) {
+        $rawForConvert = Expand-GovMediaZipsToTemp
     }
 
     Write-Host "`n=== Converting situational media (JPG→WebP, WMV→MP4) ===" -ForegroundColor Cyan
-    Invoke-PrawkoScript "convert-media.ps1" @(
-        "-SourceDir", $rawForConvert,
-        "-FfmpegExe", $ffmpegExe,
-        "-ImgOut", $imgOut,
-        "-VidOut", $vidOut
-    )
+    $convertArgs = @("-FfmpegExe", $ffmpegExe, "-ImgOut", $imgOut, "-VidOut", $vidOut)
+    if ($rawForConvert) { $convertArgs += @("-SourceDir", $rawForConvert) }
+    Invoke-PrawkoScript "convert-media.ps1" $convertArgs
 
-    Write-Host "`n=== JSON from Excel → gov-data ===" -ForegroundColor Cyan
-    $parseArgs = @("-Excel", $excelPath, "-OutDir", $govDir)
+    Write-Host "`n=== JSON from Excel → server src\data ===" -ForegroundColor Cyan
+    $parseArgs = @("-Excel", $excelPath, "-OutDir", $serverData)
     if ($DropMissingMedia) {
         $parseArgs += @("-MediaDir", $rawForConvert, "-DropMissingMedia")
-        Write-Host "DropMissingMedia: questions without a local file in raw lose their media reference." -ForegroundColor DarkYellow
+        Write-Host "DropMissingMedia: questions without a file in the temp unpack lose their media reference." -ForegroundColor DarkYellow
     }
+    if ($SkipTranslateGaps) { $parseArgs += "-SkipTranslateGaps" }
+    if (([string]$GeminiApiKey).Trim()) { $parseArgs += @("-GeminiApiKey", $GeminiApiKey) }
     Invoke-PrawkoScript "parse-excel.ps1" $parseArgs
-    Assert-GovDataParsed -govDir $govDir -excelPath $excelPath
+    Assert-GovDataParsed -govDir $serverData -excelPath $excelPath
+    if ($rawForConvert) { Remove-GovRawTempDir }
 
     Remove-LegacyServerRawMediaDir
-
-    $dstIndex = Join-Path $targetDir "src\index.html"
-    if (-not (Test-Path -LiteralPath $dstIndex)) {
-        Write-Host "Server is not installed — Excel/JSON/media in $govDir and $mediaRoot. After install, run -SyncGov again." -ForegroundColor DarkYellow
-        Write-Host "Done. A clean install without -SyncGov = AnabelMaz/prawko + CDN." -ForegroundColor Green
-        return
-    }
-
-    try {
-        Write-Host "Copying ministry JSON to the server (git / contrib\src\data left untouched)..." -ForegroundColor Cyan
-        if (-not (Copy-GovJsonToServer -govDir $govDir -swPrefix "prawko-govmedia")) {
-            throw "Missing src\data on the server."
-        }
-        $dstMedia = Join-Path $targetDir "src\media"
-        $dstImg = Join-Path $dstMedia "img"
-        $dstVid = Join-Path $dstMedia "vid"
-        if (Test-SamePath $imgOut $dstImg) {
-            Write-Host "WebP/MP4 already in $dstMedia (conversion on the server)." -ForegroundColor Gray
-        } else {
-            Write-Host "Copying WebP/MP4: $imgOut + $vidOut → $dstMedia" -ForegroundColor Cyan
-            New-Item -ItemType Directory -Path $dstImg -Force | Out-Null
-            New-Item -ItemType Directory -Path $dstVid -Force | Out-Null
-            & robocopy.exe $imgOut $dstImg /E /R:2 /W:1 /NFL /NDL /NJH /NJS /nc /ns /np | Out-Null
-            if ($LASTEXITCODE -ge 8) { throw "robocopy img failed (exit $LASTEXITCODE)" }
-            & robocopy.exe $vidOut $dstVid /E /R:2 /W:1 /NFL /NDL /NJH /NJS /nc /ns /np | Out-Null
-            if ($LASTEXITCODE -ge 8) { throw "robocopy vid failed (exit $LASTEXITCODE)" }
-        }
-        Set-LocalMediaBase -root $targetDir
-        Write-Host "Done. Server: JSON + media from gov.pl. -Patch will not overwrite data\ or media\." -ForegroundColor Green
-        Write-Host "After -Uninstall and an install without -SyncGov you get AnabelMaz/prawko + CDN again. ZIP/raw stay in %LOCALAPPDATA%\prawko\gov-data." -ForegroundColor Gray
-    } catch {
-        Write-Host "JSON/media are in staging, but could not write them to the server: $($_.Exception.Message)" -ForegroundColor DarkYellow
-        Write-Host "Check permissions on $targetDir." -ForegroundColor DarkYellow
-    }
+    Set-ServerCacheVersion -Root $targetDir -Prefix "prawko-govmedia"
+    Set-LocalMediaBase -root $targetDir
+    Write-Host "Done. Server: JSON + media from gov.pl. -Patch will not overwrite data\ or media\." -ForegroundColor Green
+    Write-Host "Excel and ZIPs stay in $govDir after -Uninstall." -ForegroundColor Gray
 }
 
 function Publish-SyncGovMedia {
     Import-PrawkoGovLibrary
-    $govDir = Get-GovDataDir
-    $rawDir = Get-ContribRawMediaDir
-    if (-not (Test-Path -LiteralPath $rawDir) -or -not (Test-DirHasFiles $rawDir)) {
-        $overflowRaw = Join-Path (Get-GovDataOverflowRoot) "raw"
-        if ((Test-Path -LiteralPath $overflowRaw) -and (Test-DirHasFiles $overflowRaw)) {
-            $rawDir = $overflowRaw
-        } else {
-            throw "No situational raw JPG/WMV in gov-data. Run -SyncGov -SyncScope Full first, or -Import a pack with -IncludeGovCache."
-        }
+    if (-not (Test-PrawkoServerInstalled)) {
+        throw "Install the server first (installer with no switches), then -SyncGov -SyncScope Media."
     }
+    if (-not (Test-GovCacheHasZips)) {
+        throw "No ministry media ZIPs in $(Get-GovZipCacheDir). Run -SyncGov -SyncScope Full first, or -Import a pack with -IncludeGovCache."
+    }
+    $imgOut = Join-Path $targetDir "src\media\img"
+    $vidOut = Join-Path $targetDir "src\media\vid"
 
-    $serverReady = Test-PrawkoServerInstalled
-    $mediaRoot = if ($serverReady) { $targetDir } else { Join-Path $env:LOCALAPPDATA "prawko" }
-    $imgOut = Join-Path $mediaRoot $(if ($serverReady) { "src\media\img" } else { "media\img" })
-    $vidOut = Join-Path $mediaRoot $(if ($serverReady) { "src\media\vid" } else { "media\vid" })
-
-    Write-Host "SyncGov Media: convert existing raw → WebP/MP4 (no Excel download)." -ForegroundColor Cyan
+    Write-Host "SyncGov Media: unpack cached ZIPs in TEMP → WebP/MP4 on the server (no Excel download)." -ForegroundColor Cyan
     Update-SessionPath
     if (-not (Resolve-FfmpegExe)) {
         New-Item -ItemType Directory -Path $toolsDir -Force | Out-Null
@@ -2372,30 +2339,12 @@ function Publish-SyncGovMedia {
 
     Write-Host "`n=== Converting situational media (JPG→WebP, WMV→MP4) ===" -ForegroundColor Cyan
     Invoke-PrawkoScript "convert-media.ps1" @(
-        "-SourceDir", $rawDir,
         "-FfmpegExe", $ffmpegExe,
         "-ImgOut", $imgOut,
         "-VidOut", $vidOut
     )
 
     Remove-LegacyServerRawMediaDir
-    if (-not (Test-PrawkoServerInstalled)) {
-        Write-Host "Server is not installed — media in $mediaRoot. After install, run -SyncGov -SyncScope Media again." -ForegroundColor DarkYellow
-        return
-    }
-
-    $dstMedia = Join-Path $targetDir "src\media"
-    $dstImg = Join-Path $dstMedia "img"
-    $dstVid = Join-Path $dstMedia "vid"
-    if (-not (Test-SamePath $imgOut $dstImg)) {
-        Write-Host "Copying WebP/MP4 → $dstMedia" -ForegroundColor Cyan
-        New-Item -ItemType Directory -Path $dstImg -Force | Out-Null
-        New-Item -ItemType Directory -Path $dstVid -Force | Out-Null
-        & robocopy.exe $imgOut $dstImg /E /R:2 /W:1 /NFL /NDL /NJH /NJS /nc /ns /np | Out-Null
-        if ($LASTEXITCODE -ge 8) { throw "robocopy img failed (exit $LASTEXITCODE)" }
-        & robocopy.exe $vidOut $dstVid /E /R:2 /W:1 /NFL /NDL /NJH /NJS /nc /ns /np | Out-Null
-        if ($LASTEXITCODE -ge 8) { throw "robocopy vid failed (exit $LASTEXITCODE)" }
-    }
     Set-LocalMediaBase -root $targetDir
     Write-Host "Done. Server uses local media (mediaBase=media)." -ForegroundColor Green
 }
@@ -2409,9 +2358,8 @@ function Invoke-PublishSyncGov {
                 Import-PrawkoGovLibrary
                 $govDir = Get-GovDataDir
                 $excelPath = Join-Path $govDir "baza_pytan.xlsx"
-                $rawDir = Get-ContribRawMediaDir
-                if ((Test-Path -LiteralPath $excelPath) -and (Test-Path -LiteralPath $rawDir) -and (Test-DirHasFiles $rawDir)) {
-                    Write-Host "SyncUseCache: staging has Excel and raw — skipping gov.pl download." -ForegroundColor Gray
+                if ((Test-Path -LiteralPath $excelPath) -and (Test-GovCacheHasZips)) {
+                    Write-Host "SyncUseCache: gov-cache has Excel and ZIPs — skipping gov.pl download." -ForegroundColor Gray
                     Publish-GovInstall -SkipGovDownload
                     return
                 }
@@ -2496,17 +2444,24 @@ function Invoke-Uninstall {
     Start-Sleep -Seconds 2
 
     if (Test-Path $targetDir) {
-        Write-Host "Removing $targetDir ..." -ForegroundColor Yellow
-        Remove-Item -LiteralPath $targetDir -Recurse -Force -ErrorAction SilentlyContinue
+        Write-Host "Removing $targetDir (keeping gov-cache) ..." -ForegroundColor Yellow
+        Get-ChildItem -LiteralPath $targetDir -Force -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -ne "gov-cache" } |
+            ForEach-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue }
+        $left = @(Get-ChildItem -LiteralPath $targetDir -Force -ErrorAction SilentlyContinue)
+        if ($left.Count -eq 0) {
+            Remove-Item -LiteralPath $targetDir -Force -ErrorAction SilentlyContinue
+        }
     }
-    if (Test-Path $targetDir) {
+    if ((Test-Path $targetDir) -and -not (Test-Path (Join-Path $targetDir "gov-cache"))) {
         & cmd.exe /c "rmdir /s /q `"$targetDir`""
     }
-    if (Test-Path $targetDir) {
+    if ((Test-Path $targetDir) -and -not (Test-Path (Join-Path $targetDir "gov-cache")) -and -not (Test-Path (Join-Path $targetDir "src\index.html"))) {
         throw "Could not remove $targetDir. Close Cursor/the browser if that folder is open and try again."
     }
 
     Write-Host "Removed service $serviceName and the application directory." -ForegroundColor Green
+    Write-Host "gov-cache (Excel + ZIPs) is kept under $targetDir\gov-cache if it existed." -ForegroundColor Gray
     Write-Host "Git, Node and NSSM stay (they were on the system or installed globally)." -ForegroundColor Gray
     Write-Host "FFmpeg from tools\ in the Prawko directory was removed with the folder." -ForegroundColor Gray
 }
@@ -2567,16 +2522,15 @@ if ($MergeGov) {
     if (-not (Test-Path -LiteralPath $excelPath)) {
         throw "Missing $excelPath — no downloaded ministry question bank to merge."
     }
-    Invoke-PrawkoScript "parse-excel.ps1" @("-Excel", $excelPath, "-OutDir", $govDir)
+    $parseOut = Join-Path ([IO.Path]::GetTempPath()) "prawko\gov-json"
+    Invoke-PrawkoScript "parse-excel.ps1" @("-Excel", $excelPath, "-OutDir", $parseOut, "-SkipTranslateGaps")
     $mergeArgs = @(
-        "-GovDir", $govDir,
+        "-GovDir", $parseOut,
         "-OutDir", (Join-Path $targetDir "src\data")
     )
     $ffmpegMerge = Resolve-FfmpegExe
     if ($ffmpegMerge) { $mergeArgs += @("-FfmpegExe", $ffmpegMerge) }
     $mergeMedia = New-Object System.Collections.Generic.List[string]
-    $rawMerge = Get-ContribRawMediaDir
-    if ($rawMerge -and (Test-Path -LiteralPath $rawMerge)) { [void]$mergeMedia.Add($rawMerge) }
     if (Test-Path -LiteralPath $mediaOutImg) { [void]$mergeMedia.Add($mediaOutImg) }
     if (Test-Path -LiteralPath $mediaOutVid) { [void]$mergeMedia.Add($mediaOutVid) }
     try {
@@ -2590,6 +2544,9 @@ if ($MergeGov) {
         $mergeArgs += @("-MediaDir", ($mergeMedia.ToArray() -join ";"))
     }
     Invoke-PrawkoScript "merge-gov.ps1" $mergeArgs
+    if (Test-Path -LiteralPath $parseOut) {
+        Remove-Item -LiteralPath $parseOut -Recurse -Force -ErrorAction SilentlyContinue
+    }
     Restore-LocalMediaBaseIfNeeded -Root $targetDir
     Complete-IfInteractive
     exit 0

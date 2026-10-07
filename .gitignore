@@ -6,7 +6,7 @@ Thumbs.db
 *.xlsx
 .baza_pytan.hash
 gov-data/
-# leftover Mac unpack dir; new packs go to gov-data/raw/
+# leftover checkout staging; Excel+ZIPs live next to the install in gov-cache/
 Pytania egzaminacyjne na prawo jazdy 2025/
 
 # Python
@@ -25,6 +25,10 @@ venv/
 # Backblaze keys (never commit)
 .b2env
 scripts/.b2env
+
+# Gemini key for translate-questions (never commit). Template: scripts/geminienv.example
+.geminienv
+scripts/.geminienv
 
 # Media (hosted on Backblaze B2, not in git)
 src/media/img/
