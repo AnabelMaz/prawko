@@ -19,6 +19,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import tempfile
 import zipfile
 from pathlib import Path
 
@@ -76,10 +77,21 @@ def repo_root() -> Path:
     raise AssertionError
 
 
+def server_root() -> Path:
+    if sys.platform == "win32":
+        return Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / "prawko"
+    if sys.platform == "darwin":
+        return Path("/usr/local/prawko")
+    return Path("/opt/prawko")
+
+
 def local_app_gov_data() -> Path:
     home = Path(os.environ.get("PRAWKO_USER_HOME") or os.path.expanduser("~"))
     if sys.platform == "darwin":
         return home / "Library" / "Application Support" / "prawko" / "gov-data"
+    if sys.platform == "win32":
+        local = Path(os.environ.get("LOCALAPPDATA") or (home / "AppData" / "Local"))
+        return local / "prawko" / "gov-data"
     xdg = os.environ.get("XDG_DATA_HOME")
     base = Path(xdg) if xdg else home / ".local" / "share"
     return base / "prawko" / "gov-data"
@@ -89,19 +101,67 @@ def gov_data_dir() -> Path:
     env = os.environ.get("PRAWKO_GOV_DATA")
     if env:
         return Path(env)
-    return local_app_gov_data()
+    return server_root() / "gov-cache"
 
 
-def overflow_root() -> Path:
-    local_dir = local_app_gov_data()
-    repo = repo_root().resolve()
-    for server in (Path("/opt/prawko"), Path("/usr/local/prawko")):
-        try:
-            if repo == server.resolve():
-                return local_dir
-        except OSError:
-            continue
-    return repo / "gov-data"
+def gov_zip_dir() -> Path:
+    return gov_data_dir() / "zip"
+
+
+def gov_raw_temp_dir() -> Path:
+    return Path(tempfile.gettempdir()) / "prawko" / "raw"
+
+
+def copy_legacy_app_gov_cache() -> None:
+    legacy = local_app_gov_data()
+    dest = gov_data_dir()
+    if not legacy.is_dir():
+        return
+    dest.mkdir(parents=True, exist_ok=True)
+    legacy_excel = legacy / "baza_pytan.xlsx"
+    dest_excel = dest / "baza_pytan.xlsx"
+    if legacy_excel.is_file() and not dest_excel.exists():
+        shutil.copy2(legacy_excel, dest_excel)
+        say_y(f"-> Copied legacy Excel → {dest_excel}")
+    for hash_file in legacy.glob("*.hash"):
+        to = dest / hash_file.name
+        if not to.exists():
+            shutil.copy2(hash_file, to)
+    legacy_zip = legacy / "cache"
+    zip_dest = gov_zip_dir()
+    if legacy_zip.is_dir():
+        zip_dest.mkdir(parents=True, exist_ok=True)
+        for zf in legacy_zip.glob("*.zip"):
+            to = zip_dest / zf.name
+            if not to.exists():
+                shutil.copy2(zf, to)
+
+
+def gov_cache_has_zips() -> bool:
+    zdir = gov_zip_dir()
+    return zdir.is_dir() and any(zdir.glob("*.zip"))
+
+
+def expand_gov_media_zips_to_temp() -> Path:
+    zdir = gov_zip_dir()
+    raw = gov_raw_temp_dir()
+    if not gov_cache_has_zips():
+        die(f"No ministry media ZIPs in {zdir}. Run download-gov / --sync-gov first.")
+    assert_disk_space(raw, 8 * 1024 * 1024 * 1024, "temp unpack JPG/WMV")
+    if raw.exists():
+        shutil.rmtree(raw, ignore_errors=True)
+    raw.mkdir(parents=True, exist_ok=True)
+    for zf in sorted(zdir.glob("*.zip")):
+        say_g(f"-> Unpacking {zf.name} → {raw}")
+        unpack_archive(zf, raw)
+    flatten_media_dir(raw)
+    return raw
+
+
+def remove_gov_raw_temp() -> None:
+    raw = gov_raw_temp_dir()
+    if raw.exists():
+        shutil.rmtree(raw, ignore_errors=True)
 
 
 def url_fingerprint(url: str) -> str:
@@ -243,27 +303,16 @@ def free_bytes(path: Path) -> int:
         return 0
 
 
-def same_volume(a: Path, b: Path) -> bool:
-    try:
-        return os.stat(a).st_dev == os.stat(b).st_dev
-    except OSError:
-        return False
-
-
-def resolve_staging(preferred: Path, overflow: Path, min_free: int, what: str) -> Path:
-    if preferred.is_dir() and any(preferred.iterdir()):
-        return preferred
-    pref_free = free_bytes(preferred)
-    if pref_free >= min_free:
-        return preferred
-    overflow.parent.mkdir(parents=True, exist_ok=True)
-    if same_volume(preferred.parent, overflow.parent):
-        return preferred
-    over_free = free_bytes(overflow)
-    if over_free >= min_free:
-        say_y(f"-> Low disk space for {what} ({preferred}). Using {overflow}")
-        return overflow
-    return preferred
+def assert_disk_space(path: Path, min_free: int, what: str) -> None:
+    free = free_bytes(path)
+    if free >= min_free:
+        return
+    have_gb = free / (1024 ** 3)
+    need_gb = min_free / (1024 ** 3)
+    die(
+        f"Not enough disk space for {what}: {have_gb:.1f} GB free at {path} "
+        f"(need {need_gb:.1f} GB). Free space and retry — files stay in {path}."
+    )
 
 
 def unpack_archive(archive: Path, dest: Path) -> None:
@@ -282,16 +331,7 @@ def move_legacy_raw() -> None:
     legacy = repo_root() / LEGACY_RAW_NAME
     if not legacy.is_dir():
         return
-    raw = gov_data_dir() / "raw"
-    raw.mkdir(parents=True, exist_ok=True)
-    say_y("Merging legacy raw-media folder into gov-data/raw...")
-    for f in legacy.rglob("*"):
-        if not f.is_file():
-            continue
-        dest = raw / f.name
-        if not dest.exists():
-            f.replace(dest)
-    shutil.rmtree(legacy, ignore_errors=True)
+    say_y(f"Ignoring leftover {legacy.name} in the checkout. Media ZIPs live in {gov_zip_dir()}.")
 
 
 def sync_excel(excel_path: Path, hash_file: Path) -> None:
@@ -327,11 +367,12 @@ def main() -> None:
     gov_dir = gov_data_dir()
     excel_path = gov_dir / "baza_pytan.xlsx"
     excel_hash = gov_dir / ".baza_pytan.hash"
-    overflow = overflow_root()
+    copy_legacy_app_gov_cache()
     gov_dir.mkdir(parents=True, exist_ok=True)
 
     if args.excel_only:
         say_c(f"download-gov: Excel only → {excel_path}")
+        assert_disk_space(gov_dir, 64 * 1024 * 1024, "ministry Excel")
         sync_excel(excel_path, excel_hash)
         if not excel_path.is_file():
             die(f"Missing {excel_path} — question bank from gov.pl was not downloaded.")
@@ -339,21 +380,13 @@ def main() -> None:
         return
 
     move_legacy_raw()
-    raw_preferred = gov_dir / "raw"
-    raw_dir = resolve_staging(raw_preferred, overflow / "raw", 8 * 1024 * 1024 * 1024, "raw JPG/WMV")
-    if raw_dir != raw_preferred:
-        raw_dir.mkdir(parents=True, exist_ok=True)
-        if raw_preferred.exists() or raw_preferred.is_symlink():
-            raw_preferred.unlink()
-        raw_preferred.symlink_to(raw_dir)
-    zip_preferred = gov_dir / "cache"
-    zip_cache = resolve_staging(zip_preferred, overflow / "cache", 12 * 1024 * 1024 * 1024, "ministry ZIPs")
-    raw_dir.mkdir(parents=True, exist_ok=True)
+    zip_cache = gov_zip_dir()
+    if not args.skip_media:
+        assert_disk_space(zip_cache, 12 * 1024 * 1024 * 1024, "ministry ZIPs")
     zip_cache.mkdir(parents=True, exist_ok=True)
 
-    say_c("download-gov: Excel + situational media ZIP from gov.pl → gov-data.")
-    say_d(f"ZIP: {zip_cache}")
-    say_d(f"Situational JPG/WMV: {raw_dir}")
+    say_c(f"download-gov: Excel + situational media ZIP from gov.pl → {gov_dir}")
+    say_d(f"ZIP: {zip_cache} (kept; unpack is convert-media into TEMP)")
     say_c(f"-> Parsing {MAIN_URL} ...")
     for opis, url in parse_gov_links():
         say_g(f"DESC: {opis}")
@@ -372,21 +405,15 @@ def main() -> None:
                 say_d("-> Skipping situational media (--skip-media).")
             else:
                 url_hash = url_fingerprint(url)
-                marker = raw_dir / f".downloaded_{url_hash}"
                 hash_file = gov_dir / f".media_{url_hash}.hash"
                 zip_path = zip_cache / f"media_{url_hash}.zip"
                 say_c("-> Hashing first 1 MB of the media pack...")
-                if needs_download(url, hash_file, marker):
+                if needs_download(url, hash_file, zip_path):
                     say_y("-> Downloading media pack from gov.pl (resumable if interrupted)...")
                     curl_download(url, zip_path)
-                    say_g(f"-> Unpacking to {raw_dir}...")
-                    unpack_archive(zip_path, raw_dir)
-                    flatten_media_dir(raw_dir)
-                    marker.write_text("", encoding="utf-8")
                     save_prefix_hash(hash_file, url)
-                    zip_path.unlink(missing_ok=True)
                 else:
-                    say_d("-> Media pack unchanged. Skipping download.")
+                    say_d(f"-> Media pack unchanged: {zip_path}")
         else:
             say_d("-> Skipping (not Excel or media).")
         say("--------------------------------------------------")
@@ -394,7 +421,7 @@ def main() -> None:
     if not excel_path.is_file():
         die(f"Missing {excel_path} — question bank from gov.pl was not downloaded.")
     say_g(f"Done. Excel: {excel_path}")
-    say_d(f"Situational: {raw_dir}")
+    say_d(f"ZIPs: {zip_cache}")
 
 
 if __name__ == "__main__":

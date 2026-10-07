@@ -1,8 +1,8 @@
 ﻿# UTF-8 with BOM — Windows PowerShell 5.1 otherwise misreads non-ASCII text and here-strings.
 # Download ministry catalogue + media ZIPs from gov.pl (Windows, no Python).
 # Same job as scripts/download-gov.py.
-# Excel → gov-data\baza_pytan.xlsx
-# Multimedia (JPG/WMV) → gov-data\raw
+# Excel + media ZIPs → C:\ProgramData\prawko\gov-cache (survives uninstall).
+# Unpack JPG/WMV only into %TEMP%\prawko\raw for convert-media, then delete.
 # PJM (sign-language) links are still matched on gov.pl; Sync-GovPjmAsset can
 # unpack them later. Default import does not call it (~10 GB, unused in the app).
 #
@@ -39,36 +39,94 @@ function Get-PrawkoRepoRoot {
     return [IO.Path]::GetFullPath($root)
 }
 
+function Get-PrawkoServerRoot {
+    return "C:\ProgramData\prawko"
+}
+
 function Get-GovDataDir {
-    return Get-LocalAppGovDataDir
+    return (Join-Path (Get-PrawkoServerRoot) "gov-cache")
 }
 
-function Get-GovDataOverflowRoot {
-    $local = Get-LocalAppGovDataDir
-    $repo = Get-PrawkoRepoRoot
-    $server = "C:\ProgramData\prawko"
-    $a = ([IO.Path]::GetFullPath($repo)).TrimEnd('\', '/')
-    $b = ([IO.Path]::GetFullPath($server)).TrimEnd('\', '/')
-    if ([string]::Equals($a, $b, [StringComparison]::OrdinalIgnoreCase)) {
-        return $local
-    }
-    return (Join-Path $repo "gov-data")
-}
-
-function Get-LocalAppGovDataDir {
+function Get-LegacyAppGovDataDir {
     return (Join-Path $env:LOCALAPPDATA "prawko\gov-data")
 }
 
+function Get-GovZipCacheDir {
+    return (Join-Path (Get-GovDataDir) "zip")
+}
+
+function Get-GovRawTempDir {
+    return (Join-Path ([IO.Path]::GetTempPath()) "prawko\raw")
+}
+
 function Get-ContribRawMediaDir {
-    return (Join-Path (Get-GovDataDir) "raw")
+    return Get-GovRawTempDir
 }
 
 function Get-GovPjmDir {
-    return (Join-Path (Get-GovDataDir) "pjm")
+    return (Join-Path ([IO.Path]::GetTempPath()) "prawko\pjm")
 }
 
-function Get-GovZipCacheDir {
-    return (Join-Path (Get-GovDataDir) "cache")
+function Test-GovCacheHasZips {
+    $zipDir = Get-GovZipCacheDir
+    if (-not (Test-Path -LiteralPath $zipDir)) { return $false }
+    return [bool]@(Get-ChildItem -LiteralPath $zipDir -File -Filter *.zip -ErrorAction SilentlyContinue | Select-Object -First 1)
+}
+
+function Copy-LegacyAppGovCacheIfNeeded {
+    $legacy = Get-LegacyAppGovDataDir
+    $dest = Get-GovDataDir
+    if (-not (Test-Path -LiteralPath $legacy)) { return }
+    New-Item -ItemType Directory -Path $dest -Force | Out-Null
+    $legacyExcel = Join-Path $legacy "baza_pytan.xlsx"
+    $destExcel = Join-Path $dest "baza_pytan.xlsx"
+    if ((Test-Path -LiteralPath $legacyExcel) -and -not (Test-Path -LiteralPath $destExcel)) {
+        Copy-Item -LiteralPath $legacyExcel -Destination $destExcel -Force
+        Write-Host "-> Copied legacy Excel AppData → $destExcel" -ForegroundColor DarkYellow
+    }
+    Get-ChildItem -LiteralPath $legacy -File -Filter "*.hash" -ErrorAction SilentlyContinue | ForEach-Object {
+        $to = Join-Path $dest $_.Name
+        if (-not (Test-Path -LiteralPath $to)) {
+            Copy-Item -LiteralPath $_.FullName -Destination $to -Force
+        }
+    }
+    $legacyZip = Join-Path $legacy "cache"
+    $zipDest = Get-GovZipCacheDir
+    if (Test-Path -LiteralPath $legacyZip) {
+        New-Item -ItemType Directory -Path $zipDest -Force | Out-Null
+        Get-ChildItem -LiteralPath $legacyZip -File -Filter *.zip -ErrorAction SilentlyContinue | ForEach-Object {
+            $to = Join-Path $zipDest $_.Name
+            if (-not (Test-Path -LiteralPath $to)) {
+                Copy-Item -LiteralPath $_.FullName -Destination $to -Force
+            }
+        }
+    }
+}
+
+function Expand-GovMediaZipsToTemp {
+    $zipDir = Get-GovZipCacheDir
+    $raw = Get-GovRawTempDir
+    if (-not (Test-GovCacheHasZips)) {
+        throw "No ministry media ZIPs in $zipDir. Run download-gov / -SyncGov Full first."
+    }
+    Assert-GovDiskSpace -Path $raw -MinFreeBytes 8GB -What "temp unpack JPG/WMV"
+    if (Test-Path -LiteralPath $raw) {
+        Remove-Item -LiteralPath $raw -Recurse -Force
+    }
+    New-Item -ItemType Directory -Path $raw -Force | Out-Null
+    Get-ChildItem -LiteralPath $zipDir -File -Filter *.zip | ForEach-Object {
+        Write-Host "-> Unpacking $($_.Name) → $raw" -ForegroundColor Green
+        Expand-ZipToDirectory -zipPath $_.FullName -destination $raw
+    }
+    Flatten-MediaDirectory -directory $raw
+    return $raw
+}
+
+function Remove-GovRawTempDir {
+    $raw = Get-GovRawTempDir
+    if (Test-Path -LiteralPath $raw) {
+        Remove-Item -LiteralPath $raw -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }
 
 function Test-CommandExists ($cmd) {
@@ -86,61 +144,23 @@ function Get-DriveFreeBytes ([string]$path) {
     return [int64]0
 }
 
-function Get-PathDriveId ([string]$path) {
-    return [IO.Path]::GetPathRoot([IO.Path]::GetFullPath($path)).Substring(0, 1).ToUpperInvariant()
-}
-
-function Resolve-GovStagingDir {
+function Assert-GovDiskSpace {
     param(
-        [string]$Preferred,
-        [string]$Overflow,
+        [string]$Path,
         [int64]$MinFreeBytes,
         [string]$What
     )
-    if (Test-Path -LiteralPath $Preferred) {
-        $existing = Get-ChildItem -LiteralPath $Preferred -File -ErrorAction SilentlyContinue | Select-Object -First 1
-        if ($existing) { return $Preferred }
-    }
-    $prefFree = Get-DriveFreeBytes $Preferred
-    if ($prefFree -ge $MinFreeBytes) { return $Preferred }
-    if ((Get-PathDriveId $Preferred) -eq (Get-PathDriveId $Overflow)) { return $Preferred }
-    $overFree = Get-DriveFreeBytes $Overflow
-    if ($overFree -ge $MinFreeBytes) {
-        Write-Host ("-> Low disk space on {0}: ({1} GB). {2} → {3}" -f (Get-PathDriveId $Preferred), [math]::Round($prefFree / 1GB, 1), $What, $Overflow) -ForegroundColor DarkYellow
-        return $Overflow
-    }
-    return $Preferred
-}
-
-function New-GovDataJunction ([string]$linkPath, [string]$targetPath) {
-    $linkFull = [IO.Path]::GetFullPath($linkPath)
-    $targetFull = [IO.Path]::GetFullPath($targetPath)
-    if ($linkFull -eq $targetFull) { return }
-    if (Test-Path -LiteralPath $linkPath) { return }
-    New-Item -ItemType Directory -Path $targetPath -Force | Out-Null
-    New-Item -ItemType Junction -Path $linkPath -Target $targetFull | Out-Null
+    $free = Get-DriveFreeBytes $Path
+    if ($free -ge $MinFreeBytes) { return }
+    $haveGb = [math]::Round($free / 1GB, 1)
+    $needGb = [math]::Round($MinFreeBytes / 1GB, 1)
+    throw ("Not enough disk space for {0}: {1} GB free at {2} (need {3} GB). Free space and retry — files stay in {2}." -f $What, $haveGb, $Path, $needGb)
 }
 
 function Move-LegacyContribRawMediaDir {
     $legacy = Join-Path (Get-PrawkoRepoRoot) $script:PrawkoRawMediaLegacyName
     if (-not (Test-Path -LiteralPath $legacy)) { return }
-    $raw = Get-ContribRawMediaDir
-    $legacyFull = [IO.Path]::GetFullPath($legacy)
-    $rawFull = [IO.Path]::GetFullPath($raw)
-    if ($legacyFull -eq $rawFull) { return }
-    New-Item -ItemType Directory -Path (Get-GovDataDir) -Force | Out-Null
-    if (-not (Test-Path -LiteralPath $raw)) {
-        Write-Host "Moving legacy raw-media folder → gov-data\raw" -ForegroundColor Yellow
-        Move-Item -LiteralPath $legacy -Destination $raw
-        return
-    }
-    Write-Host "Merging legacy raw-media folder into gov-data\raw, then removing the old folder." -ForegroundColor Yellow
-    & robocopy.exe $legacy $raw /E /XO /R:2 /W:1 /NFL /NDL /NJH /NJS /nc /ns /np | Out-Null
-    if ($LASTEXITCODE -ge 8) { throw "robocopy legacy raw → gov-data\raw failed (exit $LASTEXITCODE)" }
-    Remove-Item -LiteralPath $legacy -Recurse -Force
-    if (Test-Path -LiteralPath $legacy) {
-        throw "Failed to remove $legacy after merging into gov-data\raw."
-    }
+    Write-Host "Ignoring leftover $script:PrawkoRawMediaLegacyName in the checkout. Media ZIPs live in $(Get-GovZipCacheDir)." -ForegroundColor Yellow
 }
 
 function Get-UrlFingerprint ($url) {
@@ -291,13 +311,11 @@ function Test-GovPjmAsset ($item) {
 function Sync-GovPjmAsset ($item) {
     if (-not $item) { return }
     $govDir = Get-GovDataDir
-    $overflowRoot = Get-GovDataOverflowRoot
-    $pjmPreferred = Get-GovPjmDir
-    $pjmDir = Resolve-GovStagingDir -Preferred $pjmPreferred -Overflow (Join-Path $overflowRoot "pjm") -MinFreeBytes 22GB -What "PJM WMV"
-    New-GovDataJunction -linkPath $pjmPreferred -targetPath $pjmDir
+    $pjmDir = Get-GovPjmDir
+    $zipCache = Get-GovZipCacheDir
+    Assert-GovDiskSpace -Path $zipCache -MinFreeBytes 12GB -What "ministry ZIPs"
+    Assert-GovDiskSpace -Path $pjmDir -MinFreeBytes 22GB -What "temp PJM unpack"
     New-Item -ItemType Directory -Path $pjmDir -Force | Out-Null
-    $zipPreferred = Get-GovZipCacheDir
-    $zipCache = Resolve-GovStagingDir -Preferred $zipPreferred -Overflow (Join-Path $overflowRoot "cache") -MinFreeBytes 12GB -What "ministry ZIPs"
     New-Item -ItemType Directory -Path $zipCache -Force | Out-Null
 
     $urlHash = Get-UrlFingerprint $item.Url
@@ -311,7 +329,7 @@ function Sync-GovPjmAsset ($item) {
     } else {
         Write-Host "-> Downloading sign-language (PJM) pack from gov.pl (resumable if interrupted)..." -ForegroundColor Yellow
         Invoke-CurlDownload -url $item.Url -outFile $zipPath
-        Write-Host "-> Unpacking PJM to $pjmDir (separate from gov-data\raw, no conversion)..." -ForegroundColor Green
+        Write-Host "-> Unpacking PJM to $pjmDir (TEMP, separate from situational unpack, no conversion)..." -ForegroundColor Green
         Expand-ZipToDirectory -zipPath $zipPath -destination $pjmDir
         Flatten-MediaDirectory -directory $pjmDir
         New-Item -ItemType File -Path $pjmMarkerPath -Force | Out-Null
@@ -395,12 +413,12 @@ if (Get-Variable PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyCo
 $govDir = Get-GovDataDir
 $excelPath = Join-Path $govDir "baza_pytan.xlsx"
 $excelHash = Join-Path $govDir ".baza_pytan.hash"
-$overflowRoot = Get-GovDataOverflowRoot
-
+Copy-LegacyAppGovCacheIfNeeded
 New-Item -ItemType Directory -Path $govDir -Force | Out-Null
 
 if ($ExcelOnly) {
     Write-Host "download-gov: Excel only → $excelPath" -ForegroundColor Cyan
+    Assert-GovDiskSpace -Path $govDir -MinFreeBytes 64MB -What "ministry Excel"
     Sync-GovExcelFile -excelPath $excelPath -hashFile $excelHash
     if (-not (Test-Path -LiteralPath $excelPath)) {
         throw "Missing $excelPath — question bank from gov.pl was not downloaded."
@@ -411,19 +429,15 @@ if ($ExcelOnly) {
 
 Move-LegacyContribRawMediaDir
 
-$rawPreferred = Get-ContribRawMediaDir
-$rawMediaDir = Resolve-GovStagingDir -Preferred $rawPreferred -Overflow (Join-Path $overflowRoot "raw") -MinFreeBytes 8GB -What "raw JPG/WMV"
-New-GovDataJunction -linkPath $rawPreferred -targetPath $rawMediaDir
+$zipCache = Get-GovZipCacheDir
+if (-not $SkipMedia) {
+    Assert-GovDiskSpace -Path $zipCache -MinFreeBytes 12GB -What "ministry ZIPs"
+}
 
-$zipPreferred = Get-GovZipCacheDir
-$zipCache = Resolve-GovStagingDir -Preferred $zipPreferred -Overflow (Join-Path $overflowRoot "cache") -MinFreeBytes 12GB -What "ministry ZIPs"
-
-New-Item -ItemType Directory -Path $rawMediaDir -Force | Out-Null
 New-Item -ItemType Directory -Path $zipCache -Force | Out-Null
 
-Write-Host "download-gov: Excel + situational media ZIP from gov.pl → gov-data (gitignore)." -ForegroundColor Cyan
-Write-Host "ZIP: $zipCache" -ForegroundColor Gray
-Write-Host "Situational JPG/WMV: $rawMediaDir" -ForegroundColor Gray
+Write-Host "download-gov: Excel + situational media ZIP from gov.pl → $govDir" -ForegroundColor Cyan
+Write-Host "ZIP: $zipCache (kept; unpack is convert-media into TEMP)" -ForegroundColor Gray
 
 $znalezione = Get-GovPlAssetLinks
 foreach ($item in $znalezione) {
@@ -453,22 +467,16 @@ foreach ($item in $znalezione) {
             Write-Host "-> Skipping situational media (-SkipMedia)." -ForegroundColor DarkGray
         } else {
             $urlHash = Get-UrlFingerprint $item.Url
-            $mediaMarkerPath = Join-Path $rawMediaDir ".downloaded_$urlHash"
             $hashFile = Join-Path $govDir ".media_$urlHash.hash"
             $zipPath = Join-Path $zipCache "media_$urlHash.zip"
 
             Write-Host "-> Hashing first 1 MB of the media pack..." -ForegroundColor Cyan
-            if (-not (Test-RemoteFileNeedsDownload -url $item.Url -hashFilePath $hashFile -localFilePath $mediaMarkerPath)) {
-                Write-Host "-> Media pack unchanged. Skipping download." -ForegroundColor Gray
+            if (-not (Test-RemoteFileNeedsDownload -url $item.Url -hashFilePath $hashFile -localFilePath $zipPath)) {
+                Write-Host "-> Media pack unchanged: $zipPath" -ForegroundColor Gray
             } else {
                 Write-Host "-> Downloading media pack from gov.pl (resumable if interrupted)..." -ForegroundColor Yellow
                 Invoke-CurlDownload -url $item.Url -outFile $zipPath
-                Write-Host "-> Unpacking to $rawMediaDir..." -ForegroundColor Green
-                Expand-ZipToDirectory -zipPath $zipPath -destination $rawMediaDir
-                Flatten-MediaDirectory -directory $rawMediaDir
-                New-Item -ItemType File -Path $mediaMarkerPath -Force | Out-Null
                 Save-PrefixHash -hashFilePath $hashFile -url $item.Url
-                Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
             }
         }
     }
@@ -482,4 +490,4 @@ if (-not (Test-Path -LiteralPath $excelPath)) {
     throw "Missing $excelPath — question bank from gov.pl was not downloaded."
 }
 Write-Host "Done. Excel: $excelPath" -ForegroundColor Green
-Write-Host "Situational: $rawMediaDir" -ForegroundColor Gray
+Write-Host "ZIPs: $zipCache" -ForegroundColor Gray

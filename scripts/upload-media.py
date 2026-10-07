@@ -5,7 +5,7 @@ Same job as scripts/upload-media.ps1. Keys from .b2env at the repo root.
 Syncs local img/ + vid/ to B2 (online play). R2 zip packs are a separate step.
 b2 sync --skipNewer skips files already on B2; an empty bucket still gets a full
 upload. Default media dir matches convert-media.py (server src/media, then
-gov-data parent/media, then repo src/media). Override: --media-dir.
+legacy app-data media, then repo src/media). Override: --media-dir.
 
   python3 scripts/upload-media.py
   python3 scripts/upload-media.py --media-dir /usr/local/prawko/src/media

@@ -1,7 +1,8 @@
 ﻿# UTF-8 with BOM — Windows PowerShell 5.1 otherwise misreads non-ASCII text and here-strings.
 # Convert ministry situational media: JPG→WebP, WMV→MP4 (Windows, no Python).
 # Same job as scripts/convert-media.py.
-# Reads gov-data\raw only. Does not touch gov-data\pjm (sign-language source stays WMV).
+# Unpacks gov-cache ZIPs into %TEMP%\prawko\raw, converts, then deletes the temp tree.
+# Does not convert PJM. Requires the installed server for default output.
 #
 # powershell -ExecutionPolicy Bypass -File scripts/convert-media.ps1
 # powershell -ExecutionPolicy Bypass -File scripts/convert-media.ps1 -FfmpegExe C:\ffmpeg\bin\ffmpeg.exe
@@ -22,16 +23,19 @@ if (Get-Variable PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyCo
 . (Join-Path $PSScriptRoot "download-gov.ps1") -LibraryOnly
 
 $repoRoot = Get-PrawkoRepoRoot
-$serverRoot = "C:\ProgramData\prawko"
+$serverRoot = Get-PrawkoServerRoot
 $serverReady = Test-Path -LiteralPath (Join-Path $serverRoot "src\index.html")
-if (-not $SourceDir) { $SourceDir = Get-ContribRawMediaDir }
-if (-not $ImgOut) {
-    if ($serverReady) { $ImgOut = Join-Path $serverRoot "src\media\img" }
-    else { $ImgOut = Join-Path $env:LOCALAPPDATA "prawko\media\img" }
+$script:cleanRawTemp = $false
+if (-not $SourceDir) {
+    $SourceDir = Expand-GovMediaZipsToTemp
+    $script:cleanRawTemp = $true
 }
-if (-not $VidOut) {
-    if ($serverReady) { $VidOut = Join-Path $serverRoot "src\media\vid" }
-    else { $VidOut = Join-Path $env:LOCALAPPDATA "prawko\media\vid" }
+if (-not $ImgOut -or -not $VidOut) {
+    if (-not $serverReady) {
+        throw "Install the server first (installer with no switches). Converted media go to $serverRoot\src\media."
+    }
+    if (-not $ImgOut) { $ImgOut = Join-Path $serverRoot "src\media\img" }
+    if (-not $VidOut) { $VidOut = Join-Path $serverRoot "src\media\vid" }
 }
 if (-not [IO.Path]::IsPathRooted($SourceDir)) { $SourceDir = Join-Path $repoRoot $SourceDir }
 if (-not [IO.Path]::IsPathRooted($ImgOut)) { $ImgOut = Join-Path $repoRoot $ImgOut }
@@ -59,17 +63,20 @@ function Resolve-ConvertFfmpegExe ([string]$explicit) {
 }
 
 if (-not (Test-Path -LiteralPath $SourceDir)) {
+    if ($script:cleanRawTemp) { Remove-GovRawTempDir }
     throw "Source directory not found: $SourceDir (run scripts/download-gov.ps1 first)."
 }
 
 $ffmpeg = Resolve-ConvertFfmpegExe $FfmpegExe
 if (-not $ffmpeg) {
+    if ($script:cleanRawTemp) { Remove-GovRawTempDir }
     throw "FFmpeg is not available. Install ffmpeg or run Install_Prawko.windows.ps1 -SyncGov (it drops a portable copy)."
 }
 Write-Host "[OK] FFmpeg: $ffmpeg" -ForegroundColor Green
 Write-Host "Source (situational): $SourceDir" -ForegroundColor Gray
 Write-Host "Output: $ImgOut  /  $VidOut" -ForegroundColor Gray
-Write-Host "gov-data\pjm is not converted." -ForegroundColor Gray
+Write-Host "Temp unpack is deleted after convert. PJM is not converted." -ForegroundColor Gray
+try {
 
 New-Item -ItemType Directory -Path $ImgOut -Force | Out-Null
 New-Item -ItemType Directory -Path $VidOut -Force | Out-Null
@@ -121,3 +128,6 @@ foreach ($ready in @(Get-ChildItem -Path $SourceDir -File -ErrorAction SilentlyC
 $webpCount = @(Get-ChildItem $ImgOut -Filter *.webp -ErrorAction SilentlyContinue).Count
 $mp4Count = @(Get-ChildItem $VidOut -Filter *.mp4 -ErrorAction SilentlyContinue).Count
 Write-Host "-> App media ready: $webpCount WebP, $mp4Count MP4" -ForegroundColor Green
+} finally {
+    if ($script:cleanRawTemp) { Remove-GovRawTempDir }
+}

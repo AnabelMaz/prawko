@@ -9,7 +9,7 @@
 #   Merge-GovExcelIntoDataFiles -GovDir DIR -OutDir DIR
 #
 # powershell -ExecutionPolicy Bypass -File scripts/merge-gov.ps1
-# powershell -ExecutionPolicy Bypass -File scripts/merge-gov.ps1 -GovDir "$env:LOCALAPPDATA\prawko\gov-data" -OutDir C:\ProgramData\prawko\src\data
+# powershell -ExecutionPolicy Bypass -File scripts/merge-gov.ps1 -GovDir C:\ProgramData\prawko\gov-cache -OutDir C:\ProgramData\prawko\src\data
 # Installer: Install_Prawko.windows.ps1 -MergeGov
 
 param(

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Convert ministry situational media: JPG→WebP, WMV→MP4 (macOS/Linux).
 
-Same job as scripts/convert-media.ps1. Does not touch gov-data/pjm.
+Same job as scripts/convert-media.ps1. Unpacks gov-cache ZIPs into TEMP, converts, then deletes the unpack tree. Does not convert PJM.
 
   python3 scripts/convert-media.py
   python3 scripts/convert-media.py --source DIR --img-out DIR --vid-out DIR --ffmpeg PATH
@@ -77,39 +77,57 @@ def run_ffmpeg(args: list[str]) -> int:
 
 def main() -> None:
     dg = load_download_gov()
-    gov_raw = dg.gov_data_dir() / "raw"
     server = find_server()
-    media_fallback = dg.gov_data_dir().parent / "media"
+    clean_raw = False
 
     ap = argparse.ArgumentParser(description="JPG to WebP, WMV to MP4")
     ap.add_argument("--source", dest="source")
     ap.add_argument("--img-out", dest="img_out")
     ap.add_argument("--vid-out", dest="vid_out")
     ap.add_argument("--ffmpeg", dest="ffmpeg")
+    ap.add_argument(
+        "--keep-raw",
+        action="store_true",
+        help="Leave TEMP unpack in place (DropMissingMedia / parse). Default deletes it.",
+    )
     args = ap.parse_args()
 
-    source = Path(args.source) if args.source else gov_raw
+    if args.source:
+        source = Path(args.source)
+    else:
+        source = dg.expand_gov_media_zips_to_temp()
+        clean_raw = not args.keep_raw
     if args.img_out:
         img_out = Path(args.img_out)
     elif (server / "src" / "index.html").is_file():
         img_out = server / "src" / "media" / "img"
     else:
-        img_out = media_fallback / "img"
+        die(f"Install the server first. Converted media go to {server}/src/media.")
     if args.vid_out:
         vid_out = Path(args.vid_out)
     elif (server / "src" / "index.html").is_file():
         vid_out = server / "src" / "media" / "vid"
     else:
-        vid_out = media_fallback / "vid"
+        die(f"Install the server first. Converted media go to {server}/src/media.")
 
     if not source.is_dir():
+        if clean_raw:
+            dg.remove_gov_raw_temp()
         die(f"Source directory not found: {source} (run scripts/download-gov.py first).")
 
-    ffmpeg = resolve_ffmpeg(args.ffmpeg or "")
-    say(f"[OK] FFmpeg: {ffmpeg}", "g")
-    say(f"Source (situational): {source}", "d")
-    say(f"Output: {img_out}  /  {vid_out}", "d")
-    say("gov-data/pjm is not converted.", "d")
+    try:
+        ffmpeg = resolve_ffmpeg(args.ffmpeg or "")
+        say(f"[OK] FFmpeg: {ffmpeg}", "g")
+        say(f"Source (situational): {source}", "d")
+        say(f"Output: {img_out}  /  {vid_out}", "d")
+        say("Temp unpack is deleted after convert. PJM is not converted.", "d")
+        _convert_media(source, img_out, vid_out, ffmpeg)
+    finally:
+        if clean_raw:
+            dg.remove_gov_raw_temp()
+
+
+def _convert_media(source: Path, img_out: Path, vid_out: Path, ffmpeg: str) -> None:
     img_out.mkdir(parents=True, exist_ok=True)
     vid_out.mkdir(parents=True, exist_ok=True)
 
