@@ -1,11 +1,11 @@
 /** Shared Playwright helpers for the current Panel/WORD UI. */
 
-async function waitForUiSwap(page) {
-  await page.waitForFunction(() => !document.documentElement.hasAttribute('data-ui-swap'));
-}
-
 async function waitForUiHold(page) {
   await page.waitForFunction(() => !document.documentElement.hasAttribute('data-ui-hold'));
+}
+
+async function waitForUiSwap(page) {
+  await waitForUiHold(page);
 }
 
 async function goToCategories(page) {

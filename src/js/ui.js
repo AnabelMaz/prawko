@@ -11,7 +11,7 @@ export function showScreen(id) {
   const prev = document.querySelector('.screen.active')?.id;
   const swap = (prev === 'home' && id === 'categories')
     || (prev === 'categories' && id === 'home');
-  if (swap) document.documentElement.setAttribute('data-ui-swap', '1');
+  if (swap) document.documentElement.setAttribute('data-ui-hold', '1');
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   const screen = document.getElementById(id);
   if (screen) screen.classList.add('active');

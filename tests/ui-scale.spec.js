@@ -4,7 +4,7 @@ const { goToCategories, cycleSkin, waitForExamMediaAlign, waitForUiSwap } = requ
 async function waitForHomeScale(page) {
   await page.waitForSelector('#home.active');
   await page.waitForFunction(() => !document.documentElement.hasAttribute('data-ui-pending'));
-  await page.waitForFunction(() => !document.documentElement.hasAttribute('data-ui-swap'));
+  await page.waitForFunction(() => !document.documentElement.hasAttribute('data-ui-hold'));
 }
 
 function expectHomeFitsWindow(metrics, vw, vh) {
@@ -253,6 +253,50 @@ test('category tiles are packed on the first categories frame', async ({ page })
   expect(first.secH).toBeLessThanOrEqual(824);
   expect(first.w).toBeGreaterThan(40);
   expect(Math.abs(first.w - first.cardW * first.scale)).toBeLessThan(8);
+});
+
+test('category tiles do not shift when the Home-categories hold lifts', async ({ page }) => {
+  await page.setViewportSize({ width: 1100, height: 520 });
+  await page.goto('/');
+  await waitForHomeScale(page);
+  await page.evaluate(() => {
+    window.__catHold = { during: null, after: null };
+    const root = document.documentElement;
+    const measure = () => {
+      const card = document.querySelector('#categories.active .category-grid .category-card');
+      if (!card) return null;
+      const r = card.getBoundingClientRect();
+      return { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) };
+    };
+    const tick = () => {
+      const m = measure();
+      if (m) {
+        const held = root.hasAttribute('data-ui-hold');
+        if (held) window.__catHold.during = m;
+        if (!held && window.__catHold.during && !window.__catHold.after) window.__catHold.after = m;
+      }
+      if (!window.__catHold.after) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+  await goToCategories(page);
+  const log = await page.evaluate(async () => {
+    const card = document.querySelector('#categories.active .category-grid .category-card');
+    const r = card.getBoundingClientRect();
+    const later = { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) };
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const r2 = card.getBoundingClientRect();
+    const settled = { x: Math.round(r2.left), y: Math.round(r2.top), w: Math.round(r2.width), h: Math.round(r2.height) };
+    return { ...window.__catHold, later, settled };
+  });
+  expect(log.during, 'missed the held categories frame').toBeTruthy();
+  expect(log.after, 'missed the revealed categories frame').toBeTruthy();
+  for (const frame of [log.after, log.later, log.settled]) {
+    expect(Math.abs(frame.x - log.during.x)).toBeLessThan(3);
+    expect(Math.abs(frame.y - log.during.y)).toBeLessThan(3);
+    expect(Math.abs(frame.w - log.during.w)).toBeLessThan(3);
+    expect(Math.abs(frame.h - log.during.h)).toBeLessThan(3);
+  }
 });
 
 test('category cards pack as largest fixed-ratio tiles in landscape', async ({ page }) => {

@@ -300,14 +300,12 @@ html[data-ui-pending] .ui-stage {
   visibility: hidden;
 }
 
+/* Opacity, not visibility:hidden — the compositor still paints the pinned
+   layer so the first visible frame is not a fresh (late) GPU surface. */
 html[data-ui-hold] .ui-slot,
 html[data-ui-hold] .ui-stage {
-  visibility: hidden;
-}
-
-html[data-ui-swap] .ui-slot,
-html[data-ui-swap] .ui-stage {
   opacity: 0;
+  pointer-events: none;
 }
 
 .ui-slot {

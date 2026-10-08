@@ -16,12 +16,9 @@ export const UI_MAX_SCALE = 1;
 export const UI_MIN_SCALE = 0.01;
 export const UI_BOTTOM_INSET_RATIO = 0.05;
 const UI_SCALE_EPS = 0.01;
-/** One rAF = one compositor tick. Home↔categories hide the stage, pin a
- *  concrete `scale()`, then let CSS `var(--ui-scale)` take over before show.
- *  6 ticks to drop the pin, 6 more so the used transform matches the var
- *  (~200 ms at 60 Hz; a slow VM needs the ticks, not a wall-clock sleep). */
-const UI_SWAP_PIN_FRAMES = 6;
-const UI_SWAP_SETTLE_FRAMES = 6;
+/** Home↔categories stay hidden until used transform matches the pin. */
+const PIN_SETTLE_MATCH_FRAMES = 2;
+const PIN_SETTLE_MAX_FRAMES = 30;
 
 const SCROLL_SCREEN_IDS = ['results', 'history', 'learn-progress'];
 
@@ -205,6 +202,126 @@ function afterUiPaints(fn, frames = 4) {
   requestAnimationFrame(tick);
 }
 
+function usedStageScale(stage) {
+  const raw = stage ? getComputedStyle(stage).transform : '';
+  if (!raw || raw === 'none') return NaN;
+  const matrix = raw.match(/^matrix\(([^)]+)\)$/);
+  if (matrix) return Math.abs(parseFloat(matrix[1].split(',')[0]));
+  const scale = raw.match(/scale\(([^)]+)\)/);
+  if (scale) return Math.abs(parseFloat(scale[1]));
+  return NaN;
+}
+
+function scaleClose(value, target) {
+  return Number.isFinite(value) && Math.abs(value - target) < UI_SCALE_EPS;
+}
+
+function categoryPackReady() {
+  if (!isCategoriesScreen()) return true;
+  const section = document.getElementById('categories');
+  const grid = document.querySelector('.category-grid');
+  const designH = parseFloat(
+    getComputedStyle(document.documentElement).getPropertyValue('--ui-design-height')
+  ) || 0;
+  if (designH > 0 && section && section.clientHeight > designH + 24) return false;
+  const cols = Number(grid?.style.getPropertyValue('--cat-cols'));
+  const card = grid?.querySelector('.category-card');
+  return cols > 0 && Boolean(card) && card.getBoundingClientRect().width > 8;
+}
+
+function holdPaintKey() {
+  const stage = document.querySelector('.ui-stage');
+  const used = usedStageScale(stage);
+  const sr = stage?.getBoundingClientRect();
+  const grid = document.querySelector('#categories.active .category-grid');
+  const cr = grid?.querySelector('.category-card')?.getBoundingClientRect();
+  return [
+    Number.isFinite(used) ? used.toFixed(4) : 'none',
+    sr ? `${Math.round(sr.left)}:${Math.round(sr.top)}:${Math.round(sr.width)}:${Math.round(sr.height)}` : '',
+    cr ? `${Math.round(cr.left)}:${Math.round(cr.top)}:${Math.round(cr.width)}:${Math.round(cr.height)}` : '',
+    grid?.style.getPropertyValue('--cat-cols') || '',
+    grid?.style.getPropertyValue('--cat-card-w') || '',
+  ].join('|');
+}
+
+function revealWhenStageScaleSettles(target) {
+  const root = document.documentElement;
+  const slot = document.querySelector('.ui-slot');
+  const stage = document.querySelector('.ui-stage');
+  root.style.removeProperty('--ui-scale');
+  const gen = unpinScale;
+  let frames = 0;
+  let varMatched = 0;
+  let usedMatched = 0;
+  let checking = false;
+  let lastKey = '';
+  const finish = () => {
+    clearStageScalePin();
+    root.removeAttribute('data-ui-hold');
+  };
+  const tick = () => {
+    if (gen !== unpinScale) {
+      if (root.hasAttribute('data-ui-hold')) {
+        if (pinOutstanding) revealWhenStageScaleSettles(lastScale);
+        else root.removeAttribute('data-ui-hold');
+      }
+      return;
+    }
+    frames += 1;
+    if (frames >= PIN_SETTLE_MAX_FRAMES) {
+      finish();
+      return;
+    }
+    const cssScale = Number(getComputedStyle(root).getPropertyValue('--ui-scale'));
+    if (!checking) {
+      varMatched = scaleClose(cssScale, target) ? varMatched + 1 : 0;
+      if (varMatched >= PIN_SETTLE_MATCH_FRAMES) {
+        pinOutstanding = false;
+        slot?.style.removeProperty('width');
+        slot?.style.removeProperty('height');
+        stage?.style.removeProperty('transform');
+        void stage?.offsetHeight;
+        if (isCategoriesScreen()) layoutCategoryGrid();
+        checking = true;
+        usedMatched = 0;
+        lastKey = '';
+      }
+      requestAnimationFrame(tick);
+      return;
+    }
+    const used = usedStageScale(stage);
+    const scaleOk = scaleClose(used, target)
+      || (scaleClose(cssScale, target) && scaleClose(used, cssScale));
+    if (!scaleOk) {
+      checking = false;
+      varMatched = 0;
+      usedMatched = 0;
+      lastKey = '';
+      pinOutstanding = true;
+      if (stage && target > 0) stage.style.transform = `scale(${target})`;
+      requestAnimationFrame(tick);
+      return;
+    }
+    if (!categoryPackReady()) {
+      layoutCategoryGrid();
+      usedMatched = 0;
+      lastKey = '';
+      requestAnimationFrame(tick);
+      return;
+    }
+    const key = holdPaintKey();
+    if (key && key === lastKey) usedMatched += 1;
+    else usedMatched = 0;
+    lastKey = key;
+    if (usedMatched >= PIN_SETTLE_MATCH_FRAMES) {
+      finish();
+      return;
+    }
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+
 /** Pin a real `transform: scale(n)` — `scale(var(--ui-scale))` paints late. */
 function commitStageBox(designW, designH, scale, pinScale, holdPin) {
   const root = document.documentElement;
@@ -334,16 +451,12 @@ export function applyUiFitScale(opts = {}) {
   if (isCategoriesScreen()) layoutCategoryGrid();
 }
 
-/** After Home↔categories already hid the stage (`data-ui-swap`): pin, unpin, show. */
+/** Home↔categories: keep hold until used stage scale matches the pin. */
 export function fitAfterShowScreen(swap) {
   applyUiFitScale({ holdPin: Boolean(swap) });
   if (!swap) return;
-  afterUiPaints(() => {
-    clearStageScalePin();
-    afterUiPaints(() => {
-      document.documentElement.removeAttribute('data-ui-swap');
-    }, UI_SWAP_SETTLE_FRAMES);
-  }, UI_SWAP_PIN_FRAMES);
+  if (pinOutstanding) revealWhenStageScaleSettles(lastScale);
+  else document.documentElement.removeAttribute('data-ui-hold');
 }
 
 /** Align dock copy to the film slot. Does not run fit-text — ABC size is
