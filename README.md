@@ -87,7 +87,7 @@ Zwykły użytkownik **nie potrzebuje** drugiego klona gita. `-SyncGov` nie kopiu
 | `-SyncScope Questions\|Media\|Full` | Zakres `-SyncGov`: tylko pytania / ZIP→TEMP→WebP·MP4 / pełne (domyślne) |
 | `-SyncUseCache` | Przy `-SyncGov`: nie woła gov.pl, gdy `gov-cache` ma Excel i ZIP-y |
 | `-DropMissingMedia` | Przy `-SyncGov` (Full/Media): wycina z JSON media bez pliku lokalnego. Domyślnie **wyłączone** |
-| `-SkipTranslateGaps` | Przy `-SyncGov` Questions/Full: nie uzupełniaj pustych EN/DE/UA. Domyślnie **uzupełnia** (Gemini gdy jest klucz, inaczej Google Translate) |
+| `-SkipTranslateGaps` | Przy `-SyncGov` Questions/Full: nie uzupełniaj pustych EN/DE/UK. Domyślnie **uzupełnia** (Gemini gdy jest klucz, inaczej Google Translate) |
 | `-GeminiApiKey <klucz>` | Przy `-SyncGov` Questions/Full: Gemini na ten run (nadpisuje `.geminienv`). Bez parametru: `.geminienv` jak `.b2env`. Przy kluczu tylko Gemini (dzienny 429 → kolejny Flash). Bez klucza: Google |
 | `-MergeGov` | Na stojącym serwerze: dopisuje z Excela MI tylko braki |
 | `-Export <ścieżka>` | Paczka przenośna: kod + **domyślnie** snapshot serwera (`data`, `media`, `local.json`, `manifest.json`) |
@@ -325,7 +325,7 @@ bash Install_Prawko.linux.sh --patch
 - **12 kategorii** — A, A1, A2, AM, B, B1, C, C1, D, D1, PT, T
 - **Skórki** — Panel i Stacja
 - **Multimedia** — zdjęcia i filmy z oficjalnej bazy (stream z Backblaze, paczki offline z Cloudflare, albo lokalnie po `-SyncGov`)
-- **Języki** — PL, EN, DE, UA (interfejs i treść pytań)
+- **Języki** — PL, EN, DE, UK (interfejs i treść pytań)
 - **Tryb ciemny / jasny** — zapisany w przeglądarce
 - **Profile lokalne** — postęp na tym komputerze
 - **Offline** — PWA / Service Worker; „Pobierz offline” ściąga zipy z Cloudflare R2 i rozpakowuje je w Cache Storage przeglądarki
@@ -342,9 +342,9 @@ Zgodnie z rozporządzeniem (Dz.U. 2023 poz. 2659):
 
 ## Języki
 
-Przełącznik w aplikacji cyklicznie: **PL → EN → DE → UA**. Pierwsza wizyta: język przeglądarki, inaczej angielski. Chrome UI: wybrany język → EN → PL. Treść pytania bez tłumaczenia w wybranym języku: **angielski**, potem polski.
+Przełącznik w aplikacji cyklicznie: **PL → EN → DE → UK**. Pierwsza wizyta: język przeglądarki, inaczej angielski. Chrome UI: wybrany język → EN → PL. Treść pytania bez tłumaczenia w wybranym języku: **angielski**, potem polski.
 
-Treść pytań w językach obcych pochodzi z Excela MI (`Pytanie [EN]`, `Pytanie [D]`, `Pytanie [UA]`) i jest zapisana w `src/data/translations_{en,de,ua}.json` przez `parse-excel.ps1` (`ua` = ukraiński, nie mylić z UK). Parser **domyślnie** uzupełnia puste kolumny przez `translate-questions`. Gemini, gdy jest klucz: parametr `-GeminiApiKey` / `--gemini-api-key` na ten run, albo gitignored `.geminienv` w katalogu repo (szablon `scripts/geminienv.example`, jak `.b2env`), albo zmienna `GEMINI_API_KEY`. Przy kluczu **tylko Gemini** (lista Flash z API, lite pierwsze); 404 i dzienny 429 idą na kolejny model; gdy wszystkie padną — zapis i stop, bez Google. Pytanie ze złym tłumaczeniem (verify) jest pomijane. Bez klucza: Google Translate. Wyłączenie: `-SkipTranslateGaps` / `--skip-translate-gaps`. Przy kolejnym Excelu **nie kasuje** tych uzupełnień, tylko nadpisuje ID, które MI już ma.
+Treść pytań w językach obcych pochodzi z Excela MI (`Pytanie [EN]`, `Pytanie [D]`, `Pytanie [UA]`) i jest zapisana w `src/data/translations_{en,de,uk}.json` przez `parse-excel.ps1`. Parser **domyślnie** uzupełnia puste kolumny przez `translate-questions`. Gemini, gdy jest klucz: parametr `-GeminiApiKey` / `--gemini-api-key` na ten run, albo gitignored `.geminienv` w katalogu repo (szablon `scripts/geminienv.example`, jak `.b2env`), albo zmienna `GEMINI_API_KEY`. Przy kluczu **tylko Gemini** (lista Flash z API, lite pierwsze); 404 i dzienny 429 idą na kolejny model; gdy wszystkie padną — zapis i stop, bez Google. Zły verify (mieszany alfabet itd.) idzie na kolejny Flash; pytanie jest pomijane dopiero gdy żaden model nie przejdzie. Bez klucza: Google Translate. Wyłączenie: `-SkipTranslateGaps` / `--skip-translate-gaps`. Przy kolejnym Excelu **nie kasuje** tych uzupełnień, tylko nadpisuje ID, które MI już ma.
 
 ## Dane i multimedia
 
@@ -401,7 +401,7 @@ Wymagania poza instalatorem: **FFmpeg** i **cwebp** (`-SyncGov` kładzie przeno�
 | Skrypt | Zadanie |
 |---|---|
 | `scripts/download-gov.ps1` | Excel + ZIP z gov.pl → `C:\ProgramData\prawko\gov-cache` |
-| `scripts/parse-excel.ps1` | Excel → `src/data/*.json` oraz `translations_{en,de,ua}.json`; domyślnie wypełnia braki (`-SkipTranslateGaps` wyłącza; `-GeminiApiKey` opcjonalnie) |
+| `scripts/parse-excel.ps1` | Excel → `src/data/*.json` oraz `translations_{en,de,uk}.json`; domyślnie wypełnia braki (`-SkipTranslateGaps` wyłącza; `-GeminiApiKey` opcjonalnie) |
 | `scripts/translate-questions.ps1` | To samo uzupełnianie osobno albo `. -LibraryOnly` + `Fill-MissingQuestionTranslations` (`-GeminiApiKey` albo sam Google) |
 | `scripts/convert-media.ps1` | ZIP → TEMP → JPG→WebP, WMV→MP4 (TEMP kasowane; nie rusza PJM) |
 | `scripts/merge-gov.ps1` | Dopisywanie braków MI (`-MergeGov`); też `. scripts\merge-gov.ps1 -LibraryOnly` |
@@ -429,7 +429,7 @@ Gemini — ten sam układ co B2: skopiuj `scripts/geminienv.example` → `.gemin
 ```powershell
 Copy-Item scripts\geminienv.example .geminienv
 # wpisz GEMINI_API_KEY=... w .geminienv
-powershell -ExecutionPolicy Bypass -File .\scripts\translate-questions.ps1 -Lang ua
+powershell -ExecutionPolicy Bypass -File .\scripts\translate-questions.ps1 -Lang uk
 powershell -ExecutionPolicy Bypass -File .\scripts\parse-excel.ps1
 .\Install_Prawko.windows.ps1 -SyncGov -SyncScope Questions
 ```
@@ -481,7 +481,7 @@ Instalator to **`.sh`**. Reszta pipeline to **Python** (`python3`), bez Node i b
 python3 scripts/download-gov.py --excel-only
 python3 scripts/parse-excel.py --out-dir src/data
 # python3 scripts/parse-excel.py --out-dir src/data --gemini-api-key KEY
-# python3 scripts/translate-questions.py --lang ua --gemini-api-key KEY
+# python3 scripts/translate-questions.py --lang uk --gemini-api-key KEY
 python3 scripts/convert-media.py
 # python3 scripts/upload-media.py
 # python3 scripts/build-media-packs.py
@@ -590,7 +590,7 @@ A normal user does **not** need a second git clone. `-SyncGov` does not duplicat
 | `-SyncScope Questions\|Media\|Full` | Scope for `-SyncGov`: questions only / ZIP→TEMP→WebP·MP4 / full (default) |
 | `-SyncUseCache` | Skip gov.pl when `gov-cache` already has Excel and ZIPs |
 | `-DropMissingMedia` | With `-SyncGov` (Full/Media): strip JSON media without local files. **Off** by default |
-| `-SkipTranslateGaps` | With `-SyncGov` Questions/Full: do not fill empty EN/DE/UA. **Fills** by default (Gemini when a key is present, else Google Translate) |
+| `-SkipTranslateGaps` | With `-SyncGov` Questions/Full: do not fill empty EN/DE/UK. **Fills** by default (Gemini when a key is present, else Google Translate) |
 | `-GeminiApiKey <key>` | With `-SyncGov` Questions/Full: Gemini for this run (overrides `.geminienv`). Without the switch: `.geminienv` like `.b2env`. With a key: Gemini only (daily 429 → next Flash). No key: Google |
 | `-MergeGov` | On a running server: append ministry Excel rows that are missing |
 | `-Export <path>` | Portable pack: code + **default** server snapshot (`data`, `media`, `local.json`, `manifest.json`) |
@@ -808,7 +808,7 @@ bash Install_Prawko.linux.sh --patch
 - **12 categories** — A, A1, A2, AM, B, B1, C, C1, D, D1, PT, T
 - **Skins** — Panel and Station
 - **Media** — official photos and films (Backblaze stream, Cloudflare offline packs, or local after `-SyncGov`)
-- **Languages** — PL, EN, DE, UA (UI and question text)
+- **Languages** — PL, EN, DE, UK (UI and question text)
 - **Dark / light theme** — persisted in the browser
 - **Local profiles** — progress on this machine
 - **Offline** — PWA / service worker; “Download offline” fetches zip packs from Cloudflare R2 into Cache Storage
@@ -825,9 +825,9 @@ Per the regulation (Dz.U. 2023 item 2659):
 
 ## Languages
 
-The in-app control cycles **PL → EN → DE → UA**. First visit: browser language, otherwise English. UI chrome: selected language → EN → PL. Question text missing in the selected language: **English**, then Polish.
+The in-app control cycles **PL → EN → DE → UK**. First visit: browser language, otherwise English. UI chrome: selected language → EN → PL. Question text missing in the selected language: **English**, then Polish.
 
-Non-Polish question text comes from the ministry Excel (`Pytanie [EN]`, `Pytanie [D]`, `Pytanie [UA]`) into `src/data/translations_{en,de,ua}.json` via `parse-excel.ps1` (`ua` = Ukrainian, not UK). The parser **by default** fills empty Excel columns through `translate-questions`. Gemini when a key is available: `-GeminiApiKey` / `--gemini-api-key` for this run, or gitignored `.geminienv` at the repo root (template `scripts/geminienv.example`, same idea as `.b2env`), or `GEMINI_API_KEY` in the environment. No key: Google Translate. With a key: Gemini only (Flash list from the API, lite first); 404 and daily 429 try the next model; when every Flash is exhausted — save and stop, no Google. A verify failure skips that question. Opt out: `-SkipTranslateGaps` / `--skip-translate-gaps`. A later parse **keeps** those fills and only overwrites IDs the ministry already has.
+Non-Polish question text comes from the ministry Excel (`Pytanie [EN]`, `Pytanie [D]`, `Pytanie [UA]`) into `src/data/translations_{en,de,uk}.json` via `parse-excel.ps1`. The parser **by default** fills empty Excel columns through `translate-questions`. Gemini when a key is available: `-GeminiApiKey` / `--gemini-api-key` for this run, or gitignored `.geminienv` at the repo root (template `scripts/geminienv.example`, same idea as `.b2env`), or `GEMINI_API_KEY` in the environment. No key: Google Translate. With a key: Gemini only (Flash list from the API, lite first); 404 and daily 429 try the next model; when every Flash is exhausted — save and stop, no Google. A verify failure (mixed script, etc.) tries the next Flash; the question is skipped only when every model fails. Opt out: `-SkipTranslateGaps` / `--skip-translate-gaps`. A later parse **keeps** those fills and only overwrites IDs the ministry already has.
 
 ## Data and media
 
@@ -884,7 +884,7 @@ Besides the installer: media conversion needs **FFmpeg** and **cwebp** (`-SyncGo
 | Script | Job |
 |---|---|
 | `scripts/download-gov.ps1` | Excel + ZIPs from gov.pl → `C:\ProgramData\prawko\gov-cache` |
-| `scripts/parse-excel.ps1` | Excel → `src/data/*.json` and `translations_{en,de,ua}.json`; fills gaps by default (`-SkipTranslateGaps` disables; optional `-GeminiApiKey`) |
+| `scripts/parse-excel.ps1` | Excel → `src/data/*.json` and `translations_{en,de,uk}.json`; fills gaps by default (`-SkipTranslateGaps` disables; optional `-GeminiApiKey`) |
 | `scripts/translate-questions.ps1` | Same fill standalone, or `. -LibraryOnly` + `Fill-MissingQuestionTranslations` (`-GeminiApiKey` or Google only) |
 | `scripts/convert-media.ps1` | ZIP → TEMP → JPG→WebP, WMV→MP4 (TEMP deleted; does not touch PJM) |
 | `scripts/merge-gov.ps1` | Append missing ministry rows (`-MergeGov`); also `. scripts\merge-gov.ps1 -LibraryOnly` |
@@ -912,7 +912,7 @@ Gemini — same pattern as B2: copy `scripts/geminienv.example` → `.geminienv`
 ```powershell
 Copy-Item scripts\geminienv.example .geminienv
 # set GEMINI_API_KEY=... in .geminienv
-powershell -ExecutionPolicy Bypass -File .\scripts\translate-questions.ps1 -Lang ua
+powershell -ExecutionPolicy Bypass -File .\scripts\translate-questions.ps1 -Lang uk
 powershell -ExecutionPolicy Bypass -File .\scripts\parse-excel.ps1
 .\Install_Prawko.windows.ps1 -SyncGov -SyncScope Questions
 ```
@@ -964,7 +964,7 @@ The installer is **`.sh`**. The rest of the pipeline is **Python** (`python3`), 
 python3 scripts/download-gov.py --excel-only
 python3 scripts/parse-excel.py --out-dir src/data
 # python3 scripts/parse-excel.py --out-dir src/data --gemini-api-key KEY
-# python3 scripts/translate-questions.py --lang ua --gemini-api-key KEY
+# python3 scripts/translate-questions.py --lang uk --gemini-api-key KEY
 python3 scripts/convert-media.py
 # python3 scripts/upload-media.py
 # python3 scripts/build-media-packs.py

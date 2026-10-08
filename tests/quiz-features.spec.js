@@ -389,19 +389,18 @@ test.describe('Language switch during quiz', () => {
     await expect(page.locator('.lang-cycle')).toHaveText('EN');
   });
 
-  test('Ukrainian uses ua in the app and uk on html lang', async ({ page }) => {
+  test('language cycle includes Ukrainian', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('#home.active');
     await cycleLanguage(page);
     await cycleLanguage(page);
     await cycleLanguage(page);
-    await expect(page.locator('.lang-cycle')).toHaveAttribute('data-lang', 'ua');
-    await expect(page.locator('.lang-cycle')).toHaveText('UA');
-    await expect(page.locator('html')).toHaveAttribute('lang', 'uk');
+    await expect(page.locator('.lang-cycle')).toHaveAttribute('data-lang', 'uk');
+    await expect(page.locator('.lang-cycle')).toHaveText('UK');
   });
 
-  test('missing UA question text falls back to English, not Polish', async ({ page }) => {
-    await page.route('**/data/translations_ua.json', async (route) => {
+  test('missing Ukrainian question text falls back to English, not Polish', async ({ page }) => {
+    await page.route('**/data/translations_uk.json', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -422,10 +421,10 @@ test.describe('Language switch during quiz', () => {
 
     await cycleLanguage(page);
     await cycleLanguage(page);
-    await expect(page.locator('.lang-cycle')).toHaveAttribute('data-lang', 'ua');
-    const questionTextUa = await page.textContent('.question-text');
-    expect(questionTextUa).toBe(questionTextEn);
-    expect(questionTextUa).not.toBe(questionTextPl);
+    await expect(page.locator('.lang-cycle')).toHaveAttribute('data-lang', 'uk');
+    const questionTextUk = await page.textContent('.question-text');
+    expect(questionTextUk).toBe(questionTextEn);
+    expect(questionTextUk).not.toBe(questionTextPl);
   });
 
   test('switching language updates question text in learn mode', async ({ page }) => {

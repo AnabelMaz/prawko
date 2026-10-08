@@ -1,26 +1,29 @@
 #!/usr/bin/env python3
 """Fill missing question translations (macOS/Linux).
 
+Gemini prompt: scripts/translate-questions.skill.md ({lang} filled here).
 Same job as scripts/translate-questions.ps1. Does not overwrite ministry Excel
-strings already in translations_{en,de,ua}.json. Target `ua` is Ukrainian
-(Google language code `uk`). No extra pip package.
+strings already in translations_{en,de,uk}.json. No extra pip package.
 
 Key resolution (Gemini if any of these exist, else Google Translate):
   1. --gemini-api-key for this run
   2. GEMINI_API_KEY already in the environment
   3. .geminienv at the repo root (gitignored; template scripts/geminienv.example)
 With a key: Gemini only. GET v1beta/models, rank Flash (lite first). 404 and daily
-429 try the next model. Verify/empty q skips that ID. Auth errors or every Flash
-daily-exhausted: abort (progress saved). No Google mix. No key: Google Translate.
-A progress bar runs during the fill.
+429 try the next model. Verify fail tries the next model; skip the ID only when
+every model fails. Auth errors or every Flash daily-exhausted: abort (progress
+saved). No Google mix. No key: Google Translate.
+CLI prints that line and exits 1 (`die`). Library `fill_missing` uses the same
+SystemExit. A progress bar runs during the fill.
 
   python3 scripts/translate-questions.py
-  python3 scripts/translate-questions.py --lang ua
-  python3 scripts/translate-questions.py --lang ua --gemini-api-key KEY
+  python3 scripts/translate-questions.py --lang uk
+  python3 scripts/translate-questions.py --lang uk --gemini-api-key KEY
 
 Library: fill_missing(data_dir, langs=None, gemini_api_key=None, skip_verify_ai=False).
 parse-excel.py calls it unless --skip-translate-gaps.
-Fills are checked (length, structure, numbers, script) unless --skip-verify-ai.
+Fills are checked (length, structure, numbers, script, mixed words)
+unless --skip-verify-ai.
 """
 
 from __future__ import annotations
@@ -40,7 +43,9 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC_DATA = REPO_ROOT / "src" / "data"
+SKILL_PATH = Path(__file__).resolve().parent / "translate-questions.skill.md"
 GEMINI_ENV_NAME = ".geminienv"
+_skill_template: str | None = None
 SKIP_JSON = {
     "meta.json",
     "translations_en.json",
@@ -49,11 +54,11 @@ SKIP_JSON = {
     "translations_uk.json",
     "translations_pl.json",
 }
-GOOGLE_LANG = {"en": "en", "de": "de", "ua": "uk"}
+GOOGLE_LANG = {"en": "en", "de": "de", "uk": "uk"}
 GEMINI_LANG = {
     "en": "English",
     "de": "German",
-    "ua": "Ukrainian",
+    "uk": "Ukrainian",
 }
 # Older Flash endpoints return 404. New keys: 3.5 Flash-Lite / 3.8 Flash.
 GEMINI_MODELS = (
@@ -178,19 +183,24 @@ def load_existing(lang: str, data_dir: Path | None = None) -> dict:
         data = json.loads(path.read_text(encoding="utf-8"))
         if isinstance(data, dict):
             return data
-    if lang == "ua":
-        legacy = root / "translations_uk.json"
-        if legacy.is_file():
-            data = json.loads(legacy.read_text(encoding="utf-8"))
-            if isinstance(data, dict):
-                return data
     return {}
 
 
 def save_translations(lang: str, data: dict, data_dir: Path | None = None) -> None:
     path = translation_path(lang, data_dir)
     tmp = path.with_suffix(path.suffix + ".tmp")
-    text = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+    ordered = {}
+    for qid, tr in data.items():
+        if not isinstance(tr, dict):
+            continue
+        item = {}
+        for key in ("q", "a", "b", "c", "src"):
+            val = tr.get(key)
+            if val:
+                item[key] = val
+        if item.get("q"):
+            ordered[qid] = item
+    text = json.dumps(ordered, ensure_ascii=False, separators=(",", ":"))
     last: Exception | None = None
     for i in range(8):
         try:
@@ -217,6 +227,10 @@ def _tr_words(text: str) -> list[str]:
     return [w for w in re.split(r"\s+", (text or "").strip()) if w]
 
 
+_TR_LETTER_RUN = re.compile(r"[^\W\d_]+", re.UNICODE)
+_TR_CYR_LANGS = {"uk"}
+
+
 def _tr_script_stats(text: str) -> tuple[int, int]:
     letters = 0
     cyr = 0
@@ -227,6 +241,23 @@ def _tr_script_stats(text: str) -> tuple[int, int]:
             if 0x0400 <= o <= 0x04FF or 0x0500 <= o <= 0x052F:
                 cyr += 1
     return letters, cyr
+
+
+def _tr_letter_script(ch: str) -> str:
+    o = ord(ch)
+    if 0x0400 <= o <= 0x052F:
+        return "cyr"
+    if 0x0370 <= o <= 0x03FF:
+        return "grk"
+    return "lat"
+
+
+def _tr_mixed_script_word(text: str) -> str | None:
+    for word in _TR_LETTER_RUN.findall(text or ""):
+        scripts = {_tr_letter_script(ch) for ch in word if ch.isalpha()}
+        if len(scripts) >= 2:
+            return word
+    return None
 
 
 def _tr_paras(text: str) -> list[str]:
@@ -276,12 +307,16 @@ def check_translation_field(src: str, dst: str, lang: str) -> str | None:
     dst_s = _tr_sents(dst)
     if dst_s >= max(4, src_s * 3) and dst_len > src_len + 40:
         return "extra sentences"
+    mixed = _tr_mixed_script_word(dst_n)
+    if mixed:
+        return "mixed script"
     letters, cyr = _tr_script_stats(dst_n)
     if letters > 8:
         frac = cyr / letters
-        if lang == "ua" and frac < 0.25:
-            return "not Ukrainian"
-        if lang in ("en", "de") and frac > 0.25:
+        want_cyr = lang in _TR_CYR_LANGS
+        if want_cyr and frac < 0.25:
+            return "wrong script"
+        if not want_cyr and frac > 0.25:
             return "wrong script"
     for num in re.findall(r"\d{2,}", src):
         if num not in dst:
@@ -333,17 +368,21 @@ def translate_one(text: str, target: str) -> str:
     raise RuntimeError(str(last) if last else "translate failed")
 
 
+def load_translate_skill() -> str:
+    global _skill_template
+    if _skill_template is not None:
+        return _skill_template
+    if not SKILL_PATH.is_file():
+        raise RuntimeError(f"Missing {SKILL_PATH}")
+    text = SKILL_PATH.read_text(encoding="utf-8").rstrip()
+    if not text:
+        raise RuntimeError(f"Empty {SKILL_PATH}")
+    _skill_template = text
+    return _skill_template
+
+
 def gemini_translate_rules(lang: str) -> str:
-    label = GEMINI_LANG[lang]
-    return (
-        f"Translate Polish driving-licence theory exam questions into {label}.\n"
-        f"The POLISH lines are the ministry source. After each label (q: a: b: c:) write only the {label} text.\n"
-        "Do not copy the Polish source. Repeating Polish sentences is wrong.\n"
-        "Keep digits, units (km/h, t, m), and lone option letters (A/B/C) unchanged.\n"
-        "Tak/Nie in the source is exam text — translate it.\n"
-        "Do not add extra options or explanations. Same meaning, similar length.\n"
-        "No commentary, no JSON, no markdown table."
-    )
+    return load_translate_skill().replace("{lang}", GEMINI_LANG[lang])
 
 
 def src_labeled_lines(q: dict) -> str:
@@ -368,7 +407,7 @@ def gemini_batch_prompt(questions: dict, ids: list[str], lang: str) -> str:
         blocks.append(src_labeled_lines(questions[qid]))
     return (
         gemini_translate_rules(lang)
-        + f"\nSeveral questions: before each block write id <number>, then q:/a:/b:/c: in {label}.\n\n"
+        + f"\nSeveral questions: before each block write id <number>, then the same labels as the POLISH source in {label}.\n\n"
         + "\n".join(blocks)
     )
 
@@ -812,8 +851,8 @@ def gemini_translate_ids(
                     print(f"  Gemini model {model}: bad response, trying next")
                     break
                 if "verify:" in msg:
-                    print(f"  Gemini model {model}: {msg}, skip question")
-                    raise RuntimeError(msg) from exc
+                    print(f"  Gemini model {model}: {msg}, trying next")
+                    break
                 if "429" in msg or "Too Many" in msg or "RESOURCE_EXHAUSTED" in msg:
                     if gemini_daily_quota(msg):
                         mark_gemini_dead(model)
@@ -858,6 +897,7 @@ def apply_fields(existing: dict, qid: str, fields: list[tuple[str, str]], transl
         val = translated.get(name)
         if isinstance(val, str) and val.strip():
             dest[name] = val.strip()
+    dest["src"] = "gemini"
 
 
 def fill_lang(
@@ -940,6 +980,7 @@ def fill_lang(
                                 if why:
                                     raise RuntimeError(f"verify: {why}")
                             existing[qid][name] = out
+                            existing[qid]["src"] = "gemini"
                         except RuntimeError as exc:
                             print(f"  skip {qid}.{name}: {exc}")
             done += len(chunk)

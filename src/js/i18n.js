@@ -625,7 +625,7 @@ const translations = {
     profileResetConfirm: 'Ja, zurücksetzen',
     langToggle: 'Sprache',
   },
-  ua: {
+  uk: {
     appName: 'Prawko',
     tagline: 'Усі {n} офіційних екзаменаційних питань',
     featureLearn: 'Режим навчання',
@@ -835,13 +835,13 @@ const translations = {
   },
 };
 
-export const LANG_CYCLE = ['pl', 'en', 'de', 'ua'];
-export const LANG_LABELS = { pl: 'PL', en: 'EN', de: 'DE', ua: 'UA' };
+export const LANG_CYCLE = ['pl', 'en', 'de', 'uk'];
+export const LANG_LABELS = { pl: 'PL', en: 'EN', de: 'DE', uk: 'UK' };
 const SUPPORTED_LANGS = LANG_CYCLE;
 const QUESTION_TRANSLATION_FILES = {
   en: 'data/translations_en.json',
   de: 'data/translations_de.json',
-  ua: 'data/translations_ua.json',
+  uk: 'data/translations_uk.json',
 };
 
 export function nextLang(lang) {
@@ -849,13 +849,9 @@ export function nextLang(lang) {
   return LANG_CYCLE[(i + 1) % LANG_CYCLE.length];
 }
 
-function htmlLangAttr(lang) {
-  return lang === 'ua' ? 'uk' : lang;
-}
-
 function normalizeLang(raw) {
   const primary = String(raw || '').toLowerCase().split('-')[0];
-  if (primary === 'uk' || primary === 'ua') return 'ua';
+  if (primary === 'ua') return 'uk';
   return primary;
 }
 
@@ -887,7 +883,7 @@ export function getLang() {
 export function setLang(lang) {
   currentLang = SUPPORTED_LANGS.includes(lang) ? lang : 'en';
   try { localStorage.setItem('prawko_lang', currentLang); } catch {}
-  document.documentElement.lang = htmlLangAttr(currentLang);
+  document.documentElement.lang = currentLang;
 }
 
 export function t(key) {

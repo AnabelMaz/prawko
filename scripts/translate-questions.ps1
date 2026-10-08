@@ -1,27 +1,30 @@
 ﻿# UTF-8 with BOM — Windows PowerShell 5.1 otherwise misreads non-ASCII text and here-strings.
 # Fill missing question translations (Windows, no Python).
+# Gemini prompt: scripts/translate-questions.skill.md ({lang} filled here).
 # Same job as scripts/translate-questions.py. Does not overwrite ministry Excel
-# strings already in translations_{en,de,ua}.json. -Lang ua is Ukrainian
-# (Google language code uk).
+# strings already in translations_{en,de,uk}.json.
 #
 # Gemini key (optional): -GeminiApiKey this run, else GEMINI_API_KEY in the
 # environment, else .geminienv at the repo root (gitignored; template
 # scripts/geminienv.example). No key = Google Translate only. With a key:
 # Gemini only (v1beta generateContent — that is Google's REST surface,
 # not a beta/preview model). Lists Flash from the API (lite first). 404 and
-# daily 429 mark that id dead and try the next. Skip a question on verify or
-# empty q. Abort on auth/key errors or when every Flash is daily-exhausted
-# (progress saved). No Google mix when a key is present.
+# daily 429 mark that id dead and try the next. Verify fail tries the next
+# model; skip the ID only when every model fails. Empty q tries next.
+# Abort on auth/key errors or when every Flash is daily-exhausted
+# (progress saved). No Google mix when a key is present. Run as a file: print
+# that line and exit 1. -LibraryOnly still throws so parse-excel can catch.
 #
 # Helpers load with:
 #   . scripts\translate-questions.ps1 -LibraryOnly
-#   Fill-MissingQuestionTranslations -DataDir DIR [-Lang en,de,ua] [-GeminiApiKey KEY] [-SkipVerifyAi]
+#   Fill-MissingQuestionTranslations -DataDir DIR [-Lang en,de,uk] [-GeminiApiKey KEY] [-SkipVerifyAi]
 #
 # powershell -ExecutionPolicy Bypass -File scripts/translate-questions.ps1
-# powershell -ExecutionPolicy Bypass -File scripts/translate-questions.ps1 -Lang ua
-# powershell -ExecutionPolicy Bypass -File scripts/translate-questions.ps1 -Lang ua -GeminiApiKey KEY
+# powershell -ExecutionPolicy Bypass -File scripts/translate-questions.ps1 -Lang uk
+# powershell -ExecutionPolicy Bypass -File scripts/translate-questions.ps1 -Lang uk -GeminiApiKey KEY
 # parse-excel.ps1 calls this by default after writing JSON (-SkipTranslateGaps to skip).
-# Fills are checked (length, structure, numbers, script) unless -SkipVerifyAi.
+# Fills are checked (length, structure, numbers, script, mixed words)
+# unless -SkipVerifyAi.
 
 param(
     [switch]$LibraryOnly,
@@ -39,6 +42,8 @@ $script:TrRepoRoot = Split-Path -Parent $PSScriptRoot
 $script:TrDataDir = if ($DataDir) { $DataDir } else { Join-Path $script:TrRepoRoot "src\data" }
 $script:TrGeminiApiKey = $GeminiApiKey
 $script:TrSkipVerifyAi = [bool]$SkipVerifyAi
+$script:TrSkillPath = Join-Path $PSScriptRoot "translate-questions.skill.md"
+$script:TrSkillTemplate = $null
 # PS 5.1 StrictMode: a scalar (one value, not created as @()) has no .Count.
 function Get-TrLen ($obj) {
     if ($null -eq $obj) { return 0 }
@@ -55,11 +60,12 @@ $skipJson = @{
     "translations_uk.json"   = $true
     "translations_pl.json"   = $true
 }
-$googleLang = @{ en = "en"; de = "de"; ua = "uk" }
+$googleLang = @{ en = "en"; de = "de"; uk = "uk" }
+$script:TrCyrLangs = @{ uk = $true }
 $geminiLang = @{
     en = "English"
     de = "German"
-    ua = "Ukrainian"
+    uk = "Ukrainian"
 }
 $geminiModels = @("gemini-3.5-flash-lite", "gemini-3.8-flash")
 # Skip preview|experimental|beta|latest and non-text Flash when listing.
@@ -112,8 +118,8 @@ function ConvertTo-TrJson ($map) {
     foreach ($id in @($map.Keys)) {
         $tr = $map[$id]
         $fields = New-Object System.Collections.Generic.List[string]
-        foreach ($k in @('q', 'a', 'b', 'c')) {
-            if ($tr[$k]) {
+        foreach ($k in @('q', 'a', 'b', 'c', 'src')) {
+            if ($tr.Contains($k) -and $tr[$k]) {
                 $fields.Add(('"{0}":"{1}"' -f $k, (Escape-TrJsonString ([string]$tr[$k]))))
             }
         }
@@ -141,15 +147,12 @@ function Get-UniqueQuestions {
 
 function Read-TranslationMap ([string]$name) {
     $path = Get-TranslationPath $name
-    if (-not (Test-Path -LiteralPath $path) -and $name -eq 'ua') {
-        $path = Get-TranslationPath 'uk'
-    }
     $map = [ordered]@{}
     if (-not (Test-Path -LiteralPath $path)) { return ,$map }
     $existing = Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
     foreach ($p in $existing.PSObject.Properties) {
         $tr = [ordered]@{}
-        foreach ($field in @('q', 'a', 'b', 'c')) {
+        foreach ($field in @('q', 'a', 'b', 'c', 'src')) {
             $prop = $p.Value.PSObject.Properties[$field]
             if ($prop -and $prop.Value) { $tr[$field] = [string]$prop.Value }
         }
@@ -259,6 +262,24 @@ function Get-TrSentCount ([string]$text) {
     return [regex]::Matches(([string]$text), '[.!?…।؟]+').Count
 }
 
+function Get-TrLetterScript ([char]$ch) {
+    $o = [int]$ch
+    if ($o -ge 0x0400 -and $o -le 0x052F) { return 'cyr' }
+    if ($o -ge 0x0370 -and $o -le 0x03FF) { return 'grk' }
+    return 'lat'
+}
+
+function Get-TrMixedScriptWord ([string]$text) {
+    foreach ($m in [regex]::Matches(([string]$text), '\p{L}+')) {
+        $scripts = @{}
+        foreach ($ch in $m.Value.ToCharArray()) {
+            $scripts[(Get-TrLetterScript $ch)] = $true
+        }
+        if ($scripts.Count -ge 2) { return $m.Value }
+    }
+    return $null
+}
+
 function Test-TrField ([string]$src, [string]$dst, [string]$langName) {
     $src = ([string]$src).Trim()
     $dst = ([string]$dst).Trim()
@@ -296,6 +317,7 @@ function Test-TrField ([string]$src, [string]$dst, [string]$langName) {
     $needS = 4
     if (($srcS * 3) -gt $needS) { $needS = $srcS * 3 }
     if ($dstS -ge $needS -and $dstLen -gt ($srcLen + 40)) { return 'extra sentences' }
+    if (Get-TrMixedScriptWord $dstN) { return 'mixed script' }
     $letters = 0
     $cyr = 0
     foreach ($ch in $dstN.ToCharArray()) {
@@ -305,8 +327,9 @@ function Test-TrField ([string]$src, [string]$dst, [string]$langName) {
     }
     if ($letters -gt 8) {
         $frac = $cyr / [double]$letters
-        if ($langName -eq 'ua' -and $frac -lt 0.25) { return 'not Ukrainian' }
-        if ($langName -in @('en', 'de') -and $frac -gt 0.25) { return 'wrong script' }
+        $wantCyr = $script:TrCyrLangs.ContainsKey($langName)
+        if ($wantCyr -and $frac -lt 0.25) { return 'wrong script' }
+        if (-not $wantCyr -and $frac -gt 0.25) { return 'wrong script' }
     }
     foreach ($num in [regex]::Matches($src, '\d{2,}')) {
         if ($dst.IndexOf($num.Value) -lt 0) { return ("missing number {0}" -f $num.Value) }
@@ -357,17 +380,20 @@ function Invoke-GoogleTranslate ([string]$text, [string]$target) {
     throw $last
 }
 
+function Get-GeminiTranslateSkillTemplate {
+    if ($null -ne $script:TrSkillTemplate) { return $script:TrSkillTemplate }
+    if (-not (Test-Path -LiteralPath $script:TrSkillPath)) {
+        throw "Missing $($script:TrSkillPath)"
+    }
+    $text = [IO.File]::ReadAllText($script:TrSkillPath, [Text.Encoding]::UTF8).TrimEnd()
+    if (-not $text) { throw "Empty $($script:TrSkillPath)" }
+    $script:TrSkillTemplate = $text
+    return $script:TrSkillTemplate
+}
+
 function Get-GeminiTranslateRules ([string]$langName) {
     $label = $geminiLang[$langName]
-    return @"
-Translate Polish driving-licence theory exam questions into $label.
-The POLISH lines are the ministry source. After each label (q: a: b: c:) write only the $label text.
-Do not copy the Polish source. Repeating Polish sentences is wrong.
-Keep digits, units (km/h, t, m), and lone option letters (A/B/C) unchanged.
-Tak/Nie in the source is exam text — translate it.
-Do not add extra options or explanations. Same meaning, similar length.
-No commentary, no JSON, no markdown table.
-"@
+    return (Get-GeminiTranslateSkillTemplate).Replace('{lang}', $label)
 }
 
 function Get-TrSrcLabeledLines {
@@ -407,7 +433,7 @@ function Get-GeminiBatchPrompt ($questions, $ids, [string]$langName) {
     $src = $blocks -join "`n"
     return @"
 $rules
-Several questions: before each block write id <number>, then q:/a:/b:/c: in $label.
+Several questions: before each block write id <number>, then the same labels as the POLISH source in $label.
 
 $src
 "@
@@ -939,12 +965,15 @@ function Apply-TrQuestionFields ($existing, [string]$qid, $q, $tr) {
     if (-not $gotQ) { return $false }
     if (-not $existing.Contains($qid)) { $existing[$qid] = [ordered]@{} }
     $existing[$qid]['q'] = ([string]$gotQ).Trim()
+    Set-QuestionSourceFields $q
     foreach ($k in @('a', 'b', 'c')) {
+        if (-not $script:TrSrc.ContainsKey($k)) { continue }
         $val = $null
         if ($script:TrSaved -and $script:TrSaved.ContainsKey($k)) { $val = $script:TrSaved[$k] }
         if (-not $val) { $val = Get-TrLastField $k }
         if ($val) { $existing[$qid][$k] = ([string]$val).Trim() }
     }
+    $existing[$qid]['src'] = 'gemini'
     return $true
 }
 
@@ -1022,8 +1051,9 @@ function Invoke-GeminiTranslateIds ($questions, $ids, [string]$langName, [string
                     break
                 }
                 if ($msg -match 'verify:') {
-                    Write-Host ("  Gemini model {0}: {1}, skip question" -f $model, $msg) -ForegroundColor DarkYellow
-                    throw (New-Object System.Exception $msg)
+                    Write-Host ("  Gemini model {0}: {1}, trying next" -f $model, $msg) -ForegroundColor DarkYellow
+                    $tryNext = $true
+                    break
                 }
                 if ($msg -match '429|Too Many|RESOURCE_EXHAUSTED') {
                     if (Test-TrGeminiDailyQuota $msg) {
@@ -1094,9 +1124,9 @@ function Fill-MissingQuestionTranslations {
     if ((Get-TrLen $langs) -eq 1 -and $langs[0] -match ',') {
         $langs = @($langs[0].Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
     }
-    if ((Get-TrLen $langs) -eq 0) { $langs = @('en', 'de', 'ua') }
+    if ((Get-TrLen $langs) -eq 0) { $langs = @('en', 'de', 'uk') }
     foreach ($name in $langs) {
-        if (-not $googleLang.ContainsKey($name)) { throw "Unknown -Lang $name (use en, de, ua)." }
+        if (-not $googleLang.ContainsKey($name)) { throw "Unknown -Lang $name (use en, de, uk)." }
     }
 
     foreach ($name in $langs) {
@@ -1177,6 +1207,7 @@ function Fill-MissingQuestionTranslations {
                             if ($why) { throw "verify: $why" }
                         }
                         $existing[$qid][$fname] = $out
+                        $existing[$qid]['src'] = 'gemini'
                     } catch {
                         Write-Host ("  skip {0}.{1}: {2}" -f $qid, $fname, $_.Exception.Message) -ForegroundColor DarkYellow
                     }
@@ -1198,4 +1229,12 @@ function Fill-MissingQuestionTranslations {
 
 if ($LibraryOnly) { return }
 
-Fill-MissingQuestionTranslations -DataDir $script:TrDataDir -Lang $Lang -GeminiApiKey $GeminiApiKey -SkipVerifyAi:$SkipVerifyAi
+try {
+    Fill-MissingQuestionTranslations -DataDir $script:TrDataDir -Lang $Lang -GeminiApiKey $GeminiApiKey -SkipVerifyAi:$SkipVerifyAi
+} catch {
+    try { Complete-TrProgress } catch { }
+    $msg = Protect-TrErrorMessage ([string]$_.Exception.Message) $script:TrGeminiApiKey
+    if (-not $msg) { $msg = [string]$_ }
+    Write-Host $msg -ForegroundColor Red
+    exit 1
+}

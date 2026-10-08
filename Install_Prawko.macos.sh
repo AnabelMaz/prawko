@@ -63,7 +63,7 @@ FLAGS (same as Install_Prawko.windows.ps1 on Windows)
                          Scope: --sync-scope questions|media|full (default full).
                          --sync-use-cache skips gov.pl when gov-cache has Excel and ZIPs.
   --drop-missing-media   Only with --sync-gov (full/media): strip missing media from JSON.
-  --skip-translate-gaps  With --sync-gov questions/full: do not fill missing EN/DE/UA. Default fills (Gemini when a key is available, else Google Translate).
+  --skip-translate-gaps  With --sync-gov questions/full: do not fill missing EN/DE/UK. Default fills (Gemini when a key is available, else Google Translate).
   --gemini-api-key KEY   Optional. Google AI Studio key for this run (overrides .geminienv).
                          With --sync-gov questions/full and a key: Gemini only (daily 429 tries the next Flash; all exhausted saves and stops).
                          Omit: .geminienv / GEMINI_API_KEY, else Google Translate only.
@@ -357,7 +357,7 @@ copy_gov_json_to_server() {
       cp "$gov_dir/$cat.json" "$TARGET_DIR/src/data/$cat.json" || return 2
     fi
   done
-  for tr in translations_en.json translations_de.json translations_ua.json; do
+  for tr in translations_en.json translations_de.json translations_uk.json; do
     if [ -f "$gov_dir/$tr" ]; then
       cp "$gov_dir/$tr" "$TARGET_DIR/src/data/$tr" || return 2
     fi
@@ -372,8 +372,16 @@ overlay_src() {
   [ -f "$dest_root/src/index.html" ] || die "Server is not installed (missing $dest_root/src/index.html)."
   say_c "-> Overlaying $src_app -> $dest_root/src (skipping data/ and media/)"
   rsync -a --exclude data --exclude media "$src_app/" "$dest_root/src/"
-  if [ -f "$src_app/data/translations_en.json" ] && [ -d "$dest_root/src/data" ]; then
-    cp "$src_app/data/translations_en.json" "$dest_root/src/data/translations_en.json"
+  if [ -d "$dest_root/src/data" ]; then
+    if [ -f "$src_app/data/translations_en.json" ]; then
+      cp "$src_app/data/translations_en.json" "$dest_root/src/data/translations_en.json"
+    fi
+    if [ -f "$src_app/data/translations_uk.json" ]; then
+      cp "$src_app/data/translations_uk.json" "$dest_root/src/data/translations_uk.json"
+    elif [ -f "$dest_root/src/data/translations_ua.json" ] && [ ! -f "$dest_root/src/data/translations_uk.json" ]; then
+      mv "$dest_root/src/data/translations_ua.json" "$dest_root/src/data/translations_uk.json"
+    fi
+    rm -f "$dest_root/src/data/translations_ua.json"
   fi
   stamp_cache "$dest_root" "$prefix"
   restore_media_base_if_needed "$dest_root"

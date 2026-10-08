@@ -91,7 +91,7 @@ SWITCHES
   -DropMissingMedia Only with -SyncGov -SyncScope Full or Media: the parser strips
                     from JSON media whose file is missing in local raw. Default: NO.
 
-  -SkipTranslateGaps With -SyncGov Questions/Full: do not fill missing EN/DE/UA
+  -SkipTranslateGaps With -SyncGov Questions/Full: do not fill missing EN/DE/UK
                     after parse-excel. Default: fill gaps (Gemini when a key
                     is available, else Google Translate).
 
@@ -649,10 +649,23 @@ function Publish-AppSrcOverlay {
     }
     Write-Host "-> Overlaying $srcApp -> $dstApp (skipping data\ and media\)" -ForegroundColor Cyan
     Invoke-SafeRobocopy -Quiet -Source $srcApp -Destination $dstApp -ArgumentList @("/E", "/XD", "data", "media", "/R:2", "/W:1", "/NFL", "/NDL", "/NJH", "/NJS", "/nc", "/ns", "/np")
-    $trSrc = Join-Path $srcApp "data\translations_en.json"
     $trDstDir = Join-Path $dstApp "data"
-    if ((Test-Path -LiteralPath $trSrc) -and (Test-Path -LiteralPath $trDstDir)) {
-        Copy-Item -LiteralPath $trSrc -Destination (Join-Path $trDstDir "translations_en.json") -Force
+    if (Test-Path -LiteralPath $trDstDir) {
+        $trEnSrc = Join-Path $srcApp "data\translations_en.json"
+        if (Test-Path -LiteralPath $trEnSrc) {
+            Copy-Item -LiteralPath $trEnSrc -Destination (Join-Path $trDstDir "translations_en.json") -Force
+        }
+        $trUkSrc = Join-Path $srcApp "data\translations_uk.json"
+        $trUkDst = Join-Path $trDstDir "translations_uk.json"
+        $trUaDst = Join-Path $trDstDir "translations_ua.json"
+        if (Test-Path -LiteralPath $trUkSrc) {
+            Copy-Item -LiteralPath $trUkSrc -Destination $trUkDst -Force
+        } elseif ((Test-Path -LiteralPath $trUaDst) -and -not (Test-Path -LiteralPath $trUkDst)) {
+            Move-Item -LiteralPath $trUaDst -Destination $trUkDst -Force
+        }
+        if (Test-Path -LiteralPath $trUaDst) {
+            Remove-Item -LiteralPath $trUaDst -Force
+        }
     }
     Set-ServerCacheVersion -Root $DestRoot -Prefix $CachePrefix
     Restore-LocalMediaBaseIfNeeded -Root $DestRoot
@@ -2204,7 +2217,7 @@ function Copy-GovJsonToServer ([string]$govDir, [string]$swPrefix) {
             Copy-Item -LiteralPath $srcJson -Destination (Join-Path $dstData "$cat.json") -Force
         }
     }
-    foreach ($tr in @("translations_en.json", "translations_de.json", "translations_ua.json")) {
+    foreach ($tr in @("translations_en.json", "translations_de.json", "translations_uk.json")) {
         $srcTr = Join-Path $govDir $tr
         if (Test-Path -LiteralPath $srcTr) {
             Copy-Item -LiteralPath $srcTr -Destination (Join-Path $dstData $tr) -Force

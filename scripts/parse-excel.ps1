@@ -10,7 +10,7 @@
 #
 # Default: keep media file names even if the local pack is missing (CDN).
 # -DropMissingMedia only when asked: then missing raw files clear media in JSON.
-# Default: fill missing EN/DE/UA strings via translate-questions.ps1 (Gemini from
+# Default: fill missing EN/DE/UK strings via translate-questions.ps1 (Gemini from
 # -GeminiApiKey, else .geminienv / GEMINI_API_KEY, else Google Translate).
 # -SkipTranslateGaps: Excel columns only (installer -MergeGov uses this; temp JSON).
 #
@@ -302,7 +302,7 @@ $forcedSpecialist = 0
 $translations = @{
     en = [ordered]@{}
     de = [ordered]@{}
-    ua = [ordered]@{}
+    uk = [ordered]@{}
 }
 
 function Merge-ExistingQuestionTranslations ($map, [string]$path, $uniqueIds) {
@@ -319,7 +319,11 @@ function Merge-ExistingQuestionTranslations ($map, [string]$path, $uniqueIds) {
             $val = $p.Value.$field
             if ($val) { $tr[$field] = [string]$val }
         }
-        if ($tr.Count -gt 0) { $map[$id] = $tr }
+        if ($tr.Count -gt 0) {
+            $src = [string]$p.Value.src
+            $tr['src'] = if ($src) { $src } else { 'gemini' }
+            $map[$id] = $tr
+        }
     }
 }
 
@@ -334,7 +338,10 @@ function Add-QuestionTranslation ($map, [string]$id, [string]$q, [string]$a, [st
         if ($b) { $tr['b'] = $b }
         if ($c) { $tr['c'] = $c }
     }
-    if ($tr.Count -gt 0) { $map[$id] = $tr }
+    if ($tr.Count -gt 0) {
+        $tr['src'] = 'excel'
+        $map[$id] = $tr
+    }
 }
 
 for ($r = 1; $r -lt $rows.Count; $r++) {
@@ -395,7 +402,7 @@ for ($r = 1; $r -lt $rows.Count; $r++) {
     $qid = [string]$qObj.id
     Add-QuestionTranslation $translations.en $qid (Get-ExcelCell $row $colEnQ) (Get-ExcelCell $row $colEnA) (Get-ExcelCell $row $colEnB) (Get-ExcelCell $row $colEnC) $qType
     Add-QuestionTranslation $translations.de $qid (Get-ExcelCell $row $colDeQ) (Get-ExcelCell $row $colDeA) (Get-ExcelCell $row $colDeB) (Get-ExcelCell $row $colDeC) $qType
-    Add-QuestionTranslation $translations.ua $qid (Get-ExcelCell $row $colUkQ) (Get-ExcelCell $row $colUkA) (Get-ExcelCell $row $colUkB) (Get-ExcelCell $row $colUkC) $qType
+    Add-QuestionTranslation $translations.uk $qid (Get-ExcelCell $row $colUkQ) (Get-ExcelCell $row $colUkA) (Get-ExcelCell $row $colUkB) (Get-ExcelCell $row $colUkC) $qType
 
     foreach ($cat in ($rawCats -split ',')) {
         $cat = $cat.Trim()
@@ -440,14 +447,11 @@ $meta = [ordered]@{ uniqueQuestionCount = $uniqueIds.Count; categories = $metaCa
 Write-Host "Wrote meta.json ($($uniqueIds.Count) unique, $total category assignments)." -ForegroundColor Green
 
 $script:PrawkoJsonCompact = $true
-foreach ($pair in @(@('en', 'translations_en.json'), @('de', 'translations_de.json'), @('ua', 'translations_ua.json'))) {
+foreach ($pair in @(@('en', 'translations_en.json'), @('de', 'translations_de.json'), @('uk', 'translations_uk.json'))) {
     $lang = $pair[0]
     $file = $pair[1]
     $map = $translations[$lang]
     Merge-ExistingQuestionTranslations $map (Join-Path $OutDir $file) $uniqueIds
-    if ($lang -eq 'ua') {
-        Merge-ExistingQuestionTranslations $map (Join-Path $OutDir 'translations_uk.json') $uniqueIds
-    }
     [IO.File]::WriteAllText((Join-Path $OutDir $file), (ConvertTo-PrawkoJson $map), $utf8)
     Write-Host "Wrote $file ($($map.Count) questions)." -ForegroundColor Green
 }

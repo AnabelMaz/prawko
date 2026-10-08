@@ -8,7 +8,7 @@ Same rules as scripts/parse-excel.ps1:
     (Excel "Zakres struktury" is sometimes wrong)
   - keep media file names even if the local pack is missing (CDN)
   - --drop-missing-media only when asked: then missing raw files clear media
-  - fill missing EN/DE/UA via translate-questions.py unless --skip-translate-gaps
+  - fill missing EN/DE/UK via translate-questions.py unless --skip-translate-gaps
     (Gemini from --gemini-api-key, else .geminienv / GEMINI_API_KEY, else Google)
 
 Usage:
@@ -127,6 +127,8 @@ def merge_existing_translations(store, path: Path, unique_ids: set[str]) -> None
             continue
         kept = {k: v for k, v in tr.items() if k in ("q", "a", "b", "c") and v}
         if kept:
+            src = tr.get("src")
+            kept["src"] = src if src else "gemini"
             store[qid] = kept
 
 
@@ -146,6 +148,7 @@ def add_translation(store, qid, q, a, b, c, q_type):
         if c:
             tr["c"] = c
     if tr:
+        tr["src"] = "excel"
         store[qid] = tr
 
 
@@ -177,7 +180,7 @@ def main():
     parser.add_argument(
         "--skip-translate-gaps",
         action="store_true",
-        help="Do not fill missing EN/DE/UA after parsing. Default fills gaps.",
+        help="Do not fill missing EN/DE/UK after parsing. Default fills gaps.",
     )
     parser.add_argument(
         "--gemini-api-key",
@@ -236,7 +239,7 @@ def main():
     col_uk_c = find_header(header, "Odpowied C [UA]", regex=r"^Odpowied.+ C \[UA\]$", required=False)
 
     cat_questions = {cat: [] for cat in CATEGORIES}
-    translations = {"en": {}, "de": {}, "ua": {}}
+    translations = {"en": {}, "de": {}, "uk": {}}
     unique_ids = set()
     missing_media = 0
     forced_specialist = 0
@@ -297,7 +300,7 @@ def main():
             cell(row, col_de_q), cell(row, col_de_a), cell(row, col_de_b), cell(row, col_de_c), q_type,
         )
         add_translation(
-            translations["ua"], qid,
+            translations["uk"], qid,
             cell(row, col_uk_q), cell(row, col_uk_a), cell(row, col_uk_b), cell(row, col_uk_c), q_type,
         )
 
@@ -340,10 +343,8 @@ def main():
         f.write("\n")
     print(f"Wrote meta.json ({len(unique_ids)} unique, {total} category assignments).")
 
-    for lang, filename in (("en", "translations_en.json"), ("de", "translations_de.json"), ("ua", "translations_ua.json")):
+    for lang, filename in (("en", "translations_en.json"), ("de", "translations_de.json"), ("uk", "translations_uk.json")):
         merge_existing_translations(translations[lang], out_dir / filename, unique_ids)
-        if lang == "ua":
-            merge_existing_translations(translations[lang], out_dir / "translations_uk.json", unique_ids)
         with open(out_dir / filename, "w", encoding="utf-8") as f:
             json.dump(translations[lang], f, ensure_ascii=False, separators=(",", ":"))
         print(f"Wrote {filename} ({len(translations[lang])} questions).")

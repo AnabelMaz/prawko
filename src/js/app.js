@@ -344,7 +344,7 @@ function resumeOfflineDownloadIfNeeded() {
 }
 
 function updateLanguageButtons(lang) {
-  document.documentElement.lang = lang === 'ua' ? 'uk' : lang;
+  document.documentElement.lang = lang;
   const btn = document.querySelector('.lang-cycle');
   if (!btn) return;
   btn.dataset.lang = lang;
