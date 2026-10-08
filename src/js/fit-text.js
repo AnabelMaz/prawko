@@ -1,19 +1,7 @@
-// fit-text.js — Panel: scale question and ABC copy to the slot.
-// Runs when a question is shown and when the window scale/layout updates.
-// Does not hide text and does not watch the dock for its own font-size
-// writes (that looped 7px ↔ 32px and blanked the copy).
-//
-// Fit rule: wrap at the slot width, then check that the resulting 1–n
-// lines fit in the slot height. Question scales alone; A/B/C share the
-// smallest size that still fits the longest option. ABC slots come from
-// the dock (36% / 64%), not from button clientHeight — that box still
-// follows leftover min-height / label layout and baked 19px vs 28px
-// on the same question after next/prev.
-//
-// Do not clear inline font-size before measuring: the canvas uses dock
-// fractions, not the current px. Clearing flashed the CSS default, then
-// the fitted size. When the dock is already laid out, fit in the same
-// turn as the new copy so the first paint is already the length-based size.
+// fit-text.js — Panel: fit question and ABC copy into the dock slots.
+// Wrap to slot width, then shrink so the lines fit the slot height.
+// Question is independent; A/B/C share the smallest size that fits all three.
+// Write inline font-size (CSS vars on reused nodes paint a frame late).
 
 const MIN_PX = 7;
 const MAX_PX = 32;
@@ -24,6 +12,7 @@ const ABC_A_FRAC = 0.64;
 let measureCtx = null;
 let fitGen = 0;
 let layoutTries = 0;
+let lastFitKey = '';
 const LAYOUT_TRIES = 6;
 
 function isPanelFit() {
@@ -73,17 +62,63 @@ function padding(el) {
   };
 }
 
-function questionBox(el) {
+/** Landscape dock row from the design canvas (800×35% Panel, 28% Station).
+ *  Live clientHeight follows media paint on a slow VM; design height does not. */
+function dockRowHeight(dock) {
+  const root = document.documentElement;
+  if (root.getAttribute('data-ui-orient') === 'portrait') {
+    return Math.max(dock.clientHeight, 40);
+  }
+  const frac = root.getAttribute('data-exam-skin') === 'station' ? 0.28 : 0.35;
+  const designH = parseFloat(root.style.getPropertyValue('--ui-design-height'))
+    || parseFloat(getComputedStyle(root).getPropertyValue('--ui-design-height'))
+    || 800;
+  return designH * frac;
+}
+
+function currentFitKey(dock) {
+  const id = document.querySelector('#quiz .question-card')?.dataset.questionId || '';
+  const q = dock.querySelector('.question-text')?.textContent || '';
+  const a = [...dock.querySelectorAll('.answer-text')].map((el) => el.textContent).join('\0');
+  const scale = getComputedStyle(document.documentElement).getPropertyValue('--ui-scale').trim();
+  return `${id}|${Math.round(window.innerWidth)}x${Math.round(window.innerHeight)}|${scale}|${q}|${a}`;
+}
+
+function questionBox(el, asAbc) {
   const dock = el.closest('.quiz-dock');
   const pad = padding(el);
-  const abc = dock?.querySelector('.abc-answers');
+  const abc = asAbc || dock?.querySelector('.abc-answers');
   return {
     ...fontMetrics(el),
     width: Math.max(0, el.clientWidth - pad.x),
     height: abc && dock
-      ? Math.max(0, dock.clientHeight * ABC_Q_FRAC - pad.y)
+      ? Math.max(0, dockRowHeight(dock) * ABC_Q_FRAC - pad.y)
       : Math.max(0, el.clientHeight - pad.y),
   };
+}
+
+function abcAnswerBox(dock, sampleEl) {
+  const root = document.documentElement;
+  const designW = parseFloat(root.style.getPropertyValue('--ui-design-width')) || 1280;
+  const designH = parseFloat(root.style.getPropertyValue('--ui-design-height')) || 800;
+  const padY = (6 / 620) * designH;
+  const labelW = (50 / 960) * designW;
+  const btnGap = (10 / 960) * designW;
+  return {
+    ...fontMetrics(sampleEl),
+    width: Math.max(0, dock.clientWidth - labelW - btnGap),
+    height: Math.max(0, (dockRowHeight(dock) * ABC_A_FRAC) / 3 - padY),
+  };
+}
+
+function applyDockFont(dock, slot, px) {
+  if (px == null) return;
+  const css = `${px}px`;
+  if (slot === 'a') dock.style.setProperty('--dock-a-size', css);
+  const els = slot === 'a'
+    ? [...dock.querySelectorAll('.answer-text')]
+    : [dock.querySelector('.question-text')].filter(Boolean);
+  for (const el of els) el.style.fontSize = css;
 }
 
 function labelReserve(btn) {
@@ -114,7 +149,7 @@ function answerBox(el) {
   return {
     ...fonts,
     width: Math.max(0, dock.clientWidth - labelReserve(btn) - btnGap - pad.x),
-    height: Math.max(0, (dock.clientHeight * ABC_A_FRAC - gap * (n - 1)) / n - pad.y),
+    height: Math.max(0, (dockRowHeight(dock) * ABC_A_FRAC - gap * (n - 1)) / n - pad.y),
   };
 }
 
@@ -206,9 +241,10 @@ function largestFit(text, box) {
   return best;
 }
 
-function applySize(el, px) {
-  if (px == null) return;
-  el.style.fontSize = `${px}px`;
+function stripInlineFonts(dock) {
+  dock.querySelectorAll('.abc-answers .answer-btn').forEach((el) => {
+    el.style.removeProperty('font-size');
+  });
 }
 
 function fitQuestion(dock) {
@@ -216,7 +252,7 @@ function fitQuestion(dock) {
   if (!el) return true;
   const px = largestFit(el.textContent, questionBox(el));
   if (px == null) return false;
-  applySize(el, px);
+  applyDockFont(dock, 'q', px);
   return true;
 }
 
@@ -229,15 +265,50 @@ function fitAnswers(dock) {
     if (px == null) return false;
     if (shared == null || px < shared) shared = px;
   }
-  for (const el of texts) applySize(el, shared);
+  applyDockFont(dock, 'a', shared);
   return true;
 }
 
 function clearInlineSizes(dock) {
+  stripInlineFonts(dock);
+  dock.style.removeProperty('--dock-a-size');
   dock.querySelector('.question-text')?.style.removeProperty('font-size');
   dock.querySelectorAll('.answer-text').forEach((el) => {
     el.style.removeProperty('font-size');
   });
+}
+
+/** New <p> for the question (reused nodes keep the previous used font-size). */
+export function prepareDockFit(dock, q) {
+  const old = dock?.querySelector('.question-text');
+  if (!dock || !q || !old) return;
+  if (!isPanelFit()) {
+    old.textContent = q.q || '';
+    return;
+  }
+  const asAbc = q.type !== 'basic';
+  const px = q.q ? largestFit(q.q, questionBox(old, asAbc)) : null;
+  const p = document.createElement('p');
+  p.className = 'question-text';
+  p.setAttribute('aria-live', 'polite');
+  p.textContent = q.q || '';
+  if (px != null) p.style.fontSize = `${px}px`;
+  old.replaceWith(p);
+  if (asAbc) {
+    const box = abcAnswerBox(dock, p);
+    let shared = null;
+    for (const raw of [q.a, q.b, q.c]) {
+      const answerPx = largestFit(raw, box);
+      if (answerPx == null) {
+        shared = null;
+        break;
+      }
+      if (shared == null || answerPx < shared) shared = answerPx;
+    }
+    if (shared != null) applyDockFont(dock, 'a', shared);
+  } else {
+    dock.style.removeProperty('--dock-a-size');
+  }
 }
 
 function dockReady(dock) {
@@ -265,11 +336,17 @@ export function fitQuizDockText() {
   if (!dock || !isPanelFit()) {
     if (dock) clearInlineSizes(dock);
     layoutTries = 0;
+    lastFitKey = '';
     return;
   }
   void dock.offsetHeight;
   if (!dockReady(dock)) {
     retryFit();
+    return;
+  }
+  const key = currentFitKey(dock);
+  if (key && key === lastFitKey) {
+    layoutTries = 0;
     return;
   }
   const ready = fitQuestion(dock)
@@ -278,6 +355,7 @@ export function fitQuizDockText() {
     retryFit();
     return;
   }
+  lastFitKey = key;
   layoutTries = 0;
 }
 

@@ -1,9 +1,10 @@
 const { test, expect } = require('@playwright/test');
-const { goToCategories, cycleSkin, waitForExamMediaAlign } = require('./helpers');
+const { goToCategories, cycleSkin, waitForExamMediaAlign, waitForUiSwap } = require('./helpers');
 
 async function waitForHomeScale(page) {
   await page.waitForSelector('#home.active');
   await page.waitForFunction(() => !document.documentElement.hasAttribute('data-ui-pending'));
+  await page.waitForFunction(() => !document.documentElement.hasAttribute('data-ui-swap'));
 }
 
 function expectHomeFitsWindow(metrics, vw, vh) {
@@ -57,6 +58,40 @@ test('landscape home scales the 1280 layout instead of wrapping', async ({ page 
   expectHomeFitsWindow(metrics, 640, 450);
 });
 
+test('home hero and settings bar match the window on the first frame back from categories', async ({ page }) => {
+  await page.setViewportSize({ width: 1100, height: 520 });
+  await page.goto('/');
+  await waitForHomeScale(page);
+  await goToCategories(page);
+  await page.evaluate(() => {
+    window.__homeFirst = null;
+    const home = document.getElementById('home');
+    new MutationObserver(() => {
+      if (!home.classList.contains('active') || window.__homeFirst) return;
+      const hero = document.querySelector('#home .hero')?.getBoundingClientRect();
+      const bar = document.querySelector('.top-controls')?.getBoundingClientRect();
+      const root = document.documentElement;
+      window.__homeFirst = {
+        station: root.getAttribute('data-ui-station'),
+        designH: parseFloat(getComputedStyle(root).getPropertyValue('--ui-design-height')),
+        heroW: hero ? Math.round(hero.width) : 0,
+        barRight: bar ? Math.round(bar.right) : 0,
+        vw: window.innerWidth,
+      };
+    }).observe(home, { attributes: true, attributeFilter: ['class'] });
+  });
+  await page.click('#categories [data-navigate="home"]');
+  await page.waitForSelector('#home.active');
+  const first = await page.evaluate(() => window.__homeFirst);
+  expect(first, 'observer missed home.active').toBeTruthy();
+  expect(first.station).toBe('page');
+  expect(first.designH).toBeGreaterThan(800);
+  expect(first.heroW).toBeGreaterThan(first.vw - 8);
+  expect(first.heroW).toBeLessThanOrEqual(first.vw + 2);
+  expect(first.barRight).toBeGreaterThan(first.vw - 24);
+  expect(first.barRight).toBeLessThanOrEqual(first.vw + 2);
+});
+
 test('home scale does not flash a measuring layout', async ({ page }) => {
   await page.addInitScript(() => {
     const log = [];
@@ -101,7 +136,11 @@ test('short 1024 laptop window with browser chrome still scales', async ({ page 
 async function categoryGridMetrics(page) {
   await page.waitForFunction(() => {
     const grid = document.querySelector('#categories.active .category-grid');
-    const card = grid?.querySelector('.category-card');
+    const card = [...(grid?.querySelectorAll('.category-card') || [])].find((el) => {
+      if (el.hidden) return false;
+      const style = getComputedStyle(el);
+      return style.display !== 'none' && style.visibility !== 'hidden';
+    });
     return grid
       && Number(getComputedStyle(grid).getPropertyValue('--cat-cols')) > 0
       && card
@@ -177,6 +216,45 @@ function expectCategoryTiles(metrics, minPx) {
   expect(metrics.searchGap).toBeGreaterThanOrEqual(-1);
 }
 
+test('category tiles are packed on the first categories frame', async ({ page }) => {
+  await page.setViewportSize({ width: 1100, height: 520 });
+  await page.addInitScript(() => {
+    window.__catFirst = null;
+    const watch = () => {
+      const section = document.getElementById('categories');
+      if (!section) return;
+      new MutationObserver(() => {
+        if (!section.classList.contains('active') || window.__catFirst) return;
+        const grid = document.querySelector('.category-grid');
+        const card = grid?.querySelector('.category-card');
+        const scale = Number(getComputedStyle(document.documentElement).getPropertyValue('--ui-scale')) || 1;
+        const cardW = parseFloat(grid?.style.getPropertyValue('--cat-card-w') || '0');
+        window.__catFirst = {
+          cols: grid?.style.getPropertyValue('--cat-cols') || '',
+          cardW,
+          secH: section.clientHeight,
+          designH: parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ui-design-height')) || 0,
+          w: card ? Math.round(card.getBoundingClientRect().width) : 0,
+          scale,
+        };
+      }).observe(section, { attributes: true, attributeFilter: ['class'] });
+    };
+    if (document.getElementById('categories')) watch();
+    else document.addEventListener('DOMContentLoaded', watch);
+  });
+  await page.goto('/');
+  await goToCategories(page);
+  const first = await page.evaluate(() => window.__catFirst);
+  expect(first, 'observer missed categories.active').toBeTruthy();
+  expect(first.cols).toBe('4');
+  expect(first.cardW).toBeGreaterThan(80);
+  expect(first.cardW).toBeLessThan(220);
+  expect(first.designH).toBe(800);
+  expect(first.secH).toBeLessThanOrEqual(824);
+  expect(first.w).toBeGreaterThan(40);
+  expect(Math.abs(first.w - first.cardW * first.scale)).toBeLessThan(8);
+});
+
 test('category cards pack as largest fixed-ratio tiles in landscape', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('/');
@@ -206,6 +284,37 @@ test('category cards keep the same ratio in portrait', async ({ page }) => {
   const metrics = await categoryGridMetrics(page);
   expect(metrics.orient).toBe('portrait');
   expectCategoryTiles(metrics, 40);
+});
+
+test('category search does not grow remaining tiles', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/');
+  await goToCategories(page);
+  const full = await categoryGridMetrics(page);
+  const pt = full.boxes.find((box) => box.id === 'PT');
+  expect(pt, 'PT card missing from the full grid').toBeTruthy();
+  await page.locator('#category-search').fill('PT');
+  await expect(page.locator('.category-grid .category-card').locator('visible=true')).toHaveCount(1);
+  const filtered = await categoryGridMetrics(page);
+  expect(filtered.n).toBe(1);
+  expect(filtered.cols).toBe(full.cols);
+  expect(filtered.rows).toBe(full.rows);
+  expect(filtered.cardW).toBe(full.cardW);
+  expect(filtered.cardH).toBe(full.cardH);
+  expect(Math.abs(filtered.boxes[0].w - pt.w)).toBeLessThan(2);
+
+  await page.setViewportSize({ width: 1100, height: 520 });
+  const filteredShort = await categoryGridMetrics(page);
+  expect(filteredShort.n).toBe(1);
+  const filteredScreenW = filteredShort.boxes[0].w;
+  await page.locator('#category-search').fill('');
+  const fullShort = await categoryGridMetrics(page);
+  const ptShort = fullShort.boxes.find((box) => box.id === 'PT');
+  expect(filteredShort.cardW).toBe(fullShort.cardW);
+  expect(filteredShort.cardH).toBe(fullShort.cardH);
+  expect(ptShort, 'PT card missing after clearing search').toBeTruthy();
+  expect(Math.abs(filteredScreenW - ptShort.w)).toBeLessThan(2);
+  expect(Math.abs(filteredScreenW - pt.w)).toBeGreaterThan(8);
 });
 
 test('category tiles stay the same after returning from learn', async ({ page }) => {
@@ -269,6 +378,46 @@ test('learn quiz scales fonts with the window, not only the film', async ({ page
   }));
   expect(atFull.scale).toBeCloseTo(1, 2);
   expect(atFull.textH).toBeGreaterThan(atSmall.textH * 1.5);
+});
+
+test('quiz canvas follows vw/vh even when resize JS is blocked', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/');
+  await goToCategories(page);
+  await page.click('.mode-btn[data-mode="learn"]');
+  await page.click('.category-card[data-category="B"]');
+  await page.waitForSelector('#quiz.active');
+  await page.waitForSelector('.question-text:not(:empty)');
+
+  await page.evaluate(() => {
+    const stop = (e) => e.stopImmediatePropagation();
+    window.addEventListener('resize', stop, true);
+    window.visualViewport?.addEventListener('resize', stop, true);
+  });
+  await page.setViewportSize({ width: 800, height: 500 });
+
+  const fit = await page.evaluate(() => {
+    const stage = document.querySelector('.ui-stage').getBoundingClientRect();
+    const nav = document.querySelector('.learn-nav')?.getBoundingClientRect();
+    return {
+      scale: Number(getComputedStyle(document.documentElement).getPropertyValue('--ui-scale')),
+      inline: document.documentElement.style.getPropertyValue('--ui-scale'),
+      stageW: stage.width,
+      stageH: stage.height,
+      stageRight: stage.right,
+      stageBottom: stage.bottom,
+      navRight: nav ? nav.right : 0,
+      vw: window.innerWidth,
+      vh: window.innerHeight,
+    };
+  });
+  expect(fit.inline).toBe('');
+  expect(fit.scale).toBeCloseTo(Math.min(800 / 1280, 500 / 800), 2);
+  expect(fit.stageW).toBeLessThanOrEqual(fit.vw + 2);
+  expect(fit.stageH).toBeLessThanOrEqual(fit.vh + 2);
+  expect(fit.stageRight).toBeLessThanOrEqual(fit.vw + 2);
+  expect(fit.stageBottom).toBeLessThanOrEqual(fit.vh + 2);
+  expect(fit.navRight).toBeLessThanOrEqual(fit.vw + 2);
 });
 
 test('learn prev/next stay inside the window', async ({ page }) => {
@@ -408,13 +557,18 @@ test('learn quiz answers sit under the film; nav sits in the side column', async
 
   const media = await page.locator('.media-area').boundingBox();
   const answers = await page.locator('.answers').boundingBox();
+  const question = await page.locator('.question-text').boundingBox();
   const nav = await page.locator('.learn-nav').boundingBox();
   const back = await page.locator('.quiz-back').boundingBox();
   expect(media).toBeTruthy();
   expect(answers).toBeTruthy();
+  expect(question).toBeTruthy();
   expect(nav).toBeTruthy();
   expect(back).toBeTruthy();
   expect(Math.abs(media.x - answers.x)).toBeLessThan(24);
+  expect(Math.abs(media.x - question.x)).toBeLessThan(24);
+  expect(question.width).toBeGreaterThan(media.width + 24);
+  expect(answers.width).toBeGreaterThan(media.width + 24);
   expect(answers.y).toBeGreaterThan(media.y + media.height - 8);
   expect(nav.x).toBeGreaterThan(media.x + media.width - 8);
   expect(back.x).toBeGreaterThan(media.x + media.width - 8);
@@ -717,7 +871,7 @@ test('station-skin learn quiz keeps question text below the media on a short win
   expect(fit.answersBottom).toBeLessThanOrEqual(520 + 8);
 });
 
-test('TAK/NIE centers sit on the media 1/3 and 2/3 marks in both skins', async ({ page }) => {
+test('TAK/NIE sit on panel thirds in Panel and on the film in Station', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('/');
   await page.waitForSelector('#home.active');
@@ -741,12 +895,15 @@ test('TAK/NIE centers sit on the media 1/3 and 2/3 marks in both skins', async (
       const qBox = q.getBoundingClientRect();
       const qcs = getComputedStyle(q);
       const timer = document.querySelector('.timer-display-total').getBoundingClientRect();
+      const answers = document.querySelector('.answers').getBoundingClientRect();
       return {
         skin: document.documentElement.getAttribute('data-exam-skin'),
         mediaLeft: media.left,
         mediaWidth: media.width,
         mediaRight: media.right,
         timerRight: timer.right,
+        answersLeft: answers.left,
+        answersWidth: answers.width,
         takCenter: btns[0].left + btns[0].width / 2,
         nieCenter: btns[1].left + btns[1].width / 2,
         qFamily: qcs.fontFamily,
@@ -758,8 +915,9 @@ test('TAK/NIE centers sit on the media 1/3 and 2/3 marks in both skins', async (
 
   const panel = await measureYn();
   expect(panel.skin).toBe('panel');
-  expect(Math.abs(panel.takCenter - (panel.mediaLeft + panel.mediaWidth / 3))).toBeLessThan(8);
-  expect(Math.abs(panel.nieCenter - (panel.mediaLeft + (2 * panel.mediaWidth) / 3))).toBeLessThan(8);
+  expect(panel.answersWidth).toBeGreaterThan(panel.mediaWidth + 24);
+  expect(Math.abs(panel.takCenter - (panel.answersLeft + panel.answersWidth / 3))).toBeLessThan(8);
+  expect(Math.abs(panel.nieCenter - (panel.answersLeft + (2 * panel.answersWidth) / 3))).toBeLessThan(8);
   expect(panel.qFamily.toLowerCase()).toMatch(/arial/);
   expect(panel.qSize).toBeGreaterThanOrEqual(24);
   expect(Math.abs(panel.timerRight - panel.mediaRight)).toBeLessThan(8);
@@ -1243,6 +1401,7 @@ test('Panel exam keeps time-bar space while the clip plays so chrome does not ju
   await page.waitForSelector('.modal-overlay.active');
   await page.click('.btn-confirm-end');
   await page.waitForSelector('#quiz.active.exam-active');
+  await waitForUiSwap(page);
   await page.waitForSelector('.question-text:not(:empty)');
 
   for (let i = 0; i < 8 && !(await page.locator('.exam-film-pending').count()); i += 1) {

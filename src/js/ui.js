@@ -4,12 +4,18 @@ import { t, getLang, translateQuestion } from './i18n.js';
 import { getCategoryStats, getLearnProgress, loadHistory, getLearnTouchedCategories, getLearnCategoryBreakdown, getLearnUniqueFilterCounts } from './stats.js';
 import { getMediaUrls, fetchCategory, usesLocalMedia } from './data.js';
 import { getCategoryMediaAccess, getCategoriesOfflineCoverage, getDownloadedCategories, getActiveDownloadProgress, isAppOnline, offlineCoverageHue, resolvePlayableMediaUrl, captureViewedImage } from './offline.js';
-import { refitUiScale, layoutCategoryGrid, syncExamMediaAlign } from './scale.js';
+import { refitUiScale, layoutCategoryGrid, syncExamMediaAlign, alignAndFitExamDock, fitAfterShowScreen } from './scale.js';
+import { prepareDockFit } from './fit-text.js';
 
 export function showScreen(id) {
+  const prev = document.querySelector('.screen.active')?.id;
+  const swap = (prev === 'home' && id === 'categories')
+    || (prev === 'categories' && id === 'home');
+  if (swap) document.documentElement.setAttribute('data-ui-swap', '1');
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   const screen = document.getElementById(id);
   if (screen) screen.classList.add('active');
+  fitAfterShowScreen(swap);
 }
 
 let _modalOnConfirm = null;
@@ -279,7 +285,6 @@ function scheduleCoverageScan(meta, downloadedSet) {
 export function renderCategories(meta, downloadedSet = new Set()) {
   const localMedia = usesLocalMedia();
   document.documentElement.dataset.localMedia = localMedia ? 'true' : 'false';
-  document.documentElement.dataset.appOnline = navigator.onLine !== false ? 'true' : 'false';
 
   meta.categories.forEach(cat => {
     const card = document.querySelector(`.category-grid .category-card[data-category="${CSS.escape(cat.id)}"]`);
@@ -379,8 +384,6 @@ export function renderQuestion(question, container, options = {}) {
   const learnMediaMark = options.learnMediaMark || null;
   const q = translateQuestion(question);
   const mediaArea = container.querySelector('.media-area');
-  const questionText = container.querySelector('.question-text')
-    || document.querySelector('#quiz .question-text');
   const answersDiv = document.querySelector('.answers');
   if (question?.id != null) container.dataset.questionId = String(question.id);
   else delete container.dataset.questionId;
@@ -396,6 +399,26 @@ export function renderQuestion(question, container, options = {}) {
   mediaArea.removeAttribute('aria-hidden');
   mediaArea.removeAttribute('role');
   mediaArea.removeAttribute('aria-label');
+
+  const dock = document.querySelector('#quiz .quiz-dock');
+  const quiz = document.getElementById('quiz');
+  const abc = q.type !== 'basic';
+  if (answersDiv) {
+    answersDiv.classList.toggle('abc-answers', abc);
+    answersDiv.classList.toggle('yn-answers', !abc);
+  }
+  if (dock) dock.dataset.qtype = abc ? 'abc' : 'yn';
+  fillAnswerChoices(answersDiv, q);
+  void quiz?.offsetHeight;
+  void document.querySelector('#quiz .media-slot')?.offsetHeight;
+  syncExamMediaAlign();
+  if (dock) {
+    void dock.offsetHeight;
+    prepareDockFit(dock, q);
+  } else {
+    const fallback = container.querySelector('.question-text');
+    if (fallback) fallback.textContent = q.q;
+  }
 
   if (q.media) {
     mediaArea.classList.add('has-media', 'loading');
@@ -651,19 +674,16 @@ export function renderQuestion(question, container, options = {}) {
       mediaArea.setAttribute('aria-hidden', 'false');
       mediaArea.setAttribute('role', 'img');
       mediaArea.setAttribute('aria-label', t('noMedia'));
-      mediaArea.innerHTML = '<svg class="media-empty-icon" viewBox="0 0 96 72" aria-hidden="true"><rect x="16" y="24" width="52" height="36" rx="6" fill="none" stroke="currentColor" stroke-width="3"/><rect x="24" y="14" width="18" height="12" rx="3" fill="none" stroke="currentColor" stroke-width="3"/><circle cx="42" cy="42" r="10" fill="none" stroke="currentColor" stroke-width="3"/><line x1="10" y1="10" x2="86" y2="62" stroke="currentColor" stroke-width="4" stroke-linecap="round"/></svg>';
+      mediaArea.innerHTML = '<svg class="media-empty-icon" viewBox="0 0 96 72" aria-hidden="true"><rect x="16" y="24" width="52" height="36" rx="6" fill="none" stroke="currentColor" stroke-width="3"/><rect x="24" y="14" width="18" height="12" rx="3" fill="none" stroke="currentColor" stroke-width="3"/><circle cx="42" cy="42" r="10" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/></svg>';
     }
   }
   onLearnMediaSettled(learnMediaMark);
 
-  // Question text
-  if (questionText) questionText.textContent = q.q;
-
-  fillAnswerChoices(answersDiv, q);
-  syncExamMediaAlign();
+  alignAndFitExamDock();
 }
 
 function fillAnswerChoices(answersDiv, q) {
+  if (!answersDiv) return;
   answersDiv.innerHTML = '';
   if (q.type === 'basic') {
     answersDiv.classList.add('yn-answers');
@@ -680,6 +700,9 @@ function fillAnswerChoices(answersDiv, q) {
   }
   answersDiv.classList.remove('yn-answers');
   answersDiv.classList.add('abc-answers');
+  const dock = answersDiv.closest('.quiz-dock');
+  void dock?.offsetHeight;
+  const aSize = dock?.style.getPropertyValue('--dock-a-size') || '';
   ['A', 'B', 'C'].forEach(val => {
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -692,6 +715,7 @@ function fillAnswerChoices(answersDiv, q) {
     const text = document.createElement('span');
     text.className = 'answer-text';
     text.textContent = q[val.toLowerCase()] || '';
+    if (aSize) text.style.fontSize = aSize;
     btn.appendChild(text);
     answersDiv.appendChild(btn);
   });

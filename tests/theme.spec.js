@@ -366,7 +366,6 @@ async function openQuizThemed(page, { skin, viewport, theme, mode }) {
   } else {
     await expect(page.locator('html')).not.toHaveAttribute('data-theme', 'dark');
   }
-  await page.waitForFunction(() => !document.querySelector('.quiz-dock')?.classList.contains('is-fitting'));
 }
 
 test.describe('Quiz light/dark theme', () => {

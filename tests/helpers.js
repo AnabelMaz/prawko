@@ -1,5 +1,13 @@
 /** Shared Playwright helpers for the current Panel/WORD UI. */
 
+async function waitForUiSwap(page) {
+  await page.waitForFunction(() => !document.documentElement.hasAttribute('data-ui-swap'));
+}
+
+async function waitForUiHold(page) {
+  await page.waitForFunction(() => !document.documentElement.hasAttribute('data-ui-hold'));
+}
+
 async function goToCategories(page) {
   await page.waitForFunction(() => !document.documentElement.hasAttribute('data-ui-pending'));
   await page.waitForSelector('#home.active');
@@ -8,6 +16,7 @@ async function goToCategories(page) {
     await nav.click();
     try {
       await page.waitForSelector('#categories.active', { timeout: 8000 });
+      await waitForUiSwap(page);
       return;
     } catch (err) {
       if (attempt === 2) throw err;
@@ -65,4 +74,6 @@ module.exports = {
   cycleSkin,
   learnCatalogLabel,
   waitForExamMediaAlign,
+  waitForUiSwap,
+  waitForUiHold,
 };

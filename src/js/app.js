@@ -7,7 +7,7 @@ import { showScreen, renderCategories, applyLanguage, renderHistory, renderLearn
 import { setLang, getLang, loadQuestionTranslations, nextLang, LANG_LABELS, t } from './i18n.js';
 import { downloadCategoryMedia, getDownloadedCategories, reconcileDownloadedCategories, offlineCoverageHue, getInProgressOfflineCategory, getActiveDownloadProgress } from './offline.js';
 import { getProfileSummary, loadHistory, loadLastResult, clearHistory, clearLearnProgress } from './stats.js';
-import { setupUiFitScale, refitUiScale, revealUiScale, layoutCategoryGrid } from './scale.js';
+import { setupUiFitScale, refitUiScale, revealUiScale, layoutCategoryGrid, applyUiFitScale } from './scale.js';
 import {
   DEFAULT_PROFILE_NAME,
   PROFILE_LIMIT,
@@ -217,11 +217,14 @@ function handleRoute() {
   if (hash === 'quiz' && pendingCategory) {
     const cat = pendingCategory;
     pendingCategory = null;
+    const quiz = document.getElementById('quiz');
+    document.documentElement.setAttribute('data-ui-hold', '1');
+    quiz?.classList.toggle('learn-active', currentMode === 'learn');
+    quiz?.classList.toggle('exam-active', currentMode === 'exam');
     showScreen('quiz');
     focusCurrentScreenHeading('quiz');
     syncSessionChrome('quiz');
     launchSession(cat);
-    refitUiScale();
     return;
   }
 
@@ -248,7 +251,6 @@ function handleRoute() {
   showScreen(hash);
   focusCurrentScreenHeading(hash);
   syncSessionChrome(hash);
-  refitUiScale();
   if (hash === 'categories' && pendingOfflineDownload) {
     const catId = pendingOfflineDownload;
     pendingOfflineDownload = null;
@@ -273,8 +275,11 @@ async function launchSession(categoryId) {
       startLearn(data);
     }
     syncSessionChrome('quiz');
+    applyUiFitScale();
   } catch {
     window.location.hash = 'categories';
+  } finally {
+    document.documentElement.removeAttribute('data-ui-hold');
   }
 }
 

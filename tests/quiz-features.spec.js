@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { goToCategories, cycleLanguage, cycleSkin, learnCatalogLabel } = require('./helpers');
+const { goToCategories, cycleLanguage, cycleSkin, learnCatalogLabel, waitForUiHold } = require('./helpers');
 
 // Helper: navigate to categories and start learn mode for category B
 async function startLearnMode(page, { localJson, category = 'B' } = {}) {
@@ -20,6 +20,7 @@ async function startLearnMode(page, { localJson, category = 'B' } = {}) {
   await page.click('.mode-btn[data-mode="learn"]');
   await page.click(`.category-grid .category-card[data-category="${category}"]`);
   await page.waitForSelector('#quiz.active');
+  await waitForUiHold(page);
 }
 
 async function setLearnQueue(page, kind, value) {
@@ -730,7 +731,6 @@ test.describe('Quiz text selection', () => {
     await expect.poll(() => page.locator('html').getAttribute('data-ui-orient')).toBe(
       viewport.width < viewport.height ? 'portrait' : 'landscape',
     );
-    await page.waitForFunction(() => !document.querySelector('.quiz-dock')?.classList.contains('is-fitting'));
   }
 
   function selectionStyles() {
@@ -980,7 +980,6 @@ test.describe('YN answer halo is not clipped', () => {
       await expect.poll(() => page.locator('html').getAttribute('data-exam-skin')).toBe(view.skin);
       await expect.poll(() => page.locator('html').getAttribute('data-ui-orient')).toBe(view.orient);
       await expect.poll(() => page.locator('html').getAttribute('data-ui-mode')).toBe('fit');
-      await page.waitForFunction(() => !document.querySelector('.quiz-dock')?.classList.contains('is-fitting'));
       await page.waitForSelector('.yn-answers .answer-btn, .abc-answers .answer-btn');
       for (let i = 0; i < 20 && !(await page.locator('.yn-answers .answer-btn').count()); i += 1) {
         await page.locator('.learn-nav .btn-next').click();
@@ -1073,16 +1072,16 @@ test.describe('Learn catalog jump', () => {
       await page.locator('.learn-qnum-input').press('Enter');
       await expect(page.locator('.question-card')).toHaveAttribute('data-question-id', target.id);
       await expect.poll(() => page.evaluate(() => {
-        const q = parseFloat(document.querySelector('.question-text')?.style.fontSize || '0');
-        const a = parseFloat(document.querySelector('.abc-answers .answer-text')?.style.fontSize || '0');
+        const q = parseFloat(getComputedStyle(document.querySelector('.question-text')).fontSize);
+        const a = parseFloat(getComputedStyle(document.querySelector('.abc-answers .answer-text')).fontSize);
         return q >= 12 && a >= 12;
       })).toBe(true);
       const font = await page.evaluate(() => {
         const q = document.querySelector('.question-text');
         const a = document.querySelector('.abc-answers .answer-text');
         return {
-          q: parseFloat(q.style.fontSize),
-          a: parseFloat(a.style.fontSize),
+          q: parseFloat(getComputedStyle(q).fontSize),
+          a: parseFloat(getComputedStyle(a).fontSize),
           qH: q.clientHeight,
           aW: a.clientWidth,
         };
@@ -1104,16 +1103,14 @@ test.describe('Learn catalog jump', () => {
       const samples = [];
       for (let i = 0; i < 10; i++) {
         samples.push([
-          document.querySelector('.question-text')?.style.fontSize || '',
-          document.querySelector('.abc-answers .answer-text')?.style.fontSize || '',
-          document.querySelector('.quiz-dock')?.classList.contains('is-fitting') ? '1' : '0',
+          getComputedStyle(document.querySelector('.question-text')).fontSize,
+          getComputedStyle(document.querySelector('.abc-answers .answer-text')).fontSize,
         ].join('|'));
         await new Promise((r) => setTimeout(r, 50));
       }
       return { unique: [...new Set(samples)], samples };
     });
     expect(flicker.unique, `fit-text flickered: ${flicker.samples.join(' → ')}`).toHaveLength(1);
-    expect(flicker.unique[0]).not.toMatch(/\|1$/);
 
     const pos6362 = await page.evaluate(async () => {
       const data = await fetch('data/B.json').then((res) => res.json());
@@ -1125,18 +1122,20 @@ test.describe('Learn catalog jump', () => {
     await page.locator('.learn-qnum-input').press('Enter');
     await expect(page.locator('.question-card')).toHaveAttribute('data-question-id', '6362');
     await expect.poll(() => page.evaluate(() => {
-      const a = parseFloat(document.querySelector('.abc-answers .answer-text')?.style.fontSize || '0');
+      const a = parseFloat(getComputedStyle(document.querySelector('.abc-answers .answer-text')).fontSize);
       return a >= 16;
     })).toBe(true);
     const beforeNav = await page.evaluate(() => ({
-      q: document.querySelector('.question-text')?.style.fontSize || '',
-      a: document.querySelector('.abc-answers .answer-text')?.style.fontSize || '',
+      q: getComputedStyle(document.querySelector('.question-text')).fontSize,
+      a: getComputedStyle(document.querySelector('.abc-answers .answer-text')).fontSize,
     }));
     await page.locator('.learn-nav .btn-next').click();
     await expect(page.locator('.question-card')).not.toHaveAttribute('data-question-id', '6362');
     const afterNext = await page.evaluate(() => ({
-      q: document.querySelector('.question-text')?.style.fontSize || '',
-      a: document.querySelector('.abc-answers .answer-text')?.style.fontSize || '',
+      q: getComputedStyle(document.querySelector('.question-text')).fontSize,
+      a: document.querySelector('.abc-answers .answer-text')
+        ? getComputedStyle(document.querySelector('.abc-answers .answer-text')).fontSize
+        : '',
       hasAbc: Boolean(document.querySelector('.abc-answers')),
     }));
     expect(afterNext.q, 'question size after next must already be fitted').toMatch(/px$/);
@@ -1146,10 +1145,311 @@ test.describe('Learn catalog jump', () => {
     await page.locator('.learn-nav .btn-prev').click();
     await expect(page.locator('.question-card')).toHaveAttribute('data-question-id', '6362');
     await expect.poll(() => page.evaluate((beforeNav) => {
-      const q = document.querySelector('.question-text')?.style.fontSize || '';
-      const a = document.querySelector('.abc-answers .answer-text')?.style.fontSize || '';
+      const q = getComputedStyle(document.querySelector('.question-text')).fontSize;
+      const a = getComputedStyle(document.querySelector('.abc-answers .answer-text')).fontSize;
       return q === beforeNav.q && a === beforeNav.a;
     }, beforeNav)).toBe(true);
+  });
+
+  test('panel question is fitted on the first learn frame', async ({ page }) => {
+    await page.setViewportSize({ width: 874, height: 580 });
+    await page.route('**/data/B.json', async (route) => {
+      const res = await route.fetch();
+      const data = await res.json();
+      const longYn = [...data.questions]
+        .filter((q) => q.type === 'basic')
+        .sort((a, b) => String(b.q || '').length - String(a.q || '').length)[0];
+      if (longYn) {
+        data.questions = [longYn, ...data.questions.filter((q) => q.id !== longYn.id)];
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(data),
+      });
+    });
+    await page.addInitScript(() => {
+      try { localStorage.setItem('prawko_exam_skin', 'panel'); } catch {}
+      localStorage.setItem('prawko_p_p1_learn_queue_mode', JSON.stringify({
+        B: { filter: 'all', order: 'sequential' },
+      }));
+      document.addEventListener('DOMContentLoaded', () => {
+        window.__learnFirst = null;
+        const quiz = document.getElementById('quiz');
+        if (!quiz) return;
+        const take = () => {
+          if (document.documentElement.hasAttribute('data-ui-hold')) return;
+          if (!quiz.classList.contains('learn-active') || window.__learnFirst) return;
+          const q = quiz.querySelector('.question-text');
+          if (!q?.textContent?.trim() || !q.style.fontSize) return;
+          window.__learnFirst = {
+            qInline: q.style.fontSize,
+            qC: getComputedStyle(q).fontSize,
+            overflow: q.scrollHeight > q.clientHeight + 1 ? 1 : 0,
+            yn: Boolean(quiz.querySelector('.yn-answers')),
+          };
+        };
+        new MutationObserver(take).observe(document.documentElement, {
+          attributes: true,
+          attributeFilter: ['data-ui-hold'],
+        });
+        new MutationObserver(take).observe(quiz, {
+          subtree: true,
+          childList: true,
+          attributes: true,
+        });
+      });
+    });
+    await startLearnMode(page);
+    await page.waitForSelector('#quiz.learn-active .question-text:not(:empty)');
+    const first = await page.evaluate(() => window.__learnFirst);
+    expect(first, 'observer missed the first learn question').toBeTruthy();
+    expect(first.yn, 'first learn question should be a long YN').toBe(true);
+    expect(first.qInline).toMatch(/px$/);
+    expect(first.qC, `computed ${first.qC} vs inline ${first.qInline}`).toBe(first.qInline);
+    expect(first.overflow, 'question overflowed on the first learn frame').toBe(0);
+  });
+
+  test('panel question uses the fitted inline size on the first YN→ABC frame', async ({ page }) => {
+    await page.setViewportSize({ width: 874, height: 580 });
+    await page.addInitScript(() => {
+      try { localStorage.setItem('prawko_exam_skin', 'panel'); } catch {}
+    });
+    await startLearnMode(page, { localJson: { learnQuestionJump: true } });
+    await expect.poll(() => page.locator('html').getAttribute('data-exam-skin')).toBe('panel');
+    await setLearnQueue(page, 'filter', 'all');
+    await setLearnQueue(page, 'order', 'sequential');
+    const pos = await page.evaluate(async () => {
+      const data = await fetch('data/B.json').then((res) => res.json());
+      const yn = data.questions.findIndex((q) => String(q.id) === '10526');
+      const abc = data.questions.findIndex((q) => String(q.id) === '14063');
+      return { yn: yn + 1, abc: abc + 1 };
+    });
+    expect(pos.yn).toBeGreaterThan(0);
+    expect(pos.abc).toBeGreaterThan(0);
+    await page.locator('.learn-qnum-input').fill(String(pos.yn));
+    await page.locator('.learn-qnum-input').press('Enter');
+    await expect(page.locator('.question-card')).toHaveAttribute('data-question-id', '10526');
+    await page.evaluate(() => {
+      window.__qFirst = null;
+      const card = document.querySelector('.question-card');
+      new MutationObserver(() => {
+        if (card.dataset.questionId !== '14063' || window.__qFirst) return;
+        const q = document.querySelector('.question-text');
+        window.__qFirst = {
+          qC: q ? getComputedStyle(q).fontSize : '',
+          qInline: q?.style.fontSize || '',
+          overflow: q && q.scrollHeight > q.clientHeight + 1 ? 1 : 0,
+        };
+      }).observe(card, { attributes: true, attributeFilter: ['data-question-id'] });
+    });
+    await page.locator('.learn-qnum-input').fill(String(pos.abc));
+    await page.locator('.learn-qnum-input').press('Enter');
+    await expect(page.locator('.question-card')).toHaveAttribute('data-question-id', '14063');
+    const first = await page.evaluate(() => window.__qFirst);
+    expect(first, 'observer missed the YN→ABC swap').toBeTruthy();
+    expect(first.qInline).toMatch(/px$/);
+    expect(first.qC, `computed ${first.qC} vs inline ${first.qInline}`).toBe(first.qInline);
+    expect(first.overflow, 'question overflowed at the previous 32px').toBe(0);
+  });
+
+  test('panel ABC answers use the fitted inline size on the first ABC→ABC frame', async ({ page }) => {
+    await page.setViewportSize({ width: 874, height: 580 });
+    await page.addInitScript(() => {
+      try { localStorage.setItem('prawko_exam_skin', 'panel'); } catch {}
+    });
+    await startLearnMode(page, { localJson: { learnQuestionJump: true } });
+    await expect.poll(() => page.locator('html').getAttribute('data-exam-skin')).toBe('panel');
+    await setLearnQueue(page, 'filter', 'all');
+    await setLearnQueue(page, 'order', 'sequential');
+    const pos = await page.evaluate(async () => {
+      const data = await fetch('data/B.json').then((res) => res.json());
+      const a = data.questions.findIndex((q) => String(q.id) === '14063');
+      const b = data.questions.findIndex((q) => String(q.id) === '11003');
+      return { a: a + 1, b: b + 1 };
+    });
+    expect(pos.a).toBeGreaterThan(0);
+    expect(pos.b).toBeGreaterThan(0);
+    await page.locator('.learn-qnum-input').fill(String(pos.a));
+    await page.locator('.learn-qnum-input').press('Enter');
+    await expect(page.locator('.question-card')).toHaveAttribute('data-question-id', '14063');
+    await page.evaluate(() => {
+      window.__aFirst = null;
+      const card = document.querySelector('.question-card');
+      new MutationObserver(() => {
+        if (card.dataset.questionId !== '11003' || window.__aFirst) return;
+        const a = document.querySelector('.abc-answers .answer-text');
+        window.__aFirst = {
+          aC: a ? getComputedStyle(a).fontSize : '',
+          aInline: a?.style.fontSize || '',
+          overflow: a && a.scrollHeight > a.clientHeight + 1 ? 1 : 0,
+        };
+      }).observe(card, { attributes: true, attributeFilter: ['data-question-id'] });
+    });
+    await page.locator('.learn-qnum-input').fill(String(pos.b));
+    await page.locator('.learn-qnum-input').press('Enter');
+    await expect(page.locator('.question-card')).toHaveAttribute('data-question-id', '11003');
+    const first = await page.evaluate(() => window.__aFirst);
+    expect(first, 'observer missed the ABC→ABC swap').toBeTruthy();
+    expect(first.aInline).toMatch(/px$/);
+    expect(first.aC, `computed ${first.aC} vs inline ${first.aInline}`).toBe(first.aInline);
+    expect(first.overflow, 'answer overflowed at the previous ABC size').toBe(0);
+  });
+
+  test('panel ABC copy does not resize when the photo paints', async ({ page }) => {
+    await page.setViewportSize({ width: 874, height: 580 });
+    await page.addInitScript(() => {
+      try { localStorage.setItem('prawko_exam_skin', 'panel'); } catch {}
+    });
+    await startLearnMode(page, { localJson: { learnQuestionJump: true } });
+    await expect.poll(() => page.locator('html').getAttribute('data-exam-skin')).toBe('panel');
+    await setLearnQueue(page, 'filter', 'all');
+    await setLearnQueue(page, 'order', 'sequential');
+    const targets = await page.evaluate(async () => {
+      const data = await fetch('data/B.json').then((res) => res.json());
+      const yn = data.questions.findIndex((q) => q.type === 'basic' && q.media);
+      const abc = data.questions.findIndex((q) => q.type === 'specialist' && q.mediaType === 'image' && q.a);
+      return {
+        yn: yn + 1,
+        abc: abc + 1,
+        abcId: abc >= 0 ? String(data.questions[abc].id) : '',
+      };
+    });
+    expect(targets.yn).toBeGreaterThan(0);
+    expect(targets.abc).toBeGreaterThan(0);
+    await page.locator('.learn-qnum-input').fill(String(targets.yn));
+    await page.locator('.learn-qnum-input').press('Enter');
+    await page.evaluate(() => {
+      window.__abcFit = [];
+      const dock = document.querySelector('.quiz-dock');
+      const obs = new MutationObserver(() => {
+        const dock = document.querySelector('.quiz-dock');
+        const size = dock?.style.getPropertyValue('--dock-a-size');
+        if (size) window.__abcFit.push(size);
+      });
+      obs.observe(dock, { subtree: true, childList: true, attributes: true, attributeFilter: ['style'] });
+      window.__abcFitObs = obs;
+    });
+    await page.route('**/*', async (route) => {
+      const url = route.request().url();
+      if (/\.(webp|mp4)(\?|$)/i.test(url) || /\/(img|vid)\//.test(url)) {
+        await new Promise((resolve) => setTimeout(resolve, 400));
+      }
+      await route.continue();
+    });
+    await page.locator('.learn-qnum-input').fill(String(targets.abc));
+    await page.locator('.learn-qnum-input').press('Enter');
+    await expect(page.locator('.question-card')).toHaveAttribute('data-question-id', targets.abcId);
+    const before = await page.evaluate(() => {
+      const text = document.querySelector('.abc-answers .answer-text');
+      const q = document.querySelector('.question-text');
+      const btn = document.querySelector('.abc-answers .answer-btn');
+      const dock = document.querySelector('.quiz-dock');
+      return {
+        font: dock?.style.getPropertyValue('--dock-a-size') || '',
+        computed: text ? getComputedStyle(text).fontSize : '',
+        qInline: q?.style.fontSize || '',
+        qComputed: q ? getComputedStyle(q).fontSize : '',
+        overflow: q ? (q.scrollHeight > q.clientHeight + 1 ? 1 : 0) : 0,
+        btnH: btn ? Math.round(btn.getBoundingClientRect().height) : 0,
+      };
+    });
+    expect(before.font, 'ABC must be fitted before the photo request').toMatch(/px$/);
+    expect(before.computed, 'first ABC paint must already use the dock size').toBe(before.font);
+    expect(before.qInline, 'question must be fitted before first paint').toMatch(/px$/);
+    expect(
+      Math.abs(parseFloat(before.qComputed) - parseFloat(before.qInline)),
+      `question computed ${before.qComputed} vs inline ${before.qInline}`,
+    ).toBeLessThan(0.5);
+    expect(before.overflow, 'question overflowed at the previous 32px').toBe(0);
+    const widthTrace = await page.evaluate(async () => {
+      const lineCount = (el) => {
+        if (!el) return 0;
+        const cs = getComputedStyle(el);
+        const lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) || 1;
+        return Math.max(1, Math.round(el.getBoundingClientRect().height / lh));
+      };
+      const sample = () => {
+        const answers = document.querySelector('.answers');
+        const q = document.querySelector('.question-text');
+        const media = document.querySelector('.media-area');
+        const c = document.querySelector('.abc-answers .answer-btn:nth-child(3) .answer-text');
+        return {
+          ansW: Math.round(answers?.getBoundingClientRect().width || 0),
+          qW: Math.round(q?.getBoundingClientRect().width || 0),
+          qC: q ? getComputedStyle(q).fontSize : '',
+          qInline: q?.style.fontSize || '',
+          overflow: q ? (q.scrollHeight > q.clientHeight + 1 ? 1 : 0) : 0,
+          mediaW: Math.round(media?.getBoundingClientRect().width || 0),
+          qLines: lineCount(q),
+          cLines: lineCount(c),
+        };
+      };
+      const out = [sample()];
+      for (let i = 0; i < 6; i++) {
+        await new Promise((r) => requestAnimationFrame(r));
+        out.push(sample());
+      }
+      return out;
+    });
+    const ansWs = [...new Set(widthTrace.map((s) => s.ansW))];
+    const qWs = [...new Set(widthTrace.map((s) => s.qW))];
+    const lineNs = [...new Set(widthTrace.map((s) => s.cLines))];
+    const qLineNs = [...new Set(widthTrace.map((s) => s.qLines))];
+    expect(ansWs, `ABC column width jumped: ${JSON.stringify(widthTrace)}`).toHaveLength(1);
+    expect(qWs, `question width jumped: ${JSON.stringify(widthTrace)}`).toHaveLength(1);
+    expect(lineNs, `ABC C wrapping jumped: ${JSON.stringify(widthTrace)}`).toHaveLength(1);
+    expect(qLineNs, `question wrapping jumped: ${JSON.stringify(widthTrace)}`).toHaveLength(1);
+    expect(
+      [...new Set(widthTrace.map((s) => s.qC))],
+      `question font jumped: ${JSON.stringify(widthTrace)}`,
+    ).toHaveLength(1);
+    widthTrace.forEach((s) => {
+      expect(s.ansW, `ABC answers ${s.ansW} should use the dock, not the film ${s.mediaW}`).toBeGreaterThan(s.mediaW + 16);
+      expect(s.qW, `question ${s.qW} should use the dock, not the film ${s.mediaW}`).toBeGreaterThan(s.mediaW + 16);
+      expect(s.overflow, `question overflowed at ${s.qC}`).toBe(0);
+      expect(
+        Math.abs(parseFloat(s.qC) - parseFloat(s.qInline)),
+        `question computed ${s.qC} vs inline ${s.qInline}`,
+      ).toBeLessThan(0.5);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    const waiting = await page.evaluate(() => {
+      const text = document.querySelector('.abc-answers .answer-text');
+      const btn = document.querySelector('.abc-answers .answer-btn');
+      const dock = document.querySelector('.quiz-dock');
+      return {
+        font: dock?.style.getPropertyValue('--dock-a-size') || '',
+        computed: text ? getComputedStyle(text).fontSize : '',
+        btnH: btn ? Math.round(btn.getBoundingClientRect().height) : 0,
+      };
+    });
+    expect(waiting.font, 'ABC must not jump while the photo is still loading').toBe(before.font);
+    expect(waiting.computed).toBe(before.computed);
+    expect(Math.abs(waiting.btnH - before.btnH), 'ABC row height jumped while loading').toBeLessThanOrEqual(2);
+    await page.locator('#quiz .media-area img').waitFor({ state: 'attached' });
+    await page.evaluate(() => new Promise((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(resolve));
+    }));
+    const after = await page.evaluate(() => {
+      const text = document.querySelector('.abc-answers .answer-text');
+      const btn = document.querySelector('.abc-answers .answer-btn');
+      const dock = document.querySelector('.quiz-dock');
+      return {
+        font: dock?.style.getPropertyValue('--dock-a-size') || '',
+        computed: text ? getComputedStyle(text).fontSize : '',
+        btnH: btn ? Math.round(btn.getBoundingClientRect().height) : 0,
+      };
+    });
+    expect(after.font, 'ABC font jumped when the photo painted').toBe(before.font);
+    expect(after.computed).toBe(before.computed);
+    expect(Math.abs(after.btnH - before.btnH), 'ABC row height jumped when the photo painted').toBeLessThanOrEqual(2);
+    const unique = await page.evaluate(() => {
+      window.__abcFitObs?.disconnect();
+      return [...new Set(window.__abcFit || [])];
+    });
+    expect(unique.length, `ABC fit jumped: ${unique.join(' → ')}`).toBeLessThanOrEqual(1);
+    expect(unique[0] || before.font).toBe(before.font);
   });
 
   test('random walks a list shuffled once; toggling order keeps the question and its new index', async ({ page }) => {

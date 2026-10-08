@@ -16,6 +16,12 @@ export const UI_MAX_SCALE = 1;
 export const UI_MIN_SCALE = 0.01;
 export const UI_BOTTOM_INSET_RATIO = 0.05;
 const UI_SCALE_EPS = 0.01;
+/** One rAF = one compositor tick. Home↔categories hide the stage, pin a
+ *  concrete `scale()`, then let CSS `var(--ui-scale)` take over before show.
+ *  6 ticks to drop the pin, 6 more so the used transform matches the var
+ *  (~200 ms at 60 Hz; a slow VM needs the ticks, not a wall-clock sleep). */
+const UI_SWAP_PIN_FRAMES = 6;
+const UI_SWAP_SETTLE_FRAMES = 6;
 
 const SCROLL_SCREEN_IDS = ['results', 'history', 'learn-progress'];
 
@@ -30,8 +36,8 @@ function clampScale(value) {
 
 let started = false;
 let raf = 0;
-let resizeWait = 0;
 let applying = false;
+let unpinScale = 0;
 let lastDesignW = 0;
 let lastDesignH = 0;
 let lastScale = 0;
@@ -88,7 +94,7 @@ function measurePageHeight() {
 function rememberCurrentScale(root) {
   lastDesignW = parseFloat(root.style.getPropertyValue('--ui-design-width')) || lastDesignW;
   lastDesignH = parseFloat(root.style.getPropertyValue('--ui-design-height')) || lastDesignH;
-  lastScale = Number(root.style.getPropertyValue('--ui-scale')) || lastScale;
+  lastScale = Number(getComputedStyle(root).getPropertyValue('--ui-scale')) || lastScale;
   lastMode = root.getAttribute('data-ui-mode') || lastMode;
   lastStation = root.getAttribute('data-ui-station') || lastStation;
   lastOrient = root.getAttribute('data-ui-orient') || lastOrient;
@@ -120,13 +126,8 @@ function categoryGridLeftover(section, grid) {
   };
 }
 
-function scheduleCategoryGridLayout() {
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => layoutCategoryGrid());
-  });
-}
-
-/** Pack visible category cards after the fill stage has a real leftover. */
+/** Pack the full category set after the fill stage has a real leftover.
+ *  Search hides cards (`display`) but must not grow the remaining tiles. */
 export function layoutCategoryGrid() {
   const section = document.getElementById('categories');
   const grid = document.querySelector('.category-grid');
@@ -144,9 +145,7 @@ export function layoutCategoryGrid() {
     return;
   }
 
-  const cards = [...grid.querySelectorAll('.category-card')].filter(
-    (c) => !c.hidden && c.style.display !== 'none'
-  );
+  const cards = [...grid.querySelectorAll('.category-card')].filter((c) => !c.hidden);
   const n = Math.max(1, cards.length);
   const { innerW, innerH, gap } = categoryGridLeftover(section, grid);
   if (innerW < 32 || innerH < 32) {
@@ -164,6 +163,9 @@ export function layoutCategoryGrid() {
   grid.style.setProperty('--cat-card-w', `${cardW}px`);
   grid.style.setProperty('--cat-card-h', `${cardH}px`);
   grid.style.setProperty('--cat-cell', `${cardW}px`);
+  grid.style.gridTemplateColumns = `repeat(${cols}, minmax(0, ${cardW}px))`;
+  grid.style.gridTemplateRows = `repeat(${rows}, minmax(0, ${cardH}px))`;
+  void grid.offsetHeight;
 
   const designH = Number.parseFloat(
     getComputedStyle(document.documentElement).getPropertyValue('--ui-design-height')
@@ -171,10 +173,72 @@ export function layoutCategoryGrid() {
   const compact = designH > 0 && designH < 760;
   const compactChanged = section.classList.contains('categories-compact') !== compact;
   section.classList.toggle('categories-compact', compact);
-  if (compactChanged) scheduleCategoryGridLayout();
+  if (compactChanged) {
+    void section.offsetHeight;
+    layoutCategoryGrid();
+  }
 }
 
-function applyUiFitScale() {
+let pinOutstanding = false;
+
+function clearStageScalePin() {
+  unpinScale += 1;
+  pinOutstanding = false;
+  const root = document.documentElement;
+  const slot = document.querySelector('.ui-slot');
+  const stage = document.querySelector('.ui-stage');
+  root.style.removeProperty('--ui-scale');
+  slot?.style.removeProperty('width');
+  slot?.style.removeProperty('height');
+  stage?.style.removeProperty('transform');
+}
+
+function afterUiPaints(fn, frames = 4) {
+  const tick = () => {
+    if (frames <= 1) {
+      fn();
+      return;
+    }
+    frames -= 1;
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+
+/** Pin a real `transform: scale(n)` — `scale(var(--ui-scale))` paints late. */
+function commitStageBox(designW, designH, scale, pinScale, holdPin) {
+  const root = document.documentElement;
+  const slot = document.querySelector('.ui-slot');
+  const stage = document.querySelector('.ui-stage');
+  if (stage) {
+    stage.style.width = `${designW}px`;
+    stage.style.height = `${designH}px`;
+  }
+  if (pinScale && scale > 0) {
+    pinOutstanding = true;
+    root.style.setProperty('--ui-scale', String(scale));
+    if (stage) stage.style.transform = `scale(${scale})`;
+    if (slot) {
+      slot.style.width = `${Math.round(designW * scale)}px`;
+      slot.style.height = `${Math.round(designH * scale)}px`;
+    }
+    void stage?.offsetHeight;
+    unpinScale += 1;
+    if (holdPin) return;
+    const gen = unpinScale;
+    afterUiPaints(() => {
+      if (gen !== unpinScale) return;
+      clearStageScalePin();
+    });
+    return;
+  }
+  if (!pinOutstanding) {
+    root.style.removeProperty('--ui-scale');
+    stage?.style.removeProperty('transform');
+  }
+}
+
+export function applyUiFitScale(opts = {}) {
   if (applying) return;
   const root = document.documentElement;
   const app = document.getElementById('app');
@@ -237,16 +301,19 @@ function applyUiFitScale() {
     applying = false;
     root.style.setProperty('--ui-design-width', `${lastDesignW}px`);
     root.style.setProperty('--ui-design-height', `${lastDesignH}px`);
-    root.style.setProperty('--ui-scale', String(lastScale));
     root.setAttribute('data-ui-station', lastStation || station);
     root.setAttribute('data-ui-mode', lastMode || mode);
-    requestAnimationFrame(() => {
-      syncExamMediaAlign();
-      if (isCategoriesScreen()) scheduleCategoryGridLayout();
-    });
+    commitStageBox(lastDesignW, lastDesignH, lastScale, false, opts.holdPin);
+    void app.offsetHeight;
+    syncExamMediaAlign();
+    if (isCategoriesScreen()) layoutCategoryGrid();
     return;
   }
 
+  const geometryChanged = station !== lastStation
+    || orient !== lastOrient
+    || Math.abs(designW - lastDesignW) >= 2
+    || Math.abs(designH - lastDesignH) >= heightSlack;
   lastMode = mode;
   lastStation = station;
   lastOrient = orient;
@@ -256,42 +323,61 @@ function applyUiFitScale() {
   lastChromeH = chromeH;
   root.style.setProperty('--ui-design-width', `${designW}px`);
   root.style.setProperty('--ui-design-height', `${designH}px`);
-  root.style.setProperty('--ui-scale', String(scale));
   root.setAttribute('data-ui-fit', '1');
   root.setAttribute('data-ui-mode', mode);
   root.setAttribute('data-ui-station', station);
-  requestAnimationFrame(() => {
-    applying = false;
-    syncExamMediaAlign();
-    if (isCategoriesScreen()) scheduleCategoryGridLayout();
-  });
+  commitStageBox(designW, designH, scale, geometryChanged, opts.holdPin);
+  void app.offsetHeight;
+  applying = false;
+  syncExamMediaAlign();
+  scheduleFitQuizDockText();
+  if (isCategoriesScreen()) layoutCategoryGrid();
 }
 
-/** Align dock copy to the film slot. Geometry comes from the slot, not from
- *  whether this question currently has an image or video. */
+/** After Home↔categories already hid the stage (`data-ui-swap`): pin, unpin, show. */
+export function fitAfterShowScreen(swap) {
+  applyUiFitScale({ holdPin: Boolean(swap) });
+  if (!swap) return;
+  afterUiPaints(() => {
+    clearStageScalePin();
+    afterUiPaints(() => {
+      document.documentElement.removeAttribute('data-ui-swap');
+    }, UI_SWAP_SETTLE_FRAMES);
+  }, UI_SWAP_PIN_FRAMES);
+}
+
+/** Align dock copy to the film slot. Does not run fit-text — ABC size is
+ *  from the design dock row, not from media paint. */
 export function syncExamMediaAlign() {
   const quiz = document.getElementById('quiz');
   const session = quiz?.classList.contains('exam-active') || quiz?.classList.contains('learn-active');
   if (!quiz?.classList.contains('active') || !session) {
     quiz?.style.removeProperty('--exam-media-left');
     quiz?.style.removeProperty('--exam-media-width');
-    return;
+    return false;
   }
   const film = quiz.querySelector('.media-slot') || quiz.querySelector('.media-area');
   const dock = quiz.querySelector('.quiz-dock');
-  if (!film || !dock) return;
+  if (!film || !dock) return false;
   const filmBox = film.getBoundingClientRect();
   const dockBox = dock.getBoundingClientRect();
-  if (filmBox.width < 8 || dockBox.width < 8) {
-    scheduleFitQuizDockText();
-    return;
-  }
+  if (filmBox.width < 8 || dockBox.width < 8) return false;
   const scaleRaw = getComputedStyle(document.documentElement).getPropertyValue('--ui-scale');
   const scale = Number(scaleRaw);
   const safeScale = Number.isFinite(scale) && scale > 0 ? scale : 1;
   const left = Math.max(0, Math.round((filmBox.left - dockBox.left) / safeScale));
+  const width = Math.round(filmBox.width / safeScale);
+  const prevL = parseFloat(quiz.style.getPropertyValue('--exam-media-left'));
+  const prevW = parseFloat(quiz.style.getPropertyValue('--exam-media-width'));
+  const had = quiz.style.getPropertyValue('--exam-media-width') !== '';
+  const changed = !had || Math.abs(left - prevL) >= 2 || Math.abs(width - prevW) >= 2;
   quiz.style.setProperty('--exam-media-left', `${left}px`);
-  quiz.style.setProperty('--exam-media-width', `${Math.round(filmBox.width / safeScale)}px`);
+  quiz.style.setProperty('--exam-media-width', `${width}px`);
+  return changed;
+}
+
+export function alignAndFitExamDock() {
+  syncExamMediaAlign();
   scheduleFitQuizDockText();
 }
 
@@ -329,13 +415,7 @@ export function setupUiFitScale() {
   started = true;
   rememberCurrentScale(document.documentElement);
   applyUiFitScale();
-  const onViewportResize = () => {
-    if (resizeWait) clearTimeout(resizeWait);
-    resizeWait = setTimeout(() => {
-      resizeWait = 0;
-      refitUiScale();
-    }, 32);
-  };
+  const onViewportResize = () => refitUiScale();
   window.addEventListener('resize', onViewportResize);
   window.visualViewport?.addEventListener('resize', onViewportResize);
   window.addEventListener('orientationchange', onViewportResize);
@@ -362,7 +442,9 @@ export function setupUiFitScale() {
   if (mediaSlot && typeof ResizeObserver !== 'undefined') {
     new ResizeObserver(() => {
       if (!isQuizScreen()) return;
-      requestAnimationFrame(() => syncExamMediaAlign());
+      requestAnimationFrame(() => {
+        syncExamMediaAlign();
+      });
     }).observe(mediaSlot);
   }
 }
