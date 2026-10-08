@@ -1,6 +1,6 @@
 importScripts('./js/media-assemble.js');
 
-const CACHE_VERSION = 'prawko-v139';
+const CACHE_VERSION = 'prawko-v140';
 const APP_SHELL_CACHE = CACHE_VERSION + '-shell';
 const DATA_CACHE = CACHE_VERSION + '-data';
 const MEDIA_CACHE = CACHE_VERSION + '-media';
@@ -35,7 +35,12 @@ const APP_SHELL = [
   './icons/cursor-white.png',
   './icons/cursor-pointer-black.png',
   './icons/cursor-pointer-white.png',
-  './fonts/NotoSansSymbols-Regular.ttf'
+  './fonts/NotoSansSymbols-Regular.ttf',
+  './fonts/inter-latin-wght-normal.woff2',
+  './fonts/inter-latin-ext-wght-normal.woff2',
+  './fonts/inter-cyrillic-wght-normal.woff2',
+  './fonts/dm-sans-latin-wght-normal.woff2',
+  './fonts/dm-sans-latin-ext-wght-normal.woff2'
 ];
 
 const videoAssembler = self.PrawkoVideoAssemble.createAssembler();
