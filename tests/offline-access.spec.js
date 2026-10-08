@@ -100,6 +100,17 @@ test.describe('Category media access', () => {
     await expect(page.locator('html')).toHaveAttribute('data-local-media', 'true');
   });
 
+  test('UI fonts are same-origin files, not Google', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const html = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.html'), 'utf8');
+    const css = fs.readFileSync(path.join(__dirname, '..', 'src', 'css', 'style.css'), 'utf8');
+    expect(html).not.toMatch(/fonts\.googleapis|fonts\.gstatic/);
+    expect(html).toMatch(/font-src 'self'/);
+    expect(css).toMatch(/fonts\/inter-latin-wght-normal\.woff2/);
+    expect(css).toMatch(/fonts\/dm-sans-latin-wght-normal\.woff2/);
+  });
+
   test('without local.json media stays on the published CDN', async () => {
     const fs = require('fs');
     const path = require('path');
@@ -107,7 +118,8 @@ test.describe('Category media access', () => {
     expect(src).not.toMatch(/isLocalDevHost/);
     expect(src).not.toMatch(/hostedOnGitHubPages/);
     expect(src).not.toMatch(/github\.io/);
-    expect(src).toMatch(/export let MEDIA_BASE = MEDIA_CDN/);
+    expect(src).toMatch(/export let MEDIA_BASE = ''/);
+    expect(src).toMatch(/if \(!MEDIA_BASE\) MEDIA_BASE = MEDIA_CDN/);
     expect(src).toMatch(/export let OFFLINE_DOWNLOAD = 'packs'/);
     expect(src).toMatch(/fetch\(new URL\('local\.json'/);
     expect(src).toMatch(/LOCAL_JSON_WAIT_MS/);

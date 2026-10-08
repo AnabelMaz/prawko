@@ -3,14 +3,13 @@
 const cache = new Map();
 const inflight = new Map();
 
-// Media URLs. One start state for every host: the published CDN.
-// Same-origin `local.json` is optional. When the admin has files on this
-// server, the installer writes that file (`mediaBase: media`) and the app
-// switches to `/media/`. Missing or slow `local.json` does not block startup.
+// Media URLs. Empty until `local.json` is attempted, so the first request
+// does not go to Backblaze while that file is still in flight. After the
+// attempt: `mediaBase: media` → `/media/`, `cdn` → B2, missing file → B2.
 export const MEDIA_CDN = 'https://f003.backblazeb2.com/file/prawko-maz';
 export const PACKS_CDN = 'https://pub-e8e3a36b9ab44034913636d87ee3f0ee.r2.dev';
 
-export let MEDIA_BASE = MEDIA_CDN;
+export let MEDIA_BASE = '';
 export let PACKS_BASE = PACKS_CDN;
 export let OFFLINE_DOWNLOAD = 'packs';
 
@@ -59,6 +58,7 @@ export function loadLocalConfig() {
         return {};
       } finally {
         clearTimeout(timer);
+        if (!MEDIA_BASE) MEDIA_BASE = MEDIA_CDN;
       }
     })();
   }
