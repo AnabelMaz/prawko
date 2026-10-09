@@ -13,25 +13,36 @@ function handlerBlock(marker, nextMarker) {
   return from.slice(0, end);
 }
 
-test('service worker serves packed local /media/ and only intercepts uncached videos to assemble', () => {
-  const block = handlerBlock(
-    'if (url.pathname.match(/\\/media\\//))',
-    "if (url.pathname.includes('/icons/') || url.pathname.includes('/fonts/'))"
-  );
-  expect(block).toMatch(/if \(remoteMediaCached\(url\.href\)\) \{/);
-  expect(block).toMatch(/if \(isAssemblableVideo\(url\)\) \{/);
-  expect(block).toMatch(/passThroughAndAssemble\(event\)/);
-  expect(block).not.toMatch(/safeCachePut/);
+test('service worker serves cached station media and lets uncached files pass through', () => {
+  expect(SW).toMatch(/function isStationMediaUrl\(url\)/);
+  expect(SW).toMatch(/if \(isStationMediaUrl\(url\)\) \{/);
+  expect(SW).toMatch(/if \(remoteMediaCached\(url\.href\)\) \{/);
+  expect(SW).toMatch(/event\.respondWith\(respondFromStationCache\(event, url\)\)/);
+  expect(SW).not.toMatch(/passThroughAndAssemble/);
+  expect(SW).not.toMatch(/isAssemblableVideo/);
+  expect(SW).not.toMatch(/shouldAssembleVideo/);
 });
 
-test('service worker serves packed CDN media and only intercepts uncached videos to assemble', () => {
-  const block = handlerBlock(
-    'if (url.origin !== self.location.origin)',
-    '// Category JSON & translation files'
-  );
-  expect(block).toMatch(/if \(indexReady && !known\) \{/);
-  expect(block).toMatch(/if \(isAssemblableVideo\(url\)\) event\.respondWith\(passThroughAndAssemble\(event\)\)/);
-  expect(block).toMatch(/if \(isAssemblableVideo\(url\)\) return passThroughAndAssemble\(event\)/);
+test('service worker answers player Range from a cached full video', () => {
+  expect(SW).toMatch(/serveCachedMedia\(cached, event\.request\)/);
+  expect(SW).toMatch(/playerRangeReply/);
+});
+
+test('service worker matches cached video by URL, not the player Range request', () => {
+  const start = SW.indexOf('async function matchOfflineMedia');
+  expect(start).toBeGreaterThan(-1);
+  const block = SW.slice(start, SW.indexOf('self.addEventListener(\'fetch\'', start));
+  expect(block).toMatch(/videoAssemblyKey/);
+  expect(block).not.toMatch(/cache\.match\(request/);
+});
+
+test('service worker treats CDN and /media/ as one cached-media path', () => {
+  const start = SW.indexOf('function isStationMediaUrl');
+  expect(start).toBeGreaterThan(-1);
+  const block = SW.slice(start, SW.indexOf('self.addEventListener(\'fetch\'', start));
+  expect(block).toMatch(/url\.origin !== self\.location\.origin/);
+  expect(block).toMatch(/\\\/media\\\//);
+  expect(block).toMatch(/respondFromStationCache/);
 });
 
 test('service worker precaches the local Noto mark font and cache-firsts /fonts/', () => {

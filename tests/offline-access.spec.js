@@ -376,7 +376,7 @@ test.describe('Category media access', () => {
     expect(result.success).toBe(true);
   });
 
-  test('LAN http fallback stores media in IndexedDB when Cache Storage is missing', async ({ page }) => {
+  test('IndexedDB stores media when Cache Storage is missing', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('#home.active');
     const result = await page.evaluate(async () => {
@@ -474,6 +474,40 @@ test.describe('Category media access', () => {
     expect(result.size).toBe(5);
   });
 
+  test('next lookup sees a video the service worker stored after a previous miss', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    const result = await page.evaluate(async () => {
+      const { getStoredMediaBlob, resolvePlayableMediaUrl } = await import(new URL('./js/offline.js', location.href).href);
+      const name = 'after-miss-cache.mp4';
+      const miss = await getStoredMediaBlob(name, 'video');
+      const cache = await caches.open('prawko-offline-media-v1');
+      const payload = new Uint8Array(256).fill(22);
+      const cdn = 'https://f003.backblazeb2.com/file/prawko-maz/vid/after-miss-cache.mp4';
+      await cache.put(
+        new Request(cdn, { mode: 'cors' }),
+        new Response(new Blob([payload], { type: 'video/mp4' }), {
+          status: 200,
+          headers: { 'Content-Type': 'video/mp4' },
+        }),
+      );
+      const blob = await getStoredMediaBlob(name, 'video');
+      const play = await resolvePlayableMediaUrl(name, 'video');
+      const bytes = blob ? new Uint8Array(await blob.arrayBuffer()) : [];
+      if (play) URL.revokeObjectURL(play);
+      return {
+        missed: miss ? miss.size : 0,
+        size: blob?.size || 0,
+        first: bytes[0],
+        blobUrl: Boolean(play && String(play).startsWith('blob:')),
+      };
+    });
+    expect(result.missed).toBe(0);
+    expect(result.size).toBe(256);
+    expect(result.first).toBe(22);
+    expect(result.blobUrl).toBe(true);
+  });
+
   test('plays from Cache Storage even when the file was stored under a CDN URL', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('#home.active');
@@ -559,8 +593,62 @@ const TINY_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
   'base64',
 );
+const TINY_MP4 = Buffer.from(
+  'AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAMUbW9vdgAAAGxtdmhkAAAAAAAAAAAAAAAAAAAD6AAAACgAAQAAAQAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAj90cmFrAAAAXHRraGQAAAADAAAAAAAAAAAAAAABAAAAAAAAACgAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAABAAAAAQAAAAAAAkZWR0cwAAABxlbHN0AAAAAAAAAAEAAAAoAAAAAAABAAAAAAG3bWRpYQAAACBtZGhkAAAAAAAAAAAAAAAAAAAyAAAAAgBVxAAAAAAALWhkbHIAAAAAAAAAAHZpZGUAAAAAAAAAAAAAAABWaWRlb0hhbmRsZXIAAAABYm1pbmYAAAAUdm1oZAAAAAEAAAAAAAAAAAAAACRkaW5mAAAAHGRyZWYAAAAAAAAAAQAAAAx1cmwgAAAAAQAAASJzdGJsAAAAvnN0c2QAAAAAAAAAAQAAAK5hdmMxAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAABAAEABIAAAASAAAAAAAAAABFExhdmM2My4xLjEwMSBsaWJ4MjY0AAAAAAAAAAAAAAAAGP//AAAANGF2Y0MBZAAK/+EAF2dkAAqs2V7ARAAAAwAEAAADAMg8SJZYAQAGaOvjyyLA/fj4AAAAABBwYXNwAAAAAQAAAAEAAAAUYnRydAAAAAAAAinoAAAAAAAAABhzdHRzAAAAAAAAAAEAAAABAAACAAAAABxzdHNjAAAAAAAAAAEAAAABAAAAAQAAAAEAAAAUc3RzegAAAAAAAALFAAAAAQAAABRzdGNvAAAAAAAAAAEAAANEAAAAYXVkdGEAAABZbWV0YQAAAAAAAAAhaGRscgAAAAAAAAAAbWRpcmFwcGwAAAAAAAAAAAAAAAAsaWxzdAAAACSpdG9vAAAAHGRhdGEAAAABAAAAAExhdmY2My4xLjEwMQAAAAhmcmVlAAACzW1kYXQAAAKuBgX//6rcRem95tlIt5Ys2CDZI+7veDI2NCAtIGNvcmUgMTY1IHIzMjIzIDA0ODBjYjAgLSBILjI2NC9NUEVHLTQgQVZDIGNvZGVjIC0gQ29weWxlZnQgMjAwMy0yMDI1IC0gaHR0cDovL3d3dy52aWRlb2xhbi5vcmcveDI2NC5odG1sIC0gb3B0aW9uczogY2FiYWM9MSByZWY9MyBkZWJsb2NrPTE6MDowIGFuYWx5c2U9MHgzOjB4MTEzIG1lPWhleCBzdWJtZT03IHBzeT0xIHBzeV9yZD0xLjAwOjAuMDAgbWl4ZWRfcmVmPTEgbWVfcmFuZ2U9MTYgY2hyb21hX21lPTEgdHJlbGxpcz0xIDh4OGRjdD0xIGNxbT0wIGRlYWR6b25lPTIxLDExIGZhc3RfcHNraXA9MSBjaHJvbWFfcXBfb2Zmc2V0PS0yIHRocmVhZHM9MSBsb29rYWhlYWRfdGhyZWFkcz0xIHNsaWNlZF90aHJlYWRzPTAgbnI9MCBkZWNpbWF0ZT0xIGludGVybGFjZWQ9MCBibHVyYXlfY29tcGF0PTAgY29uc3RyYWluZWRfaW50cmE9MCBiZnJhbWVzPTMgYl9weXJhbWlkPTIgYl9hZGFwdD0xIGJfYmlhcz0wIGRpcmVjdD0xIHdlaWdodGI9MSBvcGVuX2dvcD0wIHdlaWdodHA9MiBrZXlpbnQ9MjUwIGtleWludF9taW49MjUgc2NlbmVjdXQ9NDAgaW50cmFfcmVmcmVzaD0wIHJjX2xvb2thaGVhZD00MCByYz1jcmYgbWJ0cmVlPTEgY3JmPTIzLjAgcWNvbXA9MC42MCBxcG1pbj0wIHFwbWF4PTY5IHFwc3RlcD00IGlwX3JhdGlvPTEuNDAgYXE9MToxLjAwAIAAAAAPZYiEACv//vZzfAprbbGB',
+  'base64',
+);
 
-test.describe('Opportunistic image cache while viewing', () => {
+test.describe('Opportunistic viewed media cache', () => {
+  test('viewing a CDN image paints and caches with one GET', async ({ page }) => {
+    const imageHits = [];
+    await page.route('**/local.json', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ mediaBase: 'cdn' }),
+      });
+    });
+    await page.route('https://f003.backblazeb2.com/file/prawko-maz/img/one-get.webp', async (route) => {
+      if (route.request().method() === 'OPTIONS') {
+        await route.fulfill({
+          status: 204,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET',
+          },
+        });
+        return;
+      }
+      imageHits.push(route.request().headers()['range'] || '');
+      await route.fulfill({
+        status: 200,
+        contentType: 'image/png',
+        headers: { 'Access-Control-Allow-Origin': '*' },
+        body: TINY_PNG,
+      });
+    });
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    await page.evaluate(async () => {
+      const { renderQuestion } = await import(new URL('./js/ui.js', location.href).href);
+      renderQuestion({
+        id: 9000,
+        q: 'One GET?',
+        media: 'one-get.webp',
+        mediaType: 'image',
+        type: 'basic',
+        correct: 'T',
+      }, document.querySelector('.question-card'));
+    });
+    await expect(page.locator('#quiz .media-area img')).toHaveAttribute('src', /^blob:/);
+    expect(imageHits).toEqual(['']);
+    await expect.poll(async () => page.evaluate(async () => {
+      const { getStoredMediaBlob } = await import(new URL('./js/offline.js', location.href).href);
+      const blob = await getStoredMediaBlob('one-get.webp', 'image');
+      return blob ? blob.size : 0;
+    }), { timeout: 5000 }).toBe(TINY_PNG.length);
+  });
+
   test('a viewed CDN image is stored once as a complete file', async ({ page }) => {
     const imageHits = [];
     await page.route('**/local.json', async (route) => {
@@ -670,7 +758,8 @@ test.describe('Opportunistic image cache while viewing', () => {
       renderQuestion({ ...base, id: 2, q: 'Second', media: 'fast-second.webp' }, card);
     });
     const img = page.locator('#quiz .media-area img');
-    await expect(img).toHaveAttribute('src', /fast-second\.webp/, { timeout: 3000 });
+    await expect(img).toHaveAttribute('src', /^blob:/, { timeout: 3000 });
+    await expect(page.locator('#quiz .question-text')).toHaveText('Second');
   });
 
   test('a 206 image response is not stored', async ({ page }) => {
@@ -707,37 +796,132 @@ test.describe('Opportunistic image cache while viewing', () => {
     expect(captured.stored).toBe(0);
   });
 
-  test('watching a video does not write it into the offline cache', async ({ page }) => {
-    await stubRemoteMedia(page);
-    await page.route('https://cdn.example.test/prawko/vid/leave-me.mp4', async (route) => {
+  test('a viewed video is stored once as a complete file', async ({ page }) => {
+    const videoHits = [];
+    await page.route('**/local.json', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ mediaBase: 'cdn' }),
+      });
+    });
+    await page.route('https://f003.backblazeb2.com/file/prawko-maz/vid/viewed-once.mp4', async (route) => {
+      if (route.request().method() === 'OPTIONS') {
+        await route.fulfill({
+          status: 204,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET',
+          },
+        });
+        return;
+      }
+      videoHits.push(route.request().headers()['range'] || '');
       await route.fulfill({
         status: 200,
         contentType: 'video/mp4',
         headers: { 'Access-Control-Allow-Origin': '*' },
-        body: Buffer.from([0, 0, 0, 0, 0, 0, 0, 0]),
+        body: TINY_MP4,
       });
     });
     await page.goto('/');
     await page.waitForSelector('#home.active');
-    const stored = await page.evaluate(async () => {
+    const result = await page.evaluate(async () => {
+      const { captureViewedMedia, getStoredMediaBlob } = await import(new URL('./js/offline.js', location.href).href);
+      const { getMediaUrls } = await import(new URL('./js/data.js', location.href).href);
+      const url = getMediaUrls('viewed-once.mp4', 'video')[0];
+      const playUrl = await captureViewedMedia(url);
+      const deadline = Date.now() + 4000;
+      while (Date.now() < deadline) {
+        const stored = await getStoredMediaBlob('viewed-once.mp4', 'video');
+        if (stored && stored.size > 0) break;
+        await new Promise((r) => setTimeout(r, 50));
+      }
       const { renderQuestion } = await import(new URL('./js/ui.js', location.href).href);
-      const { captureViewedImage, getStoredMediaBlob } = await import(new URL('./js/offline.js', location.href).href);
       renderQuestion({
         id: 9002,
-        q: 'Do not cache this film',
-        media: 'leave-me.mp4',
+        q: 'Cache this film?',
+        media: 'viewed-once.mp4',
         mediaType: 'video',
         type: 'basic',
         correct: 'T',
       }, document.querySelector('#quiz .question-card') || document.querySelector('.question-card'));
-      const fromHelper = await captureViewedImage('https://cdn.example.test/prawko/vid/leave-me.mp4');
-      await new Promise((r) => setTimeout(r, 1600));
-      const blob = await getStoredMediaBlob('leave-me.mp4', 'video');
-      if (fromHelper) URL.revokeObjectURL(fromHelper);
-      return { helper: Boolean(fromHelper), size: blob ? blob.size : 0 };
+      return {
+        url,
+        play: Boolean(playUrl && String(playUrl).startsWith('blob:')),
+      };
     });
-    expect(stored.helper).toBe(false);
-    expect(stored.size).toBe(0);
+    expect(result.url).toBe('https://f003.backblazeb2.com/file/prawko-maz/vid/viewed-once.mp4');
+    expect(result.play).toBe(true);
+    await expect(page.locator('#quiz .media-area video')).toHaveAttribute('src', /^blob:/);
+    expect(videoHits).toEqual(['']);
+    await expect.poll(async () => page.evaluate(async () => {
+      const { getStoredMediaBlob } = await import(new URL('./js/offline.js', location.href).href);
+      const blob = await getStoredMediaBlob('viewed-once.mp4', 'video');
+      return blob ? blob.size : 0;
+    }), { timeout: 5000 }).toBe(TINY_MP4.length);
+  });
+
+  test('next question plays a viewed /media/ video from blob without another GET', async ({ page }) => {
+    const videoHits = [];
+    await page.route('**/local.json', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ mediaBase: 'media' }),
+      });
+    });
+    await page.route('**/media/vid/lan-view.mp4', async (route) => {
+      if (route.request().method() === 'OPTIONS') {
+        await route.fulfill({
+          status: 204,
+          headers: { 'Access-Control-Allow-Origin': '*' },
+        });
+        return;
+      }
+      videoHits.push(route.request().headers()['range'] || '');
+      await route.fulfill({
+        status: 200,
+        contentType: 'video/mp4',
+        headers: { 'Access-Control-Allow-Origin': '*' },
+        body: TINY_MP4,
+      });
+    });
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    const first = await page.evaluate(async () => {
+      const { captureViewedMedia, getStoredMediaBlob } = await import(new URL('./js/offline.js', location.href).href);
+      const url = new URL('media/vid/lan-view.mp4', location.href).href;
+      const playUrl = await captureViewedMedia(url, { loopback: false });
+      const deadline = Date.now() + 4000;
+      while (Date.now() < deadline) {
+        const stored = await getStoredMediaBlob('lan-view.mp4', 'video');
+        if (stored && stored.size > 0) break;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      if (playUrl) URL.revokeObjectURL(playUrl);
+      const blob = await getStoredMediaBlob('lan-view.mp4', 'video');
+      return { size: blob ? blob.size : 0 };
+    });
+    expect(first.size).toBe(TINY_MP4.length);
+    const hitsAfterStore = videoHits.length;
+    expect(hitsAfterStore).toBeGreaterThan(0);
+    await page.evaluate(async () => {
+      const { renderQuestion } = await import(new URL('./js/ui.js', location.href).href);
+      const q = {
+        id: 9003,
+        q: 'Play from cache',
+        media: 'lan-view.mp4',
+        mediaType: 'video',
+        type: 'basic',
+        correct: 'T',
+      };
+      const card = document.querySelector('#quiz .question-card') || document.querySelector('.question-card');
+      renderQuestion(q, card);
+      renderQuestion(q, card);
+    });
+    await expect(page.locator('#quiz .media-area video')).toHaveAttribute('src', /^blob:/);
+    expect(videoHits.length).toBe(hitsAfterStore);
   });
 
   test('loopback local images are not copied into the offline cache', async ({ page }) => {
@@ -763,6 +947,34 @@ test.describe('Opportunistic image cache while viewing', () => {
     const result = await page.evaluate(async () => {
       const { captureViewedImage } = await import(new URL('./js/offline.js', location.href).href);
       return captureViewedImage(new URL('media/img/keep-local.webp', location.href).href);
+    });
+    expect(result).toBeNull();
+    expect(hits).toEqual([]);
+  });
+
+  test('loopback local videos are not copied into the offline cache', async ({ page }) => {
+    await page.route('**/local.json', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ mediaBase: 'media' }),
+      });
+    });
+    const hits = [];
+    await page.route('**/media/vid/keep-local.mp4', async (route) => {
+      hits.push(route.request().url());
+      await route.fulfill({
+        status: 200,
+        contentType: 'video/mp4',
+        headers: { 'Access-Control-Allow-Origin': '*' },
+        body: TINY_MP4,
+      });
+    });
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    const result = await page.evaluate(async () => {
+      const { captureViewedMedia } = await import(new URL('./js/offline.js', location.href).href);
+      return captureViewedMedia(new URL('media/vid/keep-local.mp4', location.href).href);
     });
     expect(result).toBeNull();
     expect(hits).toEqual([]);

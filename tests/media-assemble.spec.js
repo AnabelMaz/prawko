@@ -5,7 +5,8 @@ const {
   rangesCoverTotal,
   createAssembler,
   MIN_VIDEO_BYTES,
-  shouldAssembleVideo,
+  parseRequestRange,
+  playerRangeReply,
 } = require('../src/js/media-assemble.js');
 
 test.describe('CDN video range assembly', () => {
@@ -47,15 +48,33 @@ test.describe('CDN video range assembly', () => {
     expect(done.buf[0]).toBe(7);
   });
 
-  test('assembles CDN and LAN /media/ videos, but not localhost files', () => {
-    const cdn = 'https://f003.backblazeb2.com/file/prawko-maz/vid/clip.mp4';
-    const lan = 'http://192.168.10.4:5173/media/vid/clip.mp4';
-    const local = 'http://localhost:5173/media/vid/clip.mp4';
-    const img = 'http://192.168.10.4:5173/media/img/sign.webp';
-    expect(shouldAssembleVideo('https://anabelmaz.github.io', 'anabelmaz.github.io', cdn)).toBe(true);
-    expect(shouldAssembleVideo('http://192.168.10.4:5173', '192.168.10.4', lan)).toBe(true);
-    expect(shouldAssembleVideo('http://localhost:5173', 'localhost', local)).toBe(false);
-    expect(shouldAssembleVideo('http://127.0.0.1:5173', '127.0.0.1', 'http://127.0.0.1:5173/media/vid/clip.mp4')).toBe(false);
-    expect(shouldAssembleVideo('http://192.168.10.4:5173', '192.168.10.4', img)).toBe(false);
+  test('a 200 with Content-Range for the whole file is stored', () => {
+    const a = createAssembler();
+    const key = 'https://f003.backblazeb2.com/file/prawko-maz/vid/ranged-200.mp4';
+    const full = new Uint8Array(MIN_VIDEO_BYTES).fill(3);
+    const done = a.pushChunk(
+      key,
+      200,
+      `bytes 0-${MIN_VIDEO_BYTES - 1}/${MIN_VIDEO_BYTES}`,
+      full,
+      'video/mp4',
+    );
+    expect(done.buf.byteLength).toBe(MIN_VIDEO_BYTES);
+    expect(done.buf[0]).toBe(3);
   });
+
+  test('player Range bytes=0- on a cached file stays a full 200', () => {
+    const buf = new Uint8Array(8).fill(9);
+    const whole = playerRangeReply(buf, 'bytes=0-', 'video/mp4', 'https://anabelmaz.github.io');
+    expect(whole.status).toBe(200);
+    expect(whole.headers['Accept-Ranges']).toBe('bytes');
+    expect(whole.headers['Content-Length']).toBe('8');
+    expect(whole.body.byteLength).toBe(8);
+    expect(parseRequestRange('bytes=0-', 8)).toEqual({ start: 0, end: 7 });
+    const part = playerRangeReply(buf, 'bytes=2-5', 'video/mp4', 'https://anabelmaz.github.io');
+    expect(part.status).toBe(206);
+    expect(part.headers['Content-Range']).toBe('bytes 2-5/8');
+    expect(Array.from(part.body)).toEqual([9, 9, 9, 9]);
+  });
+
 });

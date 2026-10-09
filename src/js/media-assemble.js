@@ -1,5 +1,5 @@
-  // Byte-range assembly for CDN and LAN videos. Used by the service worker so a complete
-// file can go into the offline cache without touching question rendering.
+  // Cached full-file → player Range. The page stores a complete viewed GET;
+// the service worker only answers Range from that 200.
 (function (root, factory) {
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
@@ -48,7 +48,15 @@
       pushChunk(key, status, contentRangeHeader, chunk, mime) {
         if (!key || !chunk || !chunk.byteLength) return null;
         const rangeHeader = contentRangeHeader || '';
-        if (status === 200 && !rangeHeader) {
+        if (status === 200) {
+          const parsed = parseContentRange(rangeHeader);
+          const whole = !rangeHeader
+            || (parsed
+              && parsed.start === 0
+              && parsed.total > 0
+              && parsed.endInclusive + 1 === parsed.total
+              && chunk.byteLength === parsed.total);
+          if (!whole) return null;
           cur = null;
           if (chunk.byteLength < MIN_VIDEO_BYTES || chunk.byteLength > MAX_VIDEO_ASM) return null;
           return { key, buf: chunk, mime };
@@ -84,22 +92,53 @@
     };
   }
 
-  function shouldAssembleVideo(pageOrigin, hostname, requestUrl) {
-    let url;
-    try {
-      url = new URL(requestUrl, pageOrigin);
-    } catch {
-      return false;
+  function parseRequestRange(header, total) {
+    const m = String(header || '').match(/^bytes=(\d*)-(\d*)$/i);
+    if (!m || !Number.isFinite(total) || total < 1) return null;
+    const suffix = m[1] === '' && m[2] !== '';
+    let start;
+    let end;
+    if (suffix) {
+      start = Math.max(0, total - Number(m[2]));
+      end = total - 1;
+    } else {
+      start = m[1] === '' ? 0 : Number(m[1]);
+      end = m[2] === '' ? total - 1 : Number(m[2]);
     }
-    if (!/\/vid\/[^/]+\.(mp4|webm)(\?|$)/i.test(url.pathname)) return false;
-    const loopback = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
-    let origin = pageOrigin;
-    try {
-      origin = new URL(pageOrigin).origin;
-    } catch { /* keep pageOrigin */ }
-    if (url.origin !== origin) return true;
-    if (loopback) return false;
-    return /\/media\/vid\//i.test(url.pathname);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || start >= total) return null;
+    end = Math.min(end, total - 1);
+    if (end < start) return null;
+    return { start, end };
+  }
+
+  /** Full cached 200 → player Range. bytes=0- stays 200 (what B2 sends). */
+  function playerRangeReply(buf, rangeHeader, mime, origin) {
+    const total = buf && buf.byteLength ? buf.byteLength : 0;
+    const type = mime && String(mime).startsWith('video/')
+      ? String(mime).split(';')[0].trim()
+      : (/\.webm$/i.test(String(mime || '')) ? 'video/webm' : 'video/mp4');
+    const headers = {
+      'Content-Type': type,
+      'Accept-Ranges': 'bytes',
+      'Access-Control-Allow-Origin': origin || '*',
+    };
+    if (total < 1) {
+      return { status: 200, headers: { ...headers, 'Content-Length': '0' }, body: buf || new Uint8Array(0) };
+    }
+    const parsed = parseRequestRange(rangeHeader, total);
+    if (!parsed || (parsed.start === 0 && parsed.end === total - 1)) {
+      return { status: 200, headers: { ...headers, 'Content-Length': String(total) }, body: buf };
+    }
+    const body = buf.slice(parsed.start, parsed.end + 1);
+    return {
+      status: 206,
+      headers: {
+        ...headers,
+        'Content-Length': String(body.byteLength),
+        'Content-Range': `bytes ${parsed.start}-${parsed.end}/${total}`,
+      },
+      body,
+    };
   }
 
   return {
@@ -109,6 +148,7 @@
     mergeByteRange,
     rangesCoverTotal,
     createAssembler,
-    shouldAssembleVideo,
+    parseRequestRange,
+    playerRangeReply,
   };
 });

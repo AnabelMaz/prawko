@@ -150,6 +150,12 @@ function invalidateOfflineMediaKeys() {
   cachedIdbKeys = null;
 }
 
+if (typeof navigator !== 'undefined' && navigator.serviceWorker) {
+  navigator.serviceWorker.addEventListener('message', (event) => {
+    if (event.data?.type === 'OFFLINE_MEDIA_UPDATED') invalidateOfflineMediaKeys();
+  });
+}
+
 async function listOfflineCacheKeys(cache) {
   if (cachedCacheKeys && cachedCacheKeys.cache === cache) return cachedCacheKeys.keys;
   const keys = await cache.keys();
@@ -347,6 +353,7 @@ async function matchCachedMediaResponse(cache, media, mediaType) {
   const { names, tails } = idbKeyCandidates(media, mediaType);
   let keys = [];
   try {
+    invalidateOfflineMediaKeys();
     keys = await listOfflineCacheKeys(cache);
   } catch {
     return null;
@@ -392,31 +399,34 @@ export async function resolvePlayableMediaUrl(media, mediaType) {
   return URL.createObjectURL(blob);
 }
 
-function isQuestionImageUrl(url) {
+const MAX_VIEWED_MEDIA = 80 * 1024 * 1024;
+
+function viewedMediaKind(url) {
   try {
     const path = new URL(url, typeof location !== 'undefined' ? location.href : 'https://example.invalid/').pathname;
-    if (/\/vid\//i.test(path)) return false;
-    return /\/img\/[^/]+$/i.test(path) || /\.(webp|jpe?g|png|gif)$/i.test(path);
+    if (/\/vid\/[^/]+\.(mp4|webm)(\?|$)/i.test(path) || /\.(mp4|webm)$/i.test(path)) return 'video';
+    if (/\/img\/[^/]+$/i.test(path) || /\.(webp|jpe?g|png|gif)$/i.test(path)) return 'image';
+    return '';
   } catch {
-    return false;
+    return '';
   }
 }
 
-function isCompleteImageResponse(res) {
+function isCompleteMediaResponse(res) {
   if (!res || res.type === 'opaque' || !res.ok || res.status !== 200) return false;
   if (res.status === 206) return false;
   if (res.headers.get('Content-Range')) return false;
   return true;
 }
 
-let viewedImageSwTimer = 0;
+let viewedMediaSwTimer = 0;
 
-function scheduleRememberViewedImage(url, blob) {
+function scheduleRememberViewedMedia(url, blob) {
   const run = () => {
     storeMediaBlob(url, blob).then(() => {
-      if (viewedImageSwTimer) clearTimeout(viewedImageSwTimer);
-      viewedImageSwTimer = setTimeout(() => {
-        viewedImageSwTimer = 0;
+      if (viewedMediaSwTimer) clearTimeout(viewedMediaSwTimer);
+      viewedMediaSwTimer = setTimeout(() => {
+        viewedMediaSwTimer = 0;
         notifyServiceWorkerOfflineMedia();
       }, 400);
     }).catch(() => {});
@@ -425,10 +435,11 @@ function scheduleRememberViewedImage(url, blob) {
   else setTimeout(run, 0);
 }
 
-/** Full image GET only. Never videos / 206. Same bytes for play + cache; store happens idle. */
-export async function captureViewedImage(url) {
+/** Full GET of a viewed image or video. Skip only when this computer already has the files (loopback + mediaBase media). */
+export async function captureViewedMedia(url, options = {}) {
   if (!url || /^(blob|data):/i.test(url)) return null;
-  if (!isQuestionImageUrl(url)) return null;
+  const kind = viewedMediaKind(url);
+  if (!kind) return null;
   let abs;
   try {
     abs = new URL(url, typeof location !== 'undefined' ? location.href : 'https://example.invalid/');
@@ -436,20 +447,33 @@ export async function captureViewedImage(url) {
     return null;
   }
   const remote = abs.origin !== (typeof location !== 'undefined' ? location.origin : abs.origin);
-  if (!remote && usesLocalMedia() && isLoopbackHost()) return null;
+  const localMedia = options.localMedia ?? usesLocalMedia();
+  const loopback = options.loopback ?? isLoopbackHost();
+  if (!remote && localMedia && loopback) return null;
   try {
     const res = await fetch(abs.href, { mode: 'cors', credentials: 'omit' });
-    if (!isCompleteImageResponse(res)) return null;
+    if (!isCompleteMediaResponse(res)) return null;
+    const listed = Number(res.headers.get('Content-Length'));
+    if (Number.isFinite(listed) && listed > MAX_VIEWED_MEDIA) return null;
     const blob = await res.blob();
-    if (!blob || blob.size < 32) return null;
-    const type = blob.type && blob.type.startsWith('image/') ? blob.type : mediaMime(url);
-    if (!String(type).startsWith('image/')) return null;
+    const minBytes = kind === 'video' ? 256 : 32;
+    if (!blob || blob.size < minBytes || blob.size > MAX_VIEWED_MEDIA) return null;
+    const mime = mediaMime(url);
+    const type = blob.type && (
+      kind === 'video' ? blob.type.startsWith('video/') : blob.type.startsWith('image/')
+    ) ? blob.type : mime;
+    if (kind === 'video' && !String(type).startsWith('video/')) return null;
+    if (kind === 'image' && !String(type).startsWith('image/')) return null;
     const body = blob.type === type ? blob : new Blob([blob], { type });
-    scheduleRememberViewedImage(abs.href, body);
+    scheduleRememberViewedMedia(abs.href, body);
     return URL.createObjectURL(body);
   } catch {
     return null;
   }
+}
+
+export function captureViewedImage(url, options) {
+  return captureViewedMedia(url, options);
 }
 
 export function coverageFromUrls(neededUrls, cachedSet) {

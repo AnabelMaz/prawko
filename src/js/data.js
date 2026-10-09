@@ -73,6 +73,7 @@ export function usesLocalMedia(base = MEDIA_BASE) {
   return Boolean(base) && !isRemoteMediaBase(base);
 }
 
+/** This browser is on the same computer as the page origin (not “LAN vs WAN”). */
 export function isLoopbackHost() {
   if (typeof location === 'undefined') return false;
   const host = location.hostname;
