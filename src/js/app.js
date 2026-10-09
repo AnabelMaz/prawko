@@ -578,9 +578,9 @@ function setupProfileSwitcher() {
 
 const UPDATE_CHECK_INTERVAL_MS = 30 * 1000;
 const UPDATE_IGNORE_AFTER_REFRESH_MS = 15 * 1000;
-let lastUpdateCheckAt = 0;
 let ignoreUpdatesUntil = 0;
 let isReloadingForSw = false;
+let knownSwVersion = '';
 
 function readIgnoreUpdatesUntil() {
   try {
@@ -602,31 +602,50 @@ function showUpdateBanner({ force = false } = {}) {
   const banner = document.getElementById('update-banner');
   if (!banner || !banner.hidden) return;
   banner.hidden = false;
-  refitUiScale();
+  applyUiFitScale();
 }
 
-function setupAppUpdateChecks(registration) {
+async function readSwCacheVersion() {
+  const res = await fetch(new URL('sw.js', location.href), { cache: 'no-store' });
+  if (!res.ok) return '';
+  const text = await res.text();
+  const m = text.match(/CACHE_VERSION\s*=\s*['"]([^'"]+)['"]/);
+  return m ? m[1] : '';
+}
+
+async function setupAppUpdateChecks(registration) {
   ignoreUpdatesUntil = Math.max(ignoreUpdatesUntil, readIgnoreUpdatesUntil());
-  const tick = () => {
-    if (document.hidden) return;
-    if (registration.waiting) {
-      showUpdateBanner({ force: true });
-      return;
-    }
-    const banner = document.getElementById('update-banner');
-    if (banner && !banner.hidden) return;
-    const now = Date.now();
-    if (now - lastUpdateCheckAt < UPDATE_CHECK_INTERVAL_MS) return;
-    lastUpdateCheckAt = now;
-    registration.update().catch(() => {});
+  if (registration) {
+    if (registration.waiting) showUpdateBanner({ force: true });
+    return;
+  }
+  let lastVersionCheckAt = 0;
+  const checkVersion = async () => {
+    try {
+      const ver = await readSwCacheVersion();
+      if (!ver) return;
+      if (!knownSwVersion) {
+        knownSwVersion = ver;
+        return;
+      }
+      if (ver !== knownSwVersion) showUpdateBanner({ force: true });
+    } catch { /* no sw.js / offline */ }
   };
+  const tick = ({ force = false } = {}) => {
+    if (document.hidden) return false;
+    const banner = document.getElementById('update-banner');
+    if (banner && !banner.hidden) return false;
+    const now = Date.now();
+    if (!force && now - lastVersionCheckAt < UPDATE_CHECK_INTERVAL_MS) return false;
+    lastVersionCheckAt = now;
+    if (!navigator.onLine) return false;
+    return checkVersion();
+  };
+  await tick({ force: true });
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) tick();
+    if (!document.hidden) void tick();
   });
-  window.addEventListener('focus', tick);
-  lastUpdateCheckAt = 0;
-  tick();
-  setInterval(tick, UPDATE_CHECK_INTERVAL_MS);
+  window.addEventListener('focus', () => { void tick(); });
 }
 
 function reloadForUpdate() {
@@ -637,24 +656,32 @@ function reloadForUpdate() {
 
 async function applyAppUpdate(registration) {
   rememberRefreshIgnore();
-  const reg = registration || (await navigator.serviceWorker.getRegistration().catch(() => null));
-  const waiting = reg?.waiting;
-  if (waiting) {
-    let reloaded = false;
-    const reload = () => {
-      if (reloaded) return;
-      reloaded = true;
-      reloadForUpdate();
-    };
-    navigator.serviceWorker.addEventListener('controllerchange', reload, { once: true });
-    waiting.postMessage({ type: 'SKIP_WAITING' });
-    setTimeout(reload, 600);
-    return;
-  }
+  const banner = document.getElementById('update-banner');
+  if (banner) banner.hidden = true;
+  applyUiFitScale();
   try {
-    const keys = await caches.keys();
-    await Promise.all(keys.filter((key) => key.includes('-shell')).map((key) => caches.delete(key)));
-  } catch { /* still reload */ }
+    let reg = registration;
+    if (!reg && navigator.serviceWorker?.getRegistration) {
+      reg = await navigator.serviceWorker.getRegistration().catch(() => null);
+    }
+    const waiting = reg?.waiting;
+    if (waiting && navigator.serviceWorker?.addEventListener) {
+      let reloaded = false;
+      const reload = () => {
+        if (reloaded) return;
+        reloaded = true;
+        reloadForUpdate();
+      };
+      navigator.serviceWorker.addEventListener('controllerchange', reload, { once: true });
+      waiting.postMessage({ type: 'SKIP_WAITING' });
+      setTimeout(reload, 600);
+      return;
+    }
+    if (typeof caches !== 'undefined' && caches.keys) {
+      const keys = await caches.keys();
+      await Promise.all(keys.filter((key) => key.includes('-shell')).map((key) => caches.delete(key)));
+    }
+  } catch { /* still reload — LAN HTTP has no service worker */ }
   reloadForUpdate();
 }
 
@@ -852,10 +879,12 @@ async function init() {
   window.addEventListener('hashchange', handleRoute);
   handleRoute();
 
-  // Register service worker
+  // Register service worker (missing on insecure LAN HTTP)
   let swRegistration = null;
-  if ('serviceWorker' in navigator) {
-    swRegistration = await navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(err => {
+  const sw = navigator.serviceWorker;
+  const hadController = Boolean(sw?.controller);
+  if (sw?.register) {
+    swRegistration = await sw.register('sw.js', { updateViaCache: 'none' }).catch(err => {
       console.warn('SW registration failed:', err);
       return null;
     });
@@ -864,23 +893,25 @@ async function init() {
       const candidate = swRegistration.installing;
       if (!candidate) return;
       candidate.addEventListener('statechange', () => {
-        if (candidate.state === 'installed' && navigator.serviceWorker.controller) {
+        if (candidate.state === 'installed' && sw.controller) {
           showUpdateBanner({ force: true });
         }
       });
     });
 
-    // Listen for update notifications from SW
-    navigator.serviceWorker.addEventListener('message', (event) => {
+    sw.addEventListener('message', (event) => {
       if (event.data?.type === 'APP_UPDATED' || event.data?.type === 'DATA_UPDATED') {
         showUpdateBanner();
       }
     });
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
+    // First visit: page already has current files; clients.claim() must not reload.
+    // Later visits already have a controller — a new worker taking over still reloads.
+    sw.addEventListener('controllerchange', () => {
+      if (!hadController) return;
       reloadForUpdate();
     });
-    if (swRegistration) setupAppUpdateChecks(swRegistration);
   }
+  await setupAppUpdateChecks(swRegistration);
 
   // Update banner reload
   document.getElementById('update-banner-btn')?.addEventListener('click', () => {
@@ -896,7 +927,7 @@ async function init() {
       renderRecentCategories();
       applyCategorySearch();
     }
-    refitUiScale();
+    applyUiFitScale();
   }
   window.addEventListener('online', updateOnlineStatus);
   window.addEventListener('offline', updateOnlineStatus);

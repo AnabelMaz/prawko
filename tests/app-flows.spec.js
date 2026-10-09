@@ -203,4 +203,136 @@ test.describe('App flows', () => {
     await expect(page.locator('#quiz')).toHaveClass(/exam-active/);
     await expect(page.locator('.question-text')).not.toBeEmpty();
   });
+
+  test('CACHE_VERSION poll on tab return is only when serviceWorker is missing', async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'serviceWorker', {
+        configurable: true,
+        get() { return undefined; },
+      });
+    });
+    let version = 'prawko-test-1';
+    let hits = 0;
+    await page.route('**/sw.js', async (route) => {
+      hits += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: 'text/javascript',
+        body: `const CACHE_VERSION = '${version}';`,
+        headers: { 'Cache-Control': 'no-store' },
+      });
+    });
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    await expect.poll(() => hits).toBeGreaterThan(0);
+    await expect(page.locator('#update-banner')).toBeHidden();
+    const afterLoad = hits;
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
+      window.dispatchEvent(new Event('focus'));
+      window.dispatchEvent(new Event('focus'));
+    });
+    await page.waitForTimeout(200);
+    expect(hits).toBe(afterLoad);
+    const before = hits;
+    version = 'prawko-test-2';
+    await page.clock.install();
+    await page.clock.fastForward(30_001);
+    await page.evaluate(() => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    await expect.poll(() => hits).toBeGreaterThan(before);
+    await expect(page.locator('#update-banner')).toBeVisible();
+  });
+
+  test('with a service worker, tab focus does not poll sw.js', async ({ page }) => {
+    let hits = 0;
+    await page.route('**/sw.js', async (route) => {
+      hits += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: 'text/javascript',
+        body: "const CACHE_VERSION = 'prawko-test-sw';",
+        headers: { 'Cache-Control': 'no-store' },
+      });
+    });
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    await expect.poll(() => hits).toBeGreaterThan(0);
+    const afterLoad = hits;
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
+      window.dispatchEvent(new Event('focus'));
+      window.dispatchEvent(new Event('focus'));
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await page.waitForTimeout(200);
+    expect(hits).toBe(afterLoad);
+    await expect(page.locator('#update-banner')).toBeHidden();
+  });
+
+  test('first service worker claim does not reload the page', async ({ page }) => {
+    const loads = [];
+    page.on('load', () => { loads.push(page.url()); });
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    await page.evaluate(() => { window.__prawkoStay = 1; });
+    await page.evaluate(() => {
+      navigator.serviceWorker.dispatchEvent(new Event('controllerchange'));
+    });
+    await page.waitForTimeout(800);
+    expect(await page.evaluate(() => window.__prawkoStay)).toBe(1);
+    expect(loads.length).toBe(1);
+    await expect(page.locator('#home.active')).toBeVisible();
+    await expect(page.locator('#update-banner')).toBeHidden();
+  });
+
+  test('service worker controllerchange reloads when a controller already existed', async ({ page }) => {
+    await page.addInitScript(() => {
+      const sw = navigator.serviceWorker;
+      if (!sw) return;
+      Object.defineProperty(sw, 'controller', {
+        configurable: true,
+        get() { return { scriptURL: `${location.origin}/sw.js` }; },
+      });
+      sw.register = async () => ({
+        waiting: null,
+        installing: null,
+        active: { scriptURL: `${location.origin}/sw.js` },
+        addEventListener() {},
+      });
+    });
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    const reloaded = page.waitForEvent('load');
+    await page.evaluate(() => {
+      navigator.serviceWorker.dispatchEvent(new Event('controllerchange'));
+    });
+    await reloaded;
+    await page.waitForSelector('#home.active');
+  });
+
+  test('update banner refresh reloads when serviceWorker is missing', async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'serviceWorker', {
+        configurable: true,
+        get() { return undefined; },
+      });
+    });
+    const pageErrors = [];
+    page.on('pageerror', (err) => pageErrors.push(String(err)));
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    await page.evaluate(() => {
+      const banner = document.getElementById('update-banner');
+      if (banner) banner.hidden = false;
+    });
+    await expect(page.locator('#update-banner')).toBeVisible();
+    await page.evaluate(() => { window.__prawkoStay = 1; });
+    await page.click('#update-banner-btn');
+    await expect.poll(() => page.evaluate(() => window.__prawkoStay || 0)).toBe(0);
+    await page.waitForSelector('#home.active');
+    await expect(page.locator('#update-banner')).toBeHidden();
+    expect(pageErrors).toEqual([]);
+  });
 });
