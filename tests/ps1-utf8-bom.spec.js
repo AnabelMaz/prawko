@@ -142,6 +142,14 @@ test('ministry Excel and ZIPs live in server gov-cache; unpack is TEMP; scripts 
   const deployYml = fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'deploy.yml'), 'utf8');
   expect(deployYml).toMatch(/AGENTS\.md/);
   expect(deployYml).not.toMatch(/CODEX\.md/);
+  expect(deployYml).toMatch(/actions\/checkout@v7/);
+  expect(deployYml).toMatch(/actions\/setup-node@v7/);
+  expect(deployYml).toMatch(/node-version: 24/);
+  expect(deployYml).not.toMatch(/node-version: 20/);
+  expect(deployYml).toMatch(/actions\/configure-pages@v6/);
+  expect(deployYml).toMatch(/actions\/upload-pages-artifact@v5/);
+  expect(deployYml).toMatch(/actions\/deploy-pages@v5/);
+  expect(linux).toMatch(/NODE_DIST_VER="v24\.21\.0"/);
   const i18n = fs.readFileSync(path.join(ROOT, 'src', 'js', 'i18n.js'), 'utf8');
   expect(i18n).toMatch(/LANG_CYCLE = \['pl', 'en', 'de', 'uk'\]/);
   expect(i18n).toMatch(/translations_uk\.json/);
