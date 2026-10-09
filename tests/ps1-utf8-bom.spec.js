@@ -72,6 +72,11 @@ test('macOS/Linux pipeline scripts are Python, not Node or bash twins', () => {
   expect(windows).not.toMatch(/counting files/);
   expect(windows).not.toMatch(/will copy \{0\} files/);
   expect(windows).not.toMatch(/already on destination, skipping/);
+  expect(windows).toMatch(/\[switch\]\$Https/);
+  expect(windows).toMatch(/httpsRedirect/);
+  expect(linux).toMatch(/--https\|-Https\) HTTPS=1/);
+  expect(macos).toMatch(/--https\|-Https\) HTTPS=1/);
+  expect(fs.existsSync(path.join(ROOT, 'src', 'server.js'))).toBe(true);
   expect(windows).toMatch(/data\\translations_uk\.json/);
   expect(windows).toMatch(/Remove-Item -LiteralPath \$trUaDst -Force/);
   expect(macos).toMatch(/rm -f "\$dest_root\/src\/data\/translations_ua\.json"/);
@@ -364,4 +369,32 @@ test('ministry Excel and ZIPs live in server gov-cache; unpack is TEMP; scripts 
   expect(macos).toMatch(/--gemini-api-key/);
   expect(macos).toMatch(/Gemini\s+only \(daily 429 tries the next Flash/);
   expect(macos).not.toMatch(/Google Translate fallback/);
+});
+
+test('HTTPS re-run fills only missing or invalid pieces', () => {
+  const windows = fs.readFileSync(path.join(ROOT, 'Install_Prawko.windows.ps1'), 'utf8');
+  const linux = fs.readFileSync(path.join(ROOT, 'Install_Prawko.linux.sh'), 'utf8');
+  const macos = fs.readFileSync(path.join(ROOT, 'Install_Prawko.macos.sh'), 'utf8');
+  expect(windows).toMatch(/function Sync-PrawkoGeneratedHttpsCerts/);
+  expect(windows).toMatch(/function Get-PrawkoLocalCaCert/);
+  expect(windows).toMatch(/function Test-PrawkoPemServerOk/);
+  expect(windows).toMatch(/function Test-PrawkoCertDirAclOk/);
+  expect(windows).toMatch(/CA ok \(private key, not expiring\)/);
+  expect(windows).toMatch(/Server cert ok \(key, SAN, not expiring\)/);
+  expect(windows).toMatch(/certs\\ ACL ok/);
+  expect(windows).toMatch(/Service left running \(nothing to reconfigure\)/);
+  expect(windows).toMatch(/httpsRedirect already true/);
+  expect(windows).toMatch(/S-1-5-18/);
+  expect(windows).toMatch(/return \$false/);
+  expect(windows).not.toMatch(/function Install-PrawkoGeneratedHttpsCerts/);
+  expect(windows).toMatch(/Re-run fills only gaps/);
+  for (const text of [linux, macos]) {
+    expect(text).toMatch(/https_cert_key_ok/);
+    expect(text).toMatch(/https_tls_san_ok/);
+    expect(text).toMatch(/Reusing existing Prawko Local CA/);
+    expect(text).toMatch(/if \[ "\$tls_ok" -ne 1 \]/);
+    expect(text).toMatch(/local\.json \$\{key\} already \$\{value\}/);
+    expect(text).toMatch(/Service left running \(nothing to reconfigure\)/);
+    expect(text).toMatch(/Re-run fills only gaps/);
+  }
 });

@@ -12,6 +12,7 @@ set -euo pipefail
 REPO_URL="https://github.com/AnabelMaz/prawko.git"
 REPO_BRANCH="main"
 LISTEN_PORT=5173
+HTTPS_PORT=5174
 TARGET_DIR="/usr/local/prawko"
 LAUNCH_LABEL="pl.prawko.word"
 LAUNCH_PLIST="/Library/LaunchDaemons/${LAUNCH_LABEL}.plist"
@@ -37,6 +38,10 @@ EXCLUDE_LOCAL_JSON=0
 INCLUDE_GOV_CACHE=0
 DEV=""
 DEV_SET=0
+HTTPS=0
+HTTPS_CERT=""
+HTTPS_KEY=""
+HTTPS_CHANGED=0
 
 say() { printf '%s\n' "$*"; }
 say_c() { printf '\033[36m%s\033[0m\n' "$*"; }
@@ -83,6 +88,16 @@ FLAGS (same as Install_Prawko.windows.ps1 on Windows)
                          Does not install Node or launchd — even if the server is not running.
                          Git is used only here. Localhost: run the script with no flags first.
                          Folder must be empty or not exist yet.
+  --https                HTTPS on port ${HTTPS_PORT} (HTTP ${LISTEN_PORT} stays). Any HTTP path
+                         302-redirects to https://same-host:${HTTPS_PORT}... Disable in
+                         src/local.json: "httpsRedirect": false if HTTPS breaks (no restart).
+                         Re-run fills only gaps: existing CA with private key, valid
+                         server cert (names/IPs), httpsRedirect, and launchd stay.
+                         Or pass --https-cert/--https-key. Certs in ${TARGET_DIR}/certs
+                         (not under src). Needs sudo.
+  --https-cert <pem>     Existing certificate (implies --https). Pair with --https-key.
+  --https-key <pem>      Existing private key.
+  --https-port <n>       HTTPS listen port (default ${HTTPS_PORT}). HTTP stays on ${LISTEN_PORT}.
   --uninstall            Removes launchd and ${TARGET_DIR} except gov-cache (Excel + media ZIPs). Homebrew / Git / Node stay.
   --non-interactive      No Enter pause at the end.
   --help                 This help.
@@ -101,6 +116,7 @@ TWO USER TYPES
     --merge-gov      Python; writes to the running server
     --export         nothing (file copy)
     --import         nothing (file copy onto server)
+    --https          Node HTTPS + launchd restart; optional generated CA
     --uninstall      nothing new
 
 REQUIREMENTS
@@ -158,9 +174,32 @@ while [ $# -gt 0 ]; do
       DEV_SET=1
       shift 2
       ;;
+    --https|-Https) HTTPS=1; shift ;;
+    --https-cert|-HttpsCert)
+      [ $# -ge 2 ] || die "--https-cert requires a path"
+      HTTPS_CERT="$2"
+      HTTPS=1
+      shift 2
+      ;;
+    --https-key|-HttpsKey)
+      [ $# -ge 2 ] || die "--https-key requires a path"
+      HTTPS_KEY="$2"
+      HTTPS=1
+      shift 2
+      ;;
+    --https-port|-HttpsPort)
+      [ $# -ge 2 ] || die "--https-port requires a port"
+      HTTPS_PORT="$2"
+      shift 2
+      ;;
     *) die "Unknown argument: $1 (see --help)" ;;
   esac
 done
+
+if [ -n "$HTTPS_CERT" ] || [ -n "$HTTPS_KEY" ]; then
+  HTTPS=1
+  [ -n "$HTTPS_CERT" ] && [ -n "$HTTPS_KEY" ] || die "--https-cert and --https-key must be passed together"
+fi
 
 if [ "$HELP" -eq 1 ]; then
   usage
@@ -192,8 +231,9 @@ DEV_WORK_ROOT=""
 is_root() { [ "$(id -u)" -eq 0 ]; }
 
 need_root_for_default() {
-  # sudo only: first server install or --uninstall.
+  # sudo: first server install, --uninstall, or --https (plist + optional CA).
   [ "$UNINSTALL" -eq 1 ] && return 0
+  [ "$HTTPS" -eq 1 ] && return 0
   [ -n "$EXPORT" ] && return 1
   [ -n "$IMPORT" ] && return 1
   [ "$SYNC_GOV" -eq 1 ] && return 1
@@ -328,6 +368,168 @@ data["mediaBase"] = "media"
 p.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 PY
   say_g "-> src/local.json mediaBase=media (local files, not the CDN)."
+}
+
+set_local_json_key() {
+  local json="$1/src/local.json" key="$2" value="$3" status
+  status="$(python3 - "$json" "$key" "$value" <<'PY'
+import json, pathlib, sys
+p = pathlib.Path(sys.argv[1])
+key = sys.argv[2]
+raw = sys.argv[3]
+data = {}
+if p.is_file():
+    try:
+        parsed = json.loads(p.read_text(encoding="utf-8") or "{}")
+        if isinstance(parsed, dict):
+            data = parsed
+    except json.JSONDecodeError:
+        data = {}
+if raw == "true":
+    val = True
+elif raw == "false":
+    val = False
+else:
+    val = raw
+if data.get(key) == val:
+    print("skip")
+else:
+    data[key] = val
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    print("write")
+PY
+)"
+  if [ "$status" = skip ]; then
+    say_g "-> local.json ${key} already ${value}"
+  else
+    say_g "-> src/local.json ${key}=${value} (set false on disk if HTTPS breaks; no restart)."
+  fi
+}
+
+ensure_https_server_js() {
+  local dst="$TARGET_DIR/src/server.js" contrib
+  [ -f "$dst" ] && return 0
+  contrib="$(find_contrib || true)"
+  if [ -n "$contrib" ] && [ -f "$contrib/src/server.js" ]; then
+    cp "$contrib/src/server.js" "$dst"
+    HTTPS_CHANGED=1
+    say_c "-> Copied src/server.js from contrib."
+    return 0
+  fi
+  die "src/server.js is missing. Run --patch from contrib, or install from a ZIP that includes the HTTPS server, then --https."
+}
+
+write_https_san_cnf() {
+  local cnf="$1" i hn ip
+  {
+    printf '%s\n' '[req]' 'distinguished_name = req' 'prompt = no' '[dn]' 'CN = localhost' '[v3]'
+    printf '%s\n' 'basicConstraints = CA:FALSE' 'keyUsage = digitalSignature, keyEncipherment' 'extendedKeyUsage = serverAuth' 'subjectAltName = @alt' '[alt]'
+    printf '%s\n' 'DNS.1 = localhost' 'IP.1 = 127.0.0.1'
+  } > "$cnf"
+  hn="$(hostname -f 2>/dev/null || hostname 2>/dev/null || true)"
+  if [ -n "$hn" ] && [ "$hn" != "localhost" ]; then
+    printf 'DNS.2 = %s\n' "$hn" >> "$cnf"
+  fi
+  i=2
+  while IFS= read -r ip; do
+    [ -n "$ip" ] || continue
+    printf 'IP.%s = %s\n' "$i" "$ip" >> "$cnf"
+    i=$((i + 1))
+  done <<EOF
+$(ifconfig 2>/dev/null | awk '/inet / && $2 != "127.0.0.1" { print $2 }')
+EOF
+}
+
+https_cert_key_ok() {
+  local crt="$1" key="$2" m1 m2
+  [ -f "$crt" ] && [ -f "$key" ] || return 1
+  openssl x509 -in "$crt" -noout -checkend 604800 >/dev/null 2>&1 || return 1
+  m1="$(openssl x509 -in "$crt" -noout -modulus 2>/dev/null || true)"
+  m2="$(openssl rsa -in "$key" -noout -modulus 2>/dev/null || true)"
+  [ -n "$m1" ] && [ "$m1" = "$m2" ]
+}
+
+https_tls_san_ok() {
+  local crt="$1" san hn ip
+  san="$(openssl x509 -in "$crt" -noout -ext subjectAltName 2>/dev/null || true)"
+  printf '%s\n' "$san" | grep -qi 'localhost' || return 1
+  printf '%s\n' "$san" | grep -q '127.0.0.1' || return 1
+  hn="$(hostname -f 2>/dev/null || hostname 2>/dev/null || true)"
+  if [ -n "$hn" ] && [ "$hn" != "localhost" ]; then
+    printf '%s\n' "$san" | grep -qi "$hn" || return 1
+  fi
+  while IFS= read -r ip; do
+    [ -n "$ip" ] || continue
+    printf '%s\n' "$san" | grep -Fq "$ip" || return 1
+  done <<EOF
+$(ifconfig 2>/dev/null | awk '/inet / && $2 != "127.0.0.1" { print $2 }')
+EOF
+  return 0
+}
+
+generate_https_certs() {
+  local dir="$TARGET_DIR/certs" ca_ok=0 tls_ok=0
+  command -v openssl >/dev/null 2>&1 || die "openssl is required to generate --https certificates"
+  mkdir -p "$dir"
+  if https_cert_key_ok "$dir/ca.crt" "$dir/ca.key"; then
+    ca_ok=1
+    say_g "-> CA ok (key present, not expiring)"
+  fi
+  if https_cert_key_ok "$dir/tls.crt" "$dir/tls.key" && https_tls_san_ok "$dir/tls.crt"; then
+    tls_ok=1
+    say_g "-> Server cert ok (key, SAN, not expiring)"
+  fi
+  if [ "$ca_ok" -eq 1 ] && [ "$tls_ok" -eq 1 ]; then
+    return
+  fi
+  write_https_san_cnf "$dir/san.cnf"
+  if [ "$ca_ok" -eq 1 ]; then
+    say_g "-> Reusing existing Prawko Local CA"
+  else
+    openssl req -x509 -newkey rsa:2048 -nodes -keyout "$dir/ca.key" -out "$dir/ca.crt" -days 3650 -subj "/CN=Prawko Local CA" >/dev/null 2>&1
+    chmod 600 "$dir/ca.key"
+    chmod 644 "$dir/ca.crt"
+    tls_ok=0
+    security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "$dir/ca.crt" >/dev/null 2>&1 || true
+  fi
+  if [ "$tls_ok" -ne 1 ]; then
+    openssl req -new -nodes -keyout "$dir/tls.key" -out "$dir/tls.csr" -subj "/CN=localhost" >/dev/null 2>&1
+    openssl x509 -req -in "$dir/tls.csr" -CA "$dir/ca.crt" -CAkey "$dir/ca.key" -CAcreateserial -out "$dir/tls.crt" -days 1095 -extfile "$dir/san.cnf" -extensions v3 >/dev/null 2>&1
+    rm -f "$dir/tls.csr" "$dir/tls.pfx" "$dir/tls.pass"
+    chmod 600 "$dir/tls.key"
+    chmod 644 "$dir/tls.crt"
+    HTTPS_CHANGED=1
+  fi
+  say_g "-> HTTPS certs ready in $dir (LAN clients: import ca.crt)"
+}
+
+copy_byo_https_certs() {
+  local dir="$TARGET_DIR/certs"
+  [ -f "$HTTPS_CERT" ] || die "Certificate not found: $HTTPS_CERT"
+  [ -f "$HTTPS_KEY" ] || die "Private key not found: $HTTPS_KEY"
+  mkdir -p "$dir"
+  if [ -f "$dir/tls.crt" ] && [ -f "$dir/tls.key" ] && cmp -s "$HTTPS_CERT" "$dir/tls.crt" && cmp -s "$HTTPS_KEY" "$dir/tls.key"; then
+    say_g "-> Supplied certificate already in certs/ (unchanged)"
+    return
+  fi
+  cp "$HTTPS_CERT" "$dir/tls.crt"
+  cp "$HTTPS_KEY" "$dir/tls.key"
+  rm -f "$dir/tls.pfx" "$dir/tls.pass"
+  chmod 600 "$dir/tls.key"
+  chmod 644 "$dir/tls.crt"
+  HTTPS_CHANGED=1
+  say_g "-> Installed supplied certificate as certs/tls.crt + tls.key"
+}
+
+configure_https_files() {
+  if [ -n "$HTTPS_CERT" ]; then
+    copy_byo_https_certs
+  else
+    generate_https_certs
+  fi
+  set_local_json_key "$TARGET_DIR" httpsRedirect true
+  ensure_https_server_js
 }
 
 stamp_cache() {
@@ -584,8 +786,26 @@ resolve_serve_entry() {
 }
 
 install_launchd() {
-  local node_exe="$1" serve_entry="$2"
-  cat > "$LAUNCH_PLIST" <<EOF
+  local node_exe="$1" serve_entry="$2" server_js="${TARGET_DIR}/src/server.js" args_xml tmp
+  if [ -f "$server_js" ]; then
+    args_xml="    <string>${node_exe}</string>
+    <string>${server_js}</string>
+    <string>--http-port</string>
+    <string>${LISTEN_PORT}</string>
+    <string>--https-port</string>
+    <string>${HTTPS_PORT}</string>
+    <string>--cert-dir</string>
+    <string>${TARGET_DIR}/certs</string>"
+  else
+    args_xml="    <string>${node_exe}</string>
+    <string>${serve_entry}</string>
+    <string>-s</string>
+    <string>.</string>
+    <string>-l</string>
+    <string>${LISTEN_PORT}</string>"
+  fi
+  tmp="$(mktemp)"
+  cat > "$tmp" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -594,12 +814,7 @@ install_launchd() {
   <string>${LAUNCH_LABEL}</string>
   <key>ProgramArguments</key>
   <array>
-    <string>${node_exe}</string>
-    <string>${serve_entry}</string>
-    <string>-s</string>
-    <string>.</string>
-    <string>-l</string>
-    <string>${LISTEN_PORT}</string>
+${args_xml}
   </array>
   <key>WorkingDirectory</key>
   <string>${TARGET_DIR}/src</string>
@@ -614,6 +829,17 @@ install_launchd() {
 </dict>
 </plist>
 EOF
+  if [ -f "$LAUNCH_PLIST" ] && cmp -s "$tmp" "$LAUNCH_PLIST"; then
+    rm -f "$tmp"
+    say_g "-> launchd already on server.js HTTPS"
+    if [ "${HTTPS_CHANGED:-0}" -eq 0 ]; then
+      say_g "-> Service left running (nothing to reconfigure)"
+      return
+    fi
+    launchctl kickstart -k system/"$LAUNCH_LABEL" >/dev/null 2>&1 || launchctl start "$LAUNCH_LABEL" || true
+    return
+  fi
+  mv "$tmp" "$LAUNCH_PLIST"
   launchctl bootout system/"$LAUNCH_LABEL" >/dev/null 2>&1 || true
   launchctl bootstrap system "$LAUNCH_PLIST"
   launchctl enable system/"$LAUNCH_LABEL" >/dev/null 2>&1 || true
@@ -1139,7 +1365,7 @@ if [ "$MERGE_GOV" -eq 1 ]; then
   exit 0
 fi
 
-if [ "$PATCH" -eq 1 ] && [ "$MERGE_GOV" -eq 0 ] && [ "$UNINSTALL" -eq 0 ] && [ "$DEV_SET" -eq 0 ] && server_installed; then
+if [ "$PATCH" -eq 1 ] && [ "$HTTPS" -eq 0 ] && [ "$MERGE_GOV" -eq 0 ] && [ "$UNINSTALL" -eq 0 ] && [ "$DEV_SET" -eq 0 ] && server_installed; then
   remove_legacy_server_raw
   apply_patch
   say_g "Done. In the open app, banner: Available update / Refresh."
@@ -1147,7 +1373,7 @@ if [ "$PATCH" -eq 1 ] && [ "$MERGE_GOV" -eq 0 ] && [ "$UNINSTALL" -eq 0 ] && [ "
   exit 0
 fi
 
-if [ "$UNINSTALL" -eq 0 ] && [ "$MERGE_GOV" -eq 0 ] && [ "$SYNC_GOV" -eq 0 ] && [ "$PATCH" -eq 0 ] && [ "$DEV_SET" -eq 0 ] && [ -z "$IMPORT" ] && server_installed; then
+if [ "$HTTPS" -eq 0 ] && [ "$UNINSTALL" -eq 0 ] && [ "$MERGE_GOV" -eq 0 ] && [ "$SYNC_GOV" -eq 0 ] && [ "$PATCH" -eq 0 ] && [ "$DEV_SET" -eq 0 ] && [ -z "$IMPORT" ] && server_installed; then
   remove_legacy_server_raw
   say_y "Server already running in $TARGET_DIR — not overwriting files (no git checkout / pull)."
   say_d "  Code from local contrib: ./Install_Prawko.macos.sh --patch"
@@ -1182,6 +1408,10 @@ if ! is_root && need_root_for_default; then
   [ "$IMPORT_FORCE" -eq 1 ] && args+=(--import-force)
   [ -n "$IMPORT" ] && [ "$IMPORT_SCOPE" != "auto" ] && args+=(--import-scope "$IMPORT_SCOPE")
   [ "$DEV_SET" -eq 1 ] && args+=(--dev "$DEV")
+  [ "$HTTPS" -eq 1 ] && args+=(--https)
+  [ -n "$HTTPS_CERT" ] && args+=(--https-cert "$HTTPS_CERT")
+  [ -n "$HTTPS_KEY" ] && args+=(--https-key "$HTTPS_KEY")
+  [ "$HTTPS_PORT" != "5174" ] && args+=(--https-port "$HTTPS_PORT")
   if [ "$UNINSTALL" -eq 0 ]; then
     # Homebrew does not install as root — tools before sudo, like winget before the service.
     ensure_app_tools
@@ -1191,6 +1421,21 @@ if ! is_root && need_root_for_default; then
 fi
 
 load_brew_env
+
+if [ "$HTTPS" -eq 1 ] && [ "$UNINSTALL" -eq 0 ] && server_installed; then
+  remove_legacy_server_raw
+  if [ "$PATCH" -eq 1 ]; then
+    apply_patch
+  fi
+  configure_https_files
+  serve_entry="$(resolve_serve_entry "$TARGET_DIR" || true)"
+  node_exe="$(resolve_node)" || die "Missing node"
+  install_launchd "$node_exe" "${serve_entry:-/usr/bin/false}"
+  sleep 2
+  say_g "Done. Open https://localhost:${HTTPS_PORT} — HTTP ${LISTEN_PORT} redirects unless local.json httpsRedirect is false."
+  pause_if_interactive
+  exit 0
+fi
 
 if [ "$UNINSTALL" -eq 1 ]; then
   do_uninstall
@@ -1255,14 +1500,32 @@ if [ -n "${SUDO_USER:-}" ]; then
   chmod -R u+rwX,go+rX "$TARGET_DIR"
 fi
 
+if [ "$HTTPS" -eq 1 ]; then
+  configure_https_files
+fi
+
 say_y "Registering launchd $LAUNCH_LABEL..."
 install_launchd "$node_exe" "$serve_entry"
 sleep 3
 
-if curl -fsS "http://127.0.0.1:${LISTEN_PORT}/" >/dev/null 2>&1; then
+app_ok=0
+if [ "$HTTPS" -eq 1 ]; then
+  if curl -kfsS "https://127.0.0.1:${HTTPS_PORT}/" >/dev/null 2>&1; then
+    app_ok=1
+  fi
+elif curl -fsS "http://127.0.0.1:${LISTEN_PORT}/" >/dev/null 2>&1; then
+  app_ok=1
+fi
+
+if [ "$app_ok" -eq 1 ]; then
   say_g "=================================================="
   say_g " SERVICE STARTED SUCCESSFULLY! "
-  say_y " App: http://localhost:${LISTEN_PORT} "
+  if [ "$HTTPS" -eq 1 ]; then
+    say_y " App: https://localhost:${HTTPS_PORT} "
+    say_y " HTTP ${LISTEN_PORT} redirects to HTTPS (local.json httpsRedirect; set false if HTTPS breaks)."
+  else
+    say_y " App: http://localhost:${LISTEN_PORT} "
+  fi
   if [ "$MERGE_GOV" -eq 1 ]; then
     say_y " Questions:   AnabelMaz/prawko + gaps from ministry Excel (merge) "
   else
@@ -1271,7 +1534,11 @@ if curl -fsS "http://127.0.0.1:${LISTEN_PORT}/" >/dev/null 2>&1; then
   fi
   say_g "=================================================="
 else
-  say_r "[ERROR] Service is not responding at http://localhost:${LISTEN_PORT}"
+  if [ "$HTTPS" -eq 1 ]; then
+    say_r "[ERROR] Service is not responding at https://localhost:${HTTPS_PORT}"
+  else
+    say_r "[ERROR] Service is not responding at http://localhost:${LISTEN_PORT}"
+  fi
   [ -f "$TARGET_DIR/service_error.log" ] && tail -n 20 "$TARGET_DIR/service_error.log"
   exit 1
 fi

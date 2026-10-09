@@ -60,11 +60,11 @@ Bez przełączników instalator:
 - doinstalowuje Node.js i NSSM, jeśli ich nie ma,
 - ściąga ZIP [AnabelMaz/prawko](https://github.com/AnabelMaz/prawko) (`main`) do `C:\ProgramData\prawko` (**bez Gita**),
 - stawia usługę Windows **PrawkoWORDService**,
-- serwuje aplikację na porcie **5173**.
+- serwuje aplikację na porcie **5173**. `-Https` dodaje TLS na **5174** i 302 z każdego URL-a HTTP.
 
 Pytania pochodzą z JSON w repozytorium. Oglądanie zdjęć i filmów: kubeł Backblaze `prawko-maz`. „Pobierz offline”: zipy z Cloudflare R2. Gdy usługa już stoi, ponowne odpalenie **bez przełączników nic nie nadpisuje**.
 
-Po wgraniu nowszej wersji kodu w otwartej karcie może pojawić się baner „Dostępna aktualizacja” — wystarczy **Odśwież**, bez Ctrl+F5.
+Po wgraniu nowszej wersji kodu w otwartej karcie (ten sam komputer, inna stacja, github.io) pojawia się baner „Dostępna aktualizacja” — **Odśwież**, bez Ctrl+F5. Na HTTP poza loopbackiem nie ma service workera; aplikacja i tak porównuje `CACHE_VERSION` w `sw.js`.
 
 ### Gdzie lądują pliki
 
@@ -96,10 +96,13 @@ Zwykły użytkownik **nie potrzebuje** drugiego klona gita. `-SyncGov` nie kopiu
 | `-Import <ścieżka>` | Przywróć z paczki exportu (serwer musi już stać). `-ImportScope Auto\|Code\|Runtime`, `-ImportForce` |
 | `-Dev <folder>` | Tylko Git + klon. **Bez** Node i serwera |
 | `-Patch` | Overlay kodu z lokalnego klona (`-Dev`; `src\`, bez `data\` i `media\`) |
+| `-Https` | HTTPS na **5174**; HTTP 5173 zawsze 302 na ten sam host:ścieżka. Własne CA albo `-HttpsCert`+`-HttpsKey`. Wyłącznik: `httpsRedirect: false` w `local.json` |
+| `-HttpsCert` / `-HttpsKey` | Gotowy PEM (wymusza `-Https`) |
+| `-HttpsPort <n>` | Port TLS (domyślnie 5174) |
 | `-Uninstall` | Usuwa usługę i `C:\ProgramData\prawko` **oprócz** `gov-cache` |
 | `-NonInteractive` / `-Help` | Bez pauzy Enter / pełna pomoc |
 
-Administrator tylko przy **pierwszej instalacji serwera** albo `-Uninstall`.
+Administrator przy **pierwszej instalacji serwera**, `-Uninstall` albo `-Https`.
 
 ### Gov.pl na serwerze (opcjonalnie, kilka GB)
 
@@ -167,6 +170,17 @@ powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -Uninstall
 
 Znika usługa i `C:\ProgramData\prawko` (w tym FFmpeg z `-SyncGov`). `C:\ProgramData\prawko\gov-cache` oraz Git / Node / NSSM zostają.
 
+### HTTPS (osobny port)
+
+HTTP zostaje na 5173. TLS słucha na 5174. Gdy HTTPS stoi, **każda** ścieżka po HTTP (także query) dostaje 302 na `https://ten-sam-host:5174…`. Brak `local.json` albo popsuty JSON = też redirect. Wyłącznik bez restartu: tylko `"httpsRedirect": false` w poprawnym pliku — wtedy 5173 znowu serwuje aplikację (gdy certyfikat padnie). Ponowne `-Https` uzupełnia wyłącznie braki (działający Root z kluczem, ważny cert serwera z nazwami i IP, ACL, usługa). CA: **Prawko Local CA**.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -Https
+powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -Https -HttpsCert C:\certs\fullchain.pem -HttpsKey C:\certs\privkey.pem
+```
+
+Własne CA ląduje w `C:\ProgramData\prawko\certs\ca.crt` (LAN / VM: zaimportuj na **tej** stacji). Nie w `src/` — Pages by je opublikowało.
+
 ---
 
 ## Instalacja na macOS
@@ -212,7 +226,7 @@ Bez przełączników instalator:
 - doinstaluje **Node.js**,
 - ściąga ZIP [AnabelMaz/prawko](https://github.com/AnabelMaz/prawko) (`main`) do `/usr/local/prawko` (**bez Gita**),
 - stawia LaunchDaemon **pl.prawko.word**,
-- serwuje aplikację na porcie **5173**.
+- serwuje aplikację na porcie **5173**. `--https` dodaje TLS na **5174** i 302 z każdego URL-a HTTP.
 
 Gdy usługa już stoi, ponowne odpalenie **bez przełączników nic nie nadpisuje**.
 
@@ -236,9 +250,10 @@ bash Install_Prawko.macos.sh --export ~/Desktop/prawko-pack
 bash Install_Prawko.macos.sh --import ~/Desktop/prawko-pack
 bash Install_Prawko.macos.sh --dev ~/prawko
 bash Install_Prawko.macos.sh --patch
+bash Install_Prawko.macos.sh --https
 ```
 
-`--sync-gov` i `--merge-gov` wymagają **Pythona**. Sudo tylko przy pierwszej instalacji serwera albo `--uninstall`.
+`--sync-gov` i `--merge-gov` wymagają **Pythona**. Sudo przy pierwszej instalacji serwera, `--uninstall` albo `--https`.
 
 ### Instalacja dla dewelopera (macOS)
 
@@ -314,6 +329,7 @@ bash Install_Prawko.linux.sh --export ~/prawko-pack
 bash Install_Prawko.linux.sh --import ~/prawko-pack
 bash Install_Prawko.linux.sh --dev ~/prawko
 bash Install_Prawko.linux.sh --patch
+bash Install_Prawko.linux.sh --https
 ```
 
 ---
@@ -384,7 +400,9 @@ Kolejność 1 → 2 → 3 → 4 i 5 → 6. Krok 4 i 5 mogą iść równolegle (o
 
 Na macOS/Linux ta sama kolejność: `download-gov.py` → `convert-media.py` → `parse-excel.py` → `upload-media.py` / `build-media-packs.py` → panel R2. Ścieżki: `/usr/local/prawko/gov-cache` albo `/opt/prawko/gov-cache`; media serwera `/usr/local/prawko/src/media` albo `/opt/prawko/src/media`.
 
-Na **zainstalowanym serwerze** przeglądarka pobiera opcjonalny `src/local.json` (gitignore; na github.io go nie ma) z tego samego originu co aplikacja. Klucze: `learnQuestionJump`, `mediaBase` (`media` = pliki na serwerze, `cdn` = Backblaze), `offlineDownload` (`packs` / `files`), opcjonalnie `packsBase` (własny host zipów). Bez pliku: github.io używa B2+R2; serwer bez mediów na dysku wymaga `mediaBase: "cdn"` albo `-SyncGov`.
+Na **zainstalowanym serwerze** przeglądarka pobiera opcjonalny `src/local.json` (gitignore; na github.io go nie ma) z tego samego originu co aplikacja — każdy klient originu, nie tylko loopback. Klucze: `learnQuestionJump`, `mediaBase` (`media` = pliki na serwerze, `cdn` = Backblaze), `offlineDownload` (`packs` / `files`), opcjonalnie `packsBase` (własny host zipów), `httpsRedirect` (`false` = HTTP 5173 znowu serwuje, gdy HTTPS 5174 padnie; bez restartu). Bez pliku: github.io używa B2+R2; serwer bez mediów na dysku wymaga `mediaBase: "cdn"` albo `-SyncGov`. Certyfikaty TLS są w `certs/` obok instalacji, nie w `src/` i nie w `local.json`.
+
+Obejrzane zdjęcie lub film ląduje w Cache Storage tej przeglądarki (następny/poprzedni z `blob:`). Wyjątek: **ta sama maszyna** z `mediaBase: "media"` — pliki już są na dysku, nie kopiujemy ich. Nie zależy to od LAN/WAN. github.io, inny serwer z mediami lub bez (`cdn`), oraz localhost z `mediaBase: "cdn"` — wszystkie cachują po obejrzeniu. localhost z `media` i pustym `src/media` to 404, nie cichy CDN.
 
 W paczce MI brakuje pliku `!RS_Parking zastrzeżony.webp`. Parser **nie wycina** przez to pytania — nazwa z Excela zostaje, żeby zadziałał CDN albo późniejsze uzupełnienie.
 
@@ -563,11 +581,11 @@ With no switches the installer:
 - installs Node.js and NSSM if needed,
 - downloads the [AnabelMaz/prawko](https://github.com/AnabelMaz/prawko) (`main`) ZIP into `C:\ProgramData\prawko` (**no Git**),
 - registers the **PrawkoWORDService** Windows service,
-- serves the app on port **5173**.
+- serves the app on port **5173**. `-Https` adds TLS on **5174** and a 302 from every HTTP URL.
 
 Questions come from the repo JSON. Photos and films stream from the public Backblaze bucket `prawko-maz`. “Download offline” pulls zip packs from Cloudflare R2. If the service is already running, a second run **with no switches does not overwrite** it.
 
-After a code overlay, an open tab may show an "Update available" banner — use **Refresh**; a hard reload is not required.
+After a code overlay, an open tab (this computer, another station, or github.io) shows an "Update available" banner — **Refresh**, no Ctrl+F5. HTTP off loopback has no service worker; the app still compares `CACHE_VERSION` in `sw.js`.
 
 ### Where files land
 
@@ -599,10 +617,13 @@ A normal user does **not** need a second git clone. `-SyncGov` does not duplicat
 | `-Import <path>` | Restore from export pack (server must already be up). `-ImportScope Auto\|Code\|Runtime`, `-ImportForce` |
 | `-Dev <folder>` | Git clone only — **no** Node, **no** server |
 | `-Patch` | Overlay code from local clone (`-Dev`; `src\`, skip `data\` and `media\`) |
+| `-Https` | HTTPS on **5174**; HTTP 5173 always 302 to the same host+path. Generated CA or `-HttpsCert`+`-HttpsKey`. Kill-switch: `httpsRedirect: false` in `local.json` |
+| `-HttpsCert` / `-HttpsKey` | Existing PEM (implies `-Https`) |
+| `-HttpsPort <n>` | TLS port (default 5174) |
 | `-Uninstall` | Remove the service and `C:\ProgramData\prawko` **except** `gov-cache` |
 | `-NonInteractive` / `-Help` | No Enter pause / full help |
 
-Administrator only for the **first server install** or `-Uninstall`.
+Administrator for the **first server install**, `-Uninstall`, or `-Https`.
 
 ### Optional local ministry pack (several GB)
 
@@ -652,6 +673,17 @@ powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -Uninstall
 
 Removes the service and `C:\ProgramData\prawko` (including FFmpeg from `-SyncGov`). `C:\ProgramData\prawko\gov-cache` and Git / Node / NSSM remain.
 
+### HTTPS (separate port)
+
+HTTP stays on 5173. TLS listens on 5174. When HTTPS is up, **every** HTTP path (query included) gets a 302 to `https://same-host:5174…`. Missing or broken `local.json` still redirects. Kill-switch without a restart: only `"httpsRedirect": false` in valid JSON — then 5173 serves the app again (if the certificate breaks). A second `-Https` fills gaps only (working Root with a private key, unexpired server cert covering names/IPs, ACL, service). CA: **Prawko Local CA**.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -Https
+powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -Https -HttpsCert C:\certs\fullchain.pem -HttpsKey C:\certs\privkey.pem
+```
+
+A generated CA is `C:\ProgramData\prawko\certs\ca.crt` (LAN / VM: import it on **that** client). Not under `src/` — Pages would publish it.
+
 ---
 
 ## Install on macOS
@@ -697,7 +729,7 @@ With no switches the installer:
 - installs **Node.js**,
 - downloads the [AnabelMaz/prawko](https://github.com/AnabelMaz/prawko) (`main`) ZIP into `/usr/local/prawko` (**no Git**),
 - registers LaunchDaemon **pl.prawko.word**,
-- serves the app on port **5173**.
+- serves the app on port **5173**. `--https` adds TLS on **5174** and a 302 from every HTTP URL.
 
 If the service is already running, a second run **with no switches does not overwrite** it.
 
@@ -721,9 +753,10 @@ bash Install_Prawko.macos.sh --export ~/Desktop/prawko-pack
 bash Install_Prawko.macos.sh --import ~/Desktop/prawko-pack
 bash Install_Prawko.macos.sh --dev ~/prawko
 bash Install_Prawko.macos.sh --patch
+bash Install_Prawko.macos.sh --https
 ```
 
-`--sync-gov` and `--merge-gov` need **Python**. Sudo only on first server install or `--uninstall`.
+`--sync-gov` and `--merge-gov` need **Python**. Sudo on first server install, `--uninstall`, or `--https`.
 
 ### Developer install (macOS)
 
@@ -797,6 +830,7 @@ bash Install_Prawko.linux.sh --export ~/prawko-pack
 bash Install_Prawko.linux.sh --import ~/prawko-pack
 bash Install_Prawko.linux.sh --dev ~/prawko
 bash Install_Prawko.linux.sh --patch
+bash Install_Prawko.linux.sh --https
 ```
 
 ---
@@ -867,7 +901,9 @@ Order: 1 → 2 → 3 → 4 and 5 → 6. Steps 4 and 5 can run in parallel (both 
 
 On macOS/Linux the same order: `download-gov.py` → `convert-media.py` → `parse-excel.py` → `upload-media.py` / `build-media-packs.py` → R2 dashboard. Paths: `/usr/local/prawko/gov-cache` or `/opt/prawko/gov-cache`; server media `/usr/local/prawko/src/media` or `/opt/prawko/src/media`.
 
-On an **installed server** the browser fetches optional `src/local.json` (gitignored; not on github.io) from the same origin as the app. Keys: `learnQuestionJump`, `mediaBase` (`media` = files on the server, `cdn` = Backblaze), `offlineDownload` (`packs` / `files`), optional `packsBase` (your zip host). Without the file: github.io uses B2+R2; a server with no media on disk needs `mediaBase: "cdn"` or `-SyncGov`.
+On an **installed server** the browser fetches optional `src/local.json` (gitignored; not on github.io) from the same origin as the app — every client of that origin, not only loopback. Keys: `learnQuestionJump`, `mediaBase` (`media` = files on the server, `cdn` = Backblaze), `offlineDownload` (`packs` / `files`), optional `packsBase` (your zip host), `httpsRedirect` (`false` = HTTP 5173 serves again if HTTPS 5174 is down; no restart). Without the file: github.io uses B2+R2; a server with no media on disk needs `mediaBase: "cdn"` or `-SyncGov`. TLS certificates live in `certs/` next to the install, not under `src/` and not in `local.json`.
+
+A viewed photo or film is stored in that browser’s Cache Storage (next/prev from `blob:`). Exception: **this computer** with `mediaBase: "media"` — the files are already on disk, so they are not copied. LAN vs WAN does not matter. github.io, another server with or without media (`cdn`), and localhost with `mediaBase: "cdn"` all cache on view. localhost with `media` and empty `src/media` is a 404, not a silent CDN fallback.
 
 The ministry pack is missing `!RS_Parking zastrzeżony.webp`. The parser does **not** drop that question — the Excel file name stays so the CDN or a later file can fill it.
 

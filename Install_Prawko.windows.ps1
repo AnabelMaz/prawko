@@ -21,7 +21,11 @@ param(
     [switch]$ExcludeMedia,
     [switch]$ExcludeLocalJson,
     [switch]$IncludeGovCache,
-    [string]$Dev
+    [string]$Dev,
+    [switch]$Https,
+    [string]$HttpsCert = '',
+    [string]$HttpsKey = '',
+    [int]$HttpsPort = 5174
 )
 
 try {
@@ -49,7 +53,9 @@ $repoBranch = "main"
 $mainUrl = "https://www.gov.pl/web/infrastruktura/prawo-jazdy"
 $ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
 $listenPort = 5173
+$httpsPort = $HttpsPort
 $script:devWorkRoot = $null
+if ($HttpsCert -or $HttpsKey) { $Https = $true }
 
 function Restore-InitialLocation {
     if ($script:initialLocationPath -and (Test-Path -LiteralPath $script:initialLocationPath)) {
@@ -130,6 +136,22 @@ SWITCHES
                     run the installer with no switches, then -Dev.
                     Does not clone into C:\ProgramData\prawko. Media are not in git.
 
+  -Https            HTTPS on port 5174 (HTTP 5173 stays). Any HTTP path/query
+                    302-redirects to https://same-host:5174... Turn off in
+                    src\local.json: "httpsRedirect": false (no service restart)
+                    if HTTPS breaks. Generates a local CA + server cert unless
+                    they already exist and are valid (CA with private key,
+                    unexpired server cert covering current names/IPs, ACL,
+                    NSSM). Re-run fills only gaps — no second Root CA. Or pass
+                    -HttpsCert/-HttpsKey. Needs administrator. Combine with
+                    -Patch on an already running HTTP server.
+
+  -HttpsCert <pem>  Existing certificate (implies -Https). Pair with -HttpsKey.
+
+  -HttpsKey <pem>   Existing private key.
+
+  -HttpsPort <n>    HTTPS listen port (default 5174). HTTP stays on 5173.
+
   -Uninstall        Removes the PrawkoWORDService service and C:\ProgramData\prawko
                     except gov-cache (Excel + media ZIPs). FFmpeg in tools\ goes away.
                     Git/Node/NSSM stay on the system.
@@ -158,6 +180,7 @@ TWO USER TYPES
     -MergeGov        Excel from gov.pl, write to the running server
     -Export          nothing (file copy)
     -Import          nothing (file copy onto server)
+    -Https           Node HTTPS + NSSM restart; optional generated CA
     -Uninstall       nothing new
 
 WHAT THE APP NEEDS
@@ -169,7 +192,7 @@ WHAT THE APP NEEDS
     exit 0
 }
 
-function Set-LocalMediaBase ($root) {
+function Read-LocalJsonObject ($root) {
     $path = Join-Path $root "src\local.json"
     $obj = [pscustomobject]@{}
     if (Test-Path -LiteralPath $path) {
@@ -178,10 +201,440 @@ function Set-LocalMediaBase ($root) {
             if ($parsed -is [System.Management.Automation.PSCustomObject]) { $obj = $parsed }
         } catch { $obj = [pscustomobject]@{} }
     }
-    $obj | Add-Member -NotePropertyName mediaBase -NotePropertyValue 'media' -Force
+    return @{ Path = $path; Object = $obj }
+}
+
+function Write-LocalJsonObject ($path, $obj) {
     $utf8 = New-Object System.Text.UTF8Encoding $false
     [IO.File]::WriteAllText($path, (($obj | ConvertTo-Json -Compress) + "`n"), $utf8)
+}
+
+function Set-LocalJsonProperty ($root, [string]$Name, $Value) {
+    $state = Read-LocalJsonObject $root
+    $state.Object | Add-Member -NotePropertyName $Name -NotePropertyValue $Value -Force
+    Write-LocalJsonObject $state.Path $state.Object
+}
+
+function Set-LocalMediaBase ($root) {
+    Set-LocalJsonProperty $root 'mediaBase' 'media'
     Write-Host "-> src/local.json mediaBase=media (local files, not the CDN)." -ForegroundColor Green
+}
+
+function Get-PrawkoCertDir {
+    return (Join-Path $targetDir "certs")
+}
+
+function Get-PrawkoServerArgs {
+    $srcDir = Join-Path $targetDir "src"
+    $serverJs = Join-Path $srcDir "server.js"
+    $certDir = Get-PrawkoCertDir
+    if (Test-Path -LiteralPath $serverJs) {
+        return "`"$serverJs`" --http-port $listenPort --https-port $httpsPort --cert-dir `"$certDir`""
+    }
+    return $null
+}
+
+function Unlock-PrawkoCertDir ($certDir) {
+    if (-not (Test-Path -LiteralPath $certDir)) { return }
+    # Re-enable inheritance from ProgramData\prawko (Everyone F). A previous
+    # /inheritance:r plus English "Administrators" on Polish Windows left
+    # LocalSystem unable to read tls.pfx, so HTTPS never bound and HTTP did not redirect.
+    icacls $certDir /inheritance:e | Out-Null
+    icacls $certDir /grant "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" | Out-Null
+}
+
+function Ensure-PrawkoHttpsServerJs {
+    $dst = Join-Path $targetDir "src\server.js"
+    if (Test-Path -LiteralPath $dst) { return }
+    $contrib = Find-LocalContribRoot
+    if ($contrib) {
+        $src = Join-Path $contrib "src\server.js"
+        if (Test-Path -LiteralPath $src) {
+            Copy-Item -LiteralPath $src -Destination $dst -Force
+            Write-Host "-> Copied src\server.js from contrib." -ForegroundColor Cyan
+            return
+        }
+    }
+    throw "src\server.js is missing on the server. Run -Patch from contrib, or install from a ZIP that includes the HTTPS server, then -Https."
+}
+
+function Test-PrawkoHttpsFiles ($certDir) {
+    $crt = Join-Path $certDir "tls.crt"
+    $key = Join-Path $certDir "tls.key"
+    $pfx = Join-Path $certDir "tls.pfx"
+    return ((Test-Path -LiteralPath $crt) -and (Test-Path -LiteralPath $key)) -or (Test-Path -LiteralPath $pfx)
+}
+
+function Read-PrawkoCertThumbprint ($path) {
+    if (-not (Test-Path -LiteralPath $path)) { return $null }
+    $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($path)
+    return $cert.Thumbprint
+}
+
+function Test-PrawkoCertNotExpiring ($cert) {
+    if (-not $cert) { return $false }
+    return $cert.NotAfter -gt (Get-Date).AddDays(7)
+}
+
+function Get-PrawkoCertSanNames ($cert) {
+    $list = New-Object System.Collections.Generic.List[string]
+    $cn = $cert.GetNameInfo([Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $false)
+    if ($cn) { [void]$list.Add($cn) }
+    $ext = $cert.Extensions | Where-Object { $_.Oid.Value -eq '2.5.29.17' }
+    if ($ext) {
+        foreach ($line in @($ext.Format($true) -split "`r?`n")) {
+            if ($line -match '=\s*(.+)$') { [void]$list.Add($Matches[1].Trim()) }
+        }
+    }
+    return @($list | Select-Object -Unique)
+}
+
+function Test-PrawkoSanCovers ($cert, $needed) {
+    $have = @(Get-PrawkoCertSanNames $cert | ForEach-Object { $_.ToLowerInvariant() })
+    foreach ($n in @($needed)) {
+        if (-not $n) { continue }
+        if ($have -notcontains $n.ToLowerInvariant()) { return $false }
+    }
+    return $true
+}
+
+function Test-PrawkoCertSignedBy ($leaf, $ca) {
+    if (-not $leaf -or -not $ca) { return $false }
+    $chain = New-Object System.Security.Cryptography.X509Certificates.X509Chain
+    $chain.ChainPolicy.RevocationMode = 'NoCheck'
+    $chain.ChainPolicy.VerificationFlags = 'AllowUnknownCertificateAuthority'
+    [void]$chain.ChainPolicy.ExtraStore.Add($ca)
+    try { [void]$chain.Build($leaf) } catch { return $false }
+    foreach ($el in $chain.ChainElements) {
+        if ($el.Certificate.Thumbprint -eq $ca.Thumbprint) { return $true }
+    }
+    return $false
+}
+
+function Test-PrawkoCertDirAclOk ($certDir) {
+    if (-not (Test-Path -LiteralPath $certDir)) { return $false }
+    try {
+        Get-ChildItem -LiteralPath $certDir -Force -ErrorAction Stop | Out-Null
+        foreach ($name in @('tls.key', 'tls.pfx', 'tls.crt', 'ca.crt')) {
+            $p = Join-Path $certDir $name
+            if (-not (Test-Path -LiteralPath $p)) { continue }
+            $fs = [IO.File]::Open($p, 'Open', 'Read', 'Read')
+            $fs.Close()
+        }
+        $acl = Get-Acl -LiteralPath $certDir
+        foreach ($ace in $acl.Access) {
+            if ($ace.AccessControlType -ne 'Allow') { continue }
+            $sid = ''
+            try { $sid = $ace.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value } catch { }
+            if ($sid -ne 'S-1-5-18' -and $sid -ne 'S-1-1-0') { continue }
+            $rights = $ace.FileSystemRights.ToString()
+            if ($rights -match 'FullControl|Modify|ReadAndExecute|Read') { return $true }
+        }
+        return $false
+    } catch {
+        return $false
+    }
+}
+
+function Get-PrawkoLocalCaCert ($certDir) {
+    $want = Read-PrawkoCertThumbprint (Join-Path $certDir "ca.crt")
+    $found = @(Get-ChildItem Cert:\LocalMachine\My -ErrorAction SilentlyContinue |
+        Where-Object { ($_.FriendlyName -eq 'Prawko Local CA' -or $_.Subject -eq 'CN=Prawko Local CA') -and $_.HasPrivateKey -and (Test-PrawkoCertNotExpiring $_) })
+    if ($want) {
+        $match = $found | Where-Object { $_.Thumbprint -eq $want } | Select-Object -First 1
+        if ($match) { return $match }
+    }
+    return $found | Sort-Object NotBefore -Descending | Select-Object -First 1
+}
+
+function Get-PrawkoHttpsServerCert ($certDir, $ca, $neededNames) {
+    $want = Read-PrawkoCertThumbprint (Join-Path $certDir "tls.crt")
+    $found = @(Get-ChildItem Cert:\LocalMachine\My -ErrorAction SilentlyContinue |
+        Where-Object { $_.FriendlyName -eq 'Prawko HTTPS' -and $_.HasPrivateKey -and (Test-PrawkoCertNotExpiring $_) })
+    $ok = @($found | Where-Object {
+        (Test-PrawkoSanCovers $_ $neededNames) -and (-not $ca -or (Test-PrawkoCertSignedBy $_ $ca))
+    })
+    if ($want) {
+        $match = $ok | Where-Object { $_.Thumbprint -eq $want } | Select-Object -First 1
+        if ($match) { return $match }
+    }
+    return $ok | Sort-Object NotBefore -Descending | Select-Object -First 1
+}
+
+function Test-PrawkoPemKeyMatches ($crt, $key) {
+    $openssl = "C:\Program Files\Git\usr\bin\openssl.exe"
+    if (-not (Test-Path -LiteralPath $openssl)) { return $true }
+    $modCrt = & $openssl x509 -in $crt -noout -modulus 2>$null
+    $modKey = & $openssl rsa -in $key -noout -modulus 2>$null
+    if (-not $modCrt -or -not $modKey) { return $false }
+    return (($modCrt | Out-String).Trim() -eq ($modKey | Out-String).Trim())
+}
+
+function Test-PrawkoPemServerOk ($certDir, $ca, $neededNames) {
+    $crt = Join-Path $certDir "tls.crt"
+    $key = Join-Path $certDir "tls.key"
+    if (-not ((Test-Path -LiteralPath $crt) -and (Test-Path -LiteralPath $key))) { return $false }
+    try {
+        $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($crt)
+        if (-not (Test-PrawkoCertNotExpiring $cert)) { return $false }
+        if (-not (Test-PrawkoSanCovers $cert $neededNames)) { return $false }
+        if ($ca -and -not (Test-PrawkoCertSignedBy $cert $ca)) { return $false }
+        if (-not (Test-PrawkoPemKeyMatches $crt $key)) { return $false }
+        return $true
+    } catch {
+        return $false
+    }
+}
+
+function Ensure-PrawkoCaInRoot ($ca) {
+    if (-not $ca) { return $false }
+    $already = Get-ChildItem Cert:\LocalMachine\Root -ErrorAction SilentlyContinue |
+        Where-Object { $_.Thumbprint -eq $ca.Thumbprint } |
+        Select-Object -First 1
+    if ($already) { return $false }
+    $store = New-Object System.Security.Cryptography.X509Certificates.X509Store "Root", "LocalMachine"
+    $store.Open("ReadWrite")
+    $store.Add($ca)
+    $store.Close()
+    Write-Host "-> Trusted Prawko Local CA in LocalMachine\Root" -ForegroundColor Green
+    return $true
+}
+
+function Remove-StalePrawkoHttpsStoreCerts {
+    param($KeepCerts)
+    $keep = @{}
+    foreach ($c in @($KeepCerts)) {
+        if ($c -and $c.Thumbprint) { $keep[$c.Thumbprint.ToUpperInvariant()] = $true }
+    }
+    if ($keep.Count -eq 0) { return }
+    foreach ($storeName in @("Root", "My")) {
+        $store = New-Object System.Security.Cryptography.X509Certificates.X509Store $storeName, "LocalMachine"
+        $store.Open("ReadWrite")
+        $stale = @($store.Certificates | Where-Object {
+            ($_.FriendlyName -eq 'Prawko Local CA' -or $_.FriendlyName -eq 'Prawko HTTPS' -or $_.Subject -eq 'CN=Prawko Local CA') -and
+            -not $keep.ContainsKey($_.Thumbprint.ToUpperInvariant())
+        })
+        foreach ($cert in $stale) {
+            $store.Remove($cert)
+            Write-Host "-> Removed leftover $($cert.FriendlyName) $($cert.Thumbprint) from LocalMachine\$storeName" -ForegroundColor Yellow
+        }
+        $store.Close()
+    }
+}
+
+function Export-PrawkoTlsFiles ($certDir, $ca, $server) {
+    $pfxPath = Join-Path $certDir "tls.pfx"
+    $crtPath = Join-Path $certDir "tls.crt"
+    $keyPath = Join-Path $certDir "tls.key"
+    $chars = [char[]]((48..57) + (65..90) + (97..122))
+    $pwPlain = -join (1..24 | ForEach-Object { $chars[(Get-Random -Maximum $chars.Length)] })
+    $secure = New-Object System.Security.SecureString
+    foreach ($c in $pwPlain.ToCharArray()) { $secure.AppendChar($c) }
+    foreach ($old in @($pfxPath, $crtPath, $keyPath, (Join-Path $certDir "tls.pass"))) {
+        if (Test-Path -LiteralPath $old) { Remove-Item -LiteralPath $old -Force }
+    }
+    Export-PfxCertificate -Cert $server -FilePath $pfxPath -Password $secure | Out-Null
+    [IO.File]::WriteAllText((Join-Path $certDir "tls.pass"), $pwPlain, (New-Object System.Text.UTF8Encoding $false))
+    $openssl = "C:\Program Files\Git\usr\bin\openssl.exe"
+    if (Test-Path -LiteralPath $openssl) {
+        & $openssl pkcs12 -in $pfxPath -out $crtPath -nokeys -clcerts -passin "pass:$pwPlain" 2>$null
+        & $openssl pkcs12 -in $pfxPath -out $keyPath -nocerts -nodes -passin "pass:$pwPlain" 2>$null
+    }
+    if ($ca) {
+        $caPem = "-----BEGIN CERTIFICATE-----`n" + [Convert]::ToBase64String($ca.RawData, 'InsertLineBreaks') + "`n-----END CERTIFICATE-----`n"
+        [IO.File]::WriteAllText((Join-Path $certDir "ca.crt"), $caPem, (New-Object System.Text.UTF8Encoding $false))
+    }
+}
+
+function Get-PrawkoHttpsHostNames {
+    $names = New-Object System.Collections.Generic.List[string]
+    foreach ($n in @('localhost', '127.0.0.1')) { [void]$names.Add($n) }
+    if ($env:COMPUTERNAME) { [void]$names.Add($env:COMPUTERNAME) }
+    try {
+        $hn = [System.Net.Dns]::GetHostName()
+        if ($hn) { [void]$names.Add($hn) }
+    } catch { }
+    try {
+        Get-NetIPAddress -AddressFamily IPv4 -ErrorAction Stop |
+            Where-Object { $_.IPAddress -and $_.IPAddress -notlike '169.254.*' } |
+            ForEach-Object { [void]$names.Add($_.IPAddress) }
+    } catch {
+        try {
+            [System.Net.Dns]::GetHostAddresses([System.Net.Dns]::GetHostName()) |
+                Where-Object { $_.AddressFamily -eq 'InterNetwork' } |
+                ForEach-Object { [void]$names.Add($_.ToString()) }
+        } catch { }
+    }
+    return @($names | Select-Object -Unique)
+}
+
+function Sync-PrawkoGeneratedHttpsCerts ($certDir) {
+    New-Item -ItemType Directory -Force -Path $certDir | Out-Null
+    $filesChanged = $false
+    $names = Get-PrawkoHttpsHostNames
+    $ca = Get-PrawkoLocalCaCert $certDir
+    if ($ca) {
+        Write-Host "-> CA ok (private key, not expiring): $($ca.Thumbprint)" -ForegroundColor Green
+    } else {
+        Write-Host "-> Generating Prawko Local CA" -ForegroundColor Yellow
+        $ca = New-SelfSignedCertificate -Subject "CN=Prawko Local CA" `
+            -KeyUsage CertSign, CRLSign, DigitalSignature `
+            -KeyExportPolicy Exportable `
+            -NotAfter (Get-Date).AddYears(10) `
+            -CertStoreLocation Cert:\LocalMachine\My `
+            -HashAlgorithm SHA256 `
+            -FriendlyName "Prawko Local CA" `
+            -TextExtension @("2.5.29.19={critical}{text}ca=1&pathlength=0")
+        $filesChanged = $true
+    }
+    $caFile = Join-Path $certDir "ca.crt"
+    $caFileThumb = Read-PrawkoCertThumbprint $caFile
+    if ($ca -and $caFileThumb -ne $ca.Thumbprint) {
+        $caPem = "-----BEGIN CERTIFICATE-----`n" + [Convert]::ToBase64String($ca.RawData, 'InsertLineBreaks') + "`n-----END CERTIFICATE-----`n"
+        [IO.File]::WriteAllText($caFile, $caPem, (New-Object System.Text.UTF8Encoding $false))
+        $filesChanged = $true
+    }
+    [void](Ensure-PrawkoCaInRoot $ca)
+
+    $server = Get-PrawkoHttpsServerCert $certDir $ca $names
+    $pemOk = Test-PrawkoPemServerOk $certDir $ca $names
+    if ($pemOk) {
+        $thumb = Read-PrawkoCertThumbprint (Join-Path $certDir "tls.crt")
+        Write-Host "-> Server cert ok (key, SAN, not expiring): $thumb" -ForegroundColor Green
+    } elseif ($server) {
+        Write-Host "-> Exporting existing server cert to $certDir" -ForegroundColor Yellow
+        Export-PrawkoTlsFiles $certDir $ca $server
+        $filesChanged = $true
+    } else {
+        Write-Host "-> Generating server cert (SAN: $($names -join ', '))" -ForegroundColor Yellow
+        $server = New-SelfSignedCertificate -DnsName $names `
+            -Signer $ca `
+            -KeyExportPolicy Exportable `
+            -NotAfter (Get-Date).AddYears(3) `
+            -CertStoreLocation Cert:\LocalMachine\My `
+            -HashAlgorithm SHA256 `
+            -FriendlyName "Prawko HTTPS"
+        Export-PrawkoTlsFiles $certDir $ca $server
+        $filesChanged = $true
+    }
+    $fileLeaf = $null
+    $crtPath = Join-Path $certDir "tls.crt"
+    if (Test-Path -LiteralPath $crtPath) {
+        $fileLeaf = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($crtPath)
+    }
+    Remove-StalePrawkoHttpsStoreCerts -KeepCerts @($ca, $server, $fileLeaf)
+    return $filesChanged
+}
+
+function Copy-PrawkoByoHttpsCerts ($certDir, $certFile, $keyFile) {
+    if (-not $certFile -or -not $keyFile) {
+        throw "-HttpsCert and -HttpsKey must be passed together."
+    }
+    if (-not (Test-Path -LiteralPath $certFile)) { throw "Certificate not found: $certFile" }
+    if (-not (Test-Path -LiteralPath $keyFile)) { throw "Private key not found: $keyFile" }
+    New-Item -ItemType Directory -Force -Path $certDir | Out-Null
+    $dstCrt = Join-Path $certDir "tls.crt"
+    $dstKey = Join-Path $certDir "tls.key"
+    $same = $false
+    if ((Test-Path -LiteralPath $dstCrt) -and (Test-Path -LiteralPath $dstKey)) {
+        $same = ((Get-FileHash -LiteralPath $certFile -Algorithm SHA256).Hash -eq (Get-FileHash -LiteralPath $dstCrt -Algorithm SHA256).Hash) -and
+            ((Get-FileHash -LiteralPath $keyFile -Algorithm SHA256).Hash -eq (Get-FileHash -LiteralPath $dstKey -Algorithm SHA256).Hash)
+    }
+    if ($same) {
+        Write-Host "-> Supplied certificate already in certs\ (unchanged)" -ForegroundColor Green
+        return $false
+    }
+    if (-not (Test-PrawkoCertDirAclOk $certDir)) { Unlock-PrawkoCertDir $certDir }
+    Copy-Item -LiteralPath $certFile -Destination $dstCrt -Force
+    Copy-Item -LiteralPath $keyFile -Destination $dstKey -Force
+    foreach ($stale in @("tls.pfx", "tls.pass")) {
+        $p = Join-Path $certDir $stale
+        if (Test-Path -LiteralPath $p) { Remove-Item -LiteralPath $p -Force }
+    }
+    Write-Host "-> Installed supplied certificate as certs\tls.crt + tls.key" -ForegroundColor Green
+    return $true
+}
+
+function Get-PrawkoNssmPath {
+    $cmd = Get-Command nssm -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+    foreach ($c in @(
+            "$env:ProgramFiles\NSSM\nssm.exe",
+            "$env:ProgramFiles\nssm\win64\nssm.exe",
+            "${env:ProgramFiles(x86)}\NSSM\nssm.exe"
+        )) {
+        if (Test-Path $c) { return $c }
+    }
+    $wingetPkg = Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" -Filter "nssm.exe" -Recurse -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if ($wingetPkg) { return $wingetPkg.FullName }
+    return $null
+}
+
+function Get-PrawkoNssmPlainValue ($nssmLocal, $key) {
+    $raw = & $nssmLocal get $serviceName $key 2>$null
+    if ($null -eq $raw) { return '' }
+    return ((($raw | Out-String) -replace "`0", '').Trim())
+}
+
+function Set-PrawkoHttpsService {
+    param([switch]$RestartIfFilesChanged)
+    Ensure-PrawkoHttpsServerJs
+    $args = Get-PrawkoServerArgs
+    if (-not $args) { throw "Could not build HTTPS server arguments (src\server.js missing)." }
+    $nssmLocal = Get-PrawkoNssmPath
+    if (-not $nssmLocal) { throw "NSSM not found. HTTPS needs the Prawko Windows service." }
+    $srcDir = Join-Path $targetDir "src"
+    $curParams = (Get-PrawkoNssmPlainValue $nssmLocal AppParameters) -replace '"', ''
+    $wantParams = $args -replace '"', ''
+    $curDir = Get-PrawkoNssmPlainValue $nssmLocal AppDirectory
+    $needSet = ($curParams -ne $wantParams) -or ($curDir.TrimEnd('\') -ne $srcDir.TrimEnd('\'))
+    if ($needSet) {
+        & $nssmLocal set $serviceName AppParameters $args
+        & $nssmLocal set $serviceName AppDirectory $srcDir
+    } else {
+        Write-Host "-> NSSM already on server.js HTTPS" -ForegroundColor Green
+    }
+    if (-not $needSet -and -not $RestartIfFilesChanged) {
+        Write-Host "-> Service left running (nothing to reconfigure)" -ForegroundColor Green
+        return
+    }
+    cmd.exe /c "`"$nssmLocal`" restart $serviceName >nul 2>&1"
+    if ($LASTEXITCODE -ne 0) {
+        cmd.exe /c "`"$nssmLocal`" stop $serviceName >nul 2>&1"
+        Start-Sleep -Seconds 1
+        & $nssmLocal start $serviceName
+    }
+}
+
+function Invoke-ConfigurePrawkoHttps {
+    if ($HttpsCert -xor $HttpsKey) {
+        throw "-HttpsCert and -HttpsKey must be passed together."
+    }
+    $certDir = Get-PrawkoCertDir
+    New-Item -ItemType Directory -Force -Path $certDir | Out-Null
+    $filesChanged = $false
+    if (-not (Test-PrawkoCertDirAclOk $certDir)) {
+        Write-Host "-> Fixing certs\ ACL so LocalSystem can read keys" -ForegroundColor Yellow
+        Unlock-PrawkoCertDir $certDir
+        $filesChanged = $true
+    } else {
+        Write-Host "-> certs\ ACL ok" -ForegroundColor Green
+    }
+    if ($HttpsCert) {
+        if (Copy-PrawkoByoHttpsCerts $certDir $HttpsCert $HttpsKey) { $filesChanged = $true }
+    } else {
+        if (Sync-PrawkoGeneratedHttpsCerts $certDir) { $filesChanged = $true }
+    }
+    $json = Read-LocalJsonObject $targetDir
+    if ($json.Object.httpsRedirect -eq $true) {
+        Write-Host "-> local.json httpsRedirect already true" -ForegroundColor Green
+    } else {
+        Set-LocalJsonProperty $targetDir 'httpsRedirect' $true
+        Write-Host "-> src/local.json httpsRedirect=true (set false on disk if HTTPS breaks; no restart)." -ForegroundColor Green
+    }
+    Set-PrawkoHttpsService -RestartIfFilesChanged:$filesChanged
+    Write-Host " Application: https://localhost:$httpsPort  (HTTP $listenPort redirects here)" -ForegroundColor Yellow
 }
 
 function Test-LooksLikePrawkoRepo ([string]$root) {
@@ -1087,14 +1540,14 @@ if ($PSBoundParameters.ContainsKey("Import")) {
     exit 0
 }
 
-if ($Patch -and -not $MergeGov -and -not $Uninstall -and -not $PSBoundParameters.ContainsKey("Dev") -and (Test-PrawkoServerInstalled)) {
+if ($Patch -and -not $Https -and -not $MergeGov -and -not $Uninstall -and -not $PSBoundParameters.ContainsKey("Dev") -and (Test-PrawkoServerInstalled)) {
     Remove-LegacyServerRawMediaDir
     Apply-PrawkoAppFixes -root $targetDir
     Write-Host "Done. In the open app, banner: Update available / Refresh." -ForegroundColor Green
     exit 0
 }
 
-if (-not $Uninstall -and -not $MergeGov -and -not $SyncGov -and -not $Patch -and -not $PSBoundParameters.ContainsKey("Dev") -and -not $PSBoundParameters.ContainsKey("Import") -and (Test-PrawkoServerInstalled)) {
+if (-not $Https -and -not $Uninstall -and -not $MergeGov -and -not $SyncGov -and -not $Patch -and -not $PSBoundParameters.ContainsKey("Dev") -and -not $PSBoundParameters.ContainsKey("Import") -and (Test-PrawkoServerInstalled)) {
     Remove-LegacyServerRawMediaDir
     Write-Host "Server already running in $targetDir — not overwriting files (no git checkout / pull)." -ForegroundColor Yellow
     Write-Host "  Code from local contrib: Install_Prawko.windows.ps1 -Patch" -ForegroundColor Gray
@@ -1111,10 +1564,11 @@ function Test-IsAdmin {
     return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
-# Admin only: first server install or -Uninstall.
+# Admin only: first server install, -Uninstall, or -Https (NSSM + optional Root CA).
 # -Dev / -Patch / -MergeGov / -SyncGov / -Export / -Import: no elevation.
+$httpsOnInstalled = $Https -and -not $Uninstall -and (Test-PrawkoServerInstalled)
 $installingServer = -not $Uninstall -and -not $MergeGov -and -not $SyncGov -and -not $PSBoundParameters.ContainsKey("Dev") -and -not $PSBoundParameters.ContainsKey("Export") -and -not $PSBoundParameters.ContainsKey("Import") -and -not (Test-PrawkoServerInstalled)
-if (($Uninstall -or $installingServer) -and -not (Test-IsAdmin)) {
+if (($Uninstall -or $installingServer -or $httpsOnInstalled) -and -not (Test-IsAdmin)) {
     Write-Host "Administrator rights required. Retrying with elevation..." -ForegroundColor Yellow
     $argList = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$PSCommandPath`"")
     if ($NonInteractive) { $argList += "-NonInteractive" }
@@ -1134,9 +1588,24 @@ if (($Uninstall -or $installingServer) -and -not (Test-IsAdmin)) {
     if ($ImportForce) { $argList += "-ImportForce" }
     if ($PSBoundParameters.ContainsKey("ImportScope") -and $ImportScope -ne 'Auto') { $argList += "-ImportScope"; $argList += $ImportScope }
     if ($PSBoundParameters.ContainsKey("Dev") -and $Dev) { $argList += "-Dev"; $argList += "`"$Dev`"" }
+    if ($Https) { $argList += "-Https" }
+    if ($HttpsCert) { $argList += "-HttpsCert"; $argList += "`"$HttpsCert`"" }
+    if ($HttpsKey) { $argList += "-HttpsKey"; $argList += "`"$HttpsKey`"" }
+    if ($PSBoundParameters.ContainsKey("HttpsPort") -and $HttpsPort -ne 5174) { $argList += "-HttpsPort"; $argList += "$HttpsPort" }
     if ($Help) { $argList += "-Help" }
     Start-Process -FilePath "powershell.exe" -Verb RunAs -Wait -ArgumentList $argList
     exit $LASTEXITCODE
+}
+
+if ($Https -and -not $Uninstall -and (Test-PrawkoServerInstalled)) {
+    Remove-LegacyServerRawMediaDir
+    if ($Patch) {
+        Apply-PrawkoAppFixes -root $targetDir
+    }
+    Invoke-ConfigurePrawkoHttps
+    Write-Host "Done. Open https://localhost:$httpsPort — HTTP $listenPort redirects unless local.json httpsRedirect is false." -ForegroundColor Green
+    Complete-IfInteractive
+    exit 0
 }
 
 function Test-CommandExists ($cmd) {
@@ -2674,9 +3143,33 @@ if (-not (Test-Path (Join-Path $srcDir "index.html"))) {
 
 icacls $targetDir /grant "*S-1-1-0:(OI)(CI)F" /T | Out-Null
 
+if ($Https) {
+    if ($HttpsCert -xor $HttpsKey) {
+        throw "-HttpsCert and -HttpsKey must be passed together."
+    }
+    $certDir = Get-PrawkoCertDir
+    New-Item -ItemType Directory -Force -Path $certDir | Out-Null
+    if (-not (Test-PrawkoCertDirAclOk $certDir)) { Unlock-PrawkoCertDir $certDir }
+    if ($HttpsCert) {
+        Copy-PrawkoByoHttpsCerts $certDir $HttpsCert $HttpsKey | Out-Null
+    } else {
+        Sync-PrawkoGeneratedHttpsCerts $certDir | Out-Null
+    }
+    $json = Read-LocalJsonObject $targetDir
+    if ($json.Object.httpsRedirect -ne $true) {
+        Set-LocalJsonProperty $targetDir 'httpsRedirect' $true
+        Write-Host "-> src/local.json httpsRedirect=true (set false on disk if HTTPS breaks; no restart)." -ForegroundColor Green
+    }
+    Ensure-PrawkoHttpsServerJs
+}
+
 Write-Host "Registering service $serviceName..." -ForegroundColor Yellow
+$appParameters = Get-PrawkoServerArgs
+if (-not $appParameters) {
+    $appParameters = "`"$serveEntry`" -s . -l $listenPort"
+}
 & $nssmExe install $serviceName $nodeExe
-& $nssmExe set $serviceName AppParameters "`"$serveEntry`" -s . -l $listenPort"
+& $nssmExe set $serviceName AppParameters $appParameters
 & $nssmExe set $serviceName AppDirectory $srcDir
 & $nssmExe set $serviceName AppEnvironmentExtra "PATH=$(Split-Path $nodeExe -Parent)"
 & $nssmExe set $serviceName Start SERVICE_AUTO_START
@@ -2692,7 +3185,12 @@ $svc = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
 if ($svc -and $svc.Status -eq "Running") {
     Write-Host "`n==================================================" -ForegroundColor Green
     Write-Host " SERVICE STARTED SUCCESSFULLY! " -ForegroundColor Green
-    Write-Host " Application: http://localhost:$listenPort " -ForegroundColor Yellow
+    if ($Https) {
+        Write-Host " Application: https://localhost:$httpsPort " -ForegroundColor Yellow
+        Write-Host " HTTP $listenPort redirects to HTTPS (local.json httpsRedirect; set false if HTTPS breaks)." -ForegroundColor Yellow
+    } else {
+        Write-Host " Application: http://localhost:$listenPort " -ForegroundColor Yellow
+    }
     Write-Host " Questions:   bank from AnabelMaz/prawko (src\data) " -ForegroundColor Yellow
         Write-Host " Media:     prawko-maz CDN (Backblaze) " -ForegroundColor Yellow
         Write-Host " Ministry sync:         Install_Prawko.windows.ps1 -SyncGov " -ForegroundColor DarkGray

@@ -2,7 +2,7 @@
 
 This file is a short map of the repo for agents. Humans use `README.md`. Question-translation prompt: `scripts/translate-questions.skill.md` (scripts fill `{lang}`). Runtime: `scripts/translate-questions.ps1` / `.py`.
 
-Day-to-day product is the local service at http://localhost:5173 (`C:\ProgramData\prawko` on Windows, `/usr/local/prawko` on macOS, `/opt/prawko` on Linux). GitHub Pages (`src/` after Playwright) is an extra preview, not the primary install.
+Day-to-day product is the local service at http://localhost:5173 (`C:\ProgramData\prawko` on Windows, `/usr/local/prawko` on macOS, `/opt/prawko` on Linux). Optional HTTPS is a separate port (5174); HTTP 5173 then 302-redirects every path unless `local.json` has `httpsRedirect: false`. GitHub Pages (`src/` after Playwright) is an extra preview, not the primary install.
 
 ## Project Structure
 - `src/` — PWA (vanilla JS). Served locally; also published to GitHub Pages on push to `main`
@@ -26,8 +26,10 @@ Day-to-day product is the local service at http://localhost:5173 (`C:\ProgramDat
 - Installer `-SyncGov` does **not** upload to B2 or R2
 - `MEDIA_BASE` in data.js: github.io defaults to B2+R2; a self-hosted server defaults to same-origin `media/` and reads `local.json` from the same origin. `mediaBase: 'cdn'` plus optional `packsBase` is the escape hatch to your own B2/R2
 - Learning: default filter unknown + random order; catalog number in the blue counter jumps within the current sequential list only when `local.json` has `learnQuestionJump`
+- HTTPS: installer `-Https` / `--https` (own CA, or `-HttpsCert`+`-HttpsKey`). CA CN/FriendlyName **Prawko Local CA**. Certs live next to the install (`certs/`, not under `src/`). `src/server.js` listens on 5173+5174. No HSTS. When HTTPS is up, HTTP always 302-redirects (missing or broken `local.json` included). Kill-switch: only an explicit `httpsRedirect: false` in valid `local.json` (read per request; no restart). Re-run fills only gaps (working CA+key, valid SAN/expiry server cert, ACL, service params) — no second Root.
+- App updates: github / localhost / HTTPS use the service worker `updatefound` banner. HTTP off-loopback has no SW; poll `CACHE_VERSION` on tab focus after ≥30s. First SW `clients.claim()` does not reload the page; `controllerchange` reloads only when a controller already existed.
 - Skins: Panel (WORD OSK layout) and Stacja; Panel question/ABC copy is fitted into fixed slots (`fit-text.js`)
-- PWA with service worker; “Download offline” unpacks R2 zips into Cache Storage only when media is remote (`mediaBase: cdn`). Same-origin `media/` on the machine running the server is already on disk (no download). Remote clients need “Download offline” from that host. Missing files are a config error, not a silent CDN fallback
+- PWA with service worker. Viewed photos/films are stored in Cache Storage on that browser (prev/next from `blob:`), whether they came from B2 or this host’s `/media/`. Skip the copy only on loopback **and** `mediaBase: media` (files already on this computer’s disk). github.io, another server with or without media, and localhost with `mediaBase: cdn` all cache on view. Missing `/media/` files are a config error, not a silent CDN fallback. “Download offline” fills a whole category (R2 zips when `mediaBase: cdn`, else files from this host)
 
 ## i18n Architecture
 - `src/js/i18n.js` — translations dict, `getLang()`, `setLang()`, `t(key)`, `translateQuestion()`. UI chrome: selected lang → English → Polish. Question text: selected lang → English → Polish. First visit: browser language, else English.
@@ -38,6 +40,7 @@ Day-to-day product is the local service at http://localhost:5173 (`C:\ProgramDat
 
 ## File Structure
 - `src/js/` — app.js (router), data.js, exam.js, learn.js, ui.js, timer.js, stats.js, i18n.js, profiles.js, offline.js, zip.js, scale.js, scale-boot.js, fit-text.js
+- `src/server.js` — local HTTP/HTTPS static server (NSSM / launchd / systemd). Fallback remains the `serve` package when this file is missing.
 - `src/data/` — meta.json, {category}.json, translations_{en,de,uk}.json
 - `src/media/` — empty in git; img/ (WebP) and vid/ (MP4) live only on the server after `-SyncGov`
 - `Install_Prawko.windows.ps1` / `Install_Prawko.macos.sh` / `Install_Prawko.linux.sh` — one downloaded file per OS. Default: ZIP of AnabelMaz/prawko + Node + service (no Git). `-Dev` / `--dev`: Git clone only (no Node, no server). macOS: launchd, `/usr/local/prawko`. Linux: systemd, `/opt/prawko`. `-SyncGov` / `--sync-gov` uses `download-gov.ps1` (Windows) or `download-gov.py` (macOS/Linux) for gov-cache (Excel + ZIPs next to the install), then convert-media (TEMP unpack) and parse-excel.
