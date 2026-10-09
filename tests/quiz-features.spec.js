@@ -150,8 +150,9 @@ test.describe('Learn media is only the current question', () => {
     await page.waitForFunction(() => document.querySelector('.learn-qnum-input')?.value === '867');
     await page.waitForSelector('#quiz .media-area video, #quiz .media-area img');
     const src = await page.locator('#quiz .media-area video, #quiz .media-area img').evaluate((el) => el.currentSrc || el.src);
-    expect(src).toContain('3596.mp4');
+    expect(src.startsWith('blob:') || src.includes('3596.mp4')).toBe(true);
     const names = [...new Set(media.map((url) => url.split('/').pop().split('?')[0]))];
+    expect(names).toContain('3596.mp4');
     expect(names).not.toContain('4C301.webp');
   });
 });
@@ -1275,6 +1276,7 @@ test.describe('Learn catalog jump', () => {
     await expect(page.locator('.question-card')).toHaveAttribute('data-question-id', '14063');
     await page.evaluate(() => {
       window.__aFirst = null;
+      window.__aTrace = [];
       const card = document.querySelector('.question-card');
       new MutationObserver(() => {
         if (card.dataset.questionId !== '11003' || window.__aFirst) return;
@@ -1284,6 +1286,12 @@ test.describe('Learn catalog jump', () => {
           aInline: a?.style.fontSize || '',
           overflow: a && a.scrollHeight > a.clientHeight + 1 ? 1 : 0,
         };
+        const take = (left) => {
+          const el = document.querySelector('.abc-answers .answer-text');
+          window.__aTrace.push(el ? getComputedStyle(el).fontSize : '');
+          if (left) requestAnimationFrame(() => take(left - 1));
+        };
+        take(12);
       }).observe(card, { attributes: true, attributeFilter: ['data-question-id'] });
     });
     await page.locator('.learn-qnum-input').fill(String(pos.b));
@@ -1294,6 +1302,9 @@ test.describe('Learn catalog jump', () => {
     expect(first.aInline).toMatch(/px$/);
     expect(first.aC, `computed ${first.aC} vs inline ${first.aInline}`).toBe(first.aInline);
     expect(first.overflow, 'answer overflowed at the previous ABC size').toBe(0);
+    await expect.poll(() => page.evaluate(() => (window.__aTrace || []).length)).toBeGreaterThanOrEqual(8);
+    const trace = await page.evaluate(() => window.__aTrace);
+    expect(new Set(trace).size, `answer font jumped: ${trace.join(' → ')}`).toBe(1);
   });
 
   test('panel ABC copy does not resize when the photo paints', async ({ page }) => {

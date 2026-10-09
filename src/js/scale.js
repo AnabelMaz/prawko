@@ -449,6 +449,12 @@ export function applyUiFitScale(opts = {}) {
   syncExamMediaAlign();
   scheduleFitQuizDockText();
   if (isCategoriesScreen()) layoutCategoryGrid();
+  if ((opts.chromePass || 0) < 1) {
+    const chromeNow = chromeTopHeight();
+    if (Math.abs(chromeNow - chromeH) >= 1) {
+      applyUiFitScale({ ...opts, chromePass: (opts.chromePass || 0) + 1 });
+    }
+  }
 }
 
 /** Home↔categories: keep hold until used stage scale matches the pin. */
@@ -505,8 +511,9 @@ export function refitUiScale() {
 function waitForHomeFonts() {
   if (!document.fonts?.ready) return Promise.resolve();
   const loadTitle = document.fonts.load('800 3.5rem "DM Sans"').catch(() => {});
+  const loadMark = document.fonts.load('400 12rem "Noto Sans Symbols"', '\u2713\u2717').catch(() => {});
   return Promise.race([
-    Promise.all([document.fonts.ready, loadTitle]),
+    Promise.all([document.fonts.ready, loadTitle, loadMark]),
     new Promise((resolve) => setTimeout(resolve, 800)),
   ]);
 }

@@ -3,9 +3,9 @@
 import { t, getLang, translateQuestion } from './i18n.js';
 import { getCategoryStats, getLearnProgress, loadHistory, getLearnTouchedCategories, getLearnCategoryBreakdown, getLearnUniqueFilterCounts } from './stats.js';
 import { getMediaUrls, fetchCategory, usesLocalMedia } from './data.js';
-import { getCategoryMediaAccess, getCategoriesOfflineCoverage, getDownloadedCategories, getActiveDownloadProgress, isAppOnline, offlineCoverageHue, resolvePlayableMediaUrl, captureViewedImage } from './offline.js';
+import { getCategoryMediaAccess, getCategoriesOfflineCoverage, getDownloadedCategories, getActiveDownloadProgress, isAppOnline, offlineCoverageHue, resolvePlayableMediaUrl, captureViewedMedia } from './offline.js';
 import { refitUiScale, layoutCategoryGrid, syncExamMediaAlign, alignAndFitExamDock, fitAfterShowScreen } from './scale.js';
-import { prepareDockFit } from './fit-text.js';
+import { prepareAnswerFit, prepareDockFit } from './fit-text.js';
 
 export function showScreen(id) {
   const prev = document.querySelector('.screen.active')?.id;
@@ -360,6 +360,7 @@ export function renderCategories(meta, downloadedSet = new Set()) {
   });
 }
 
+
 function lockVideoChrome(video) {
   video.controls = false;
   video.playsInline = true;
@@ -408,17 +409,19 @@ export function renderQuestion(question, container, options = {}) {
     answersDiv.classList.toggle('yn-answers', !abc);
   }
   if (dock) dock.dataset.qtype = abc ? 'abc' : 'yn';
-  fillAnswerChoices(answersDiv, q);
-  void quiz?.offsetHeight;
-  void document.querySelector('#quiz .media-slot')?.offsetHeight;
-  syncExamMediaAlign();
   if (dock) {
     void dock.offsetHeight;
-    prepareDockFit(dock, q);
-  } else {
+    prepareAnswerFit(dock, q);
+  }
+  fillAnswerChoices(answersDiv, q);
+  if (dock) prepareDockFit(dock, q);
+  else {
     const fallback = container.querySelector('.question-text');
     if (fallback) fallback.textContent = q.q;
   }
+  void quiz?.offsetHeight;
+  void document.querySelector('#quiz .media-slot')?.offsetHeight;
+  syncExamMediaAlign();
 
   if (q.media) {
     mediaArea.classList.add('has-media', 'loading');
@@ -447,7 +450,18 @@ export function renderQuestion(question, container, options = {}) {
         }
       }
       if (!isAppOnline()) return null;
-      return getNextMediaUrl();
+      const url = getNextMediaUrl();
+      if (!url) return null;
+      const captured = await captureViewedMedia(url);
+      if (!stillCurrent()) {
+        if (captured) URL.revokeObjectURL(captured);
+        return null;
+      }
+      if (captured) {
+        playableBlobUrl = captured;
+        return captured;
+      }
+      return url;
     };
     const stillCurrent = () => mediaGen === mediaLoadGen;
 
@@ -518,7 +532,11 @@ export function renderQuestion(question, container, options = {}) {
           const video = document.createElement('video');
           lockVideoChrome(video);
           video.preload = 'auto';
-          video.onerror = () => loadVideo();
+          video.addEventListener('error', () => {
+            if (!stillCurrent()) return;
+            if (video.error && video.error.code === 1) return;
+            loadVideo();
+          });
           if (examMedia) {
             video.autoplay = false;
             video.muted = false;
@@ -553,9 +571,9 @@ export function renderQuestion(question, container, options = {}) {
               mediaArea.classList.remove('loading');
               pinStartFrame();
             };
-            video.src = mediaUrl;
             if (hideFilm) mediaArea.classList.remove('loading');
             mediaArea.appendChild(video);
+            video.src = mediaUrl;
             syncExamMediaAlign();
           } else {
             video.muted = true;
@@ -604,8 +622,8 @@ export function renderQuestion(question, container, options = {}) {
             });
 
             mediaArea.classList.add('has-learn-video');
-            video.src = mediaUrl;
             mediaArea.append(video, replay);
+            video.src = mediaUrl;
             onLearnMediaSettled(learnMediaMark);
             syncExamMediaAlign();
           }
@@ -630,16 +648,10 @@ export function renderQuestion(question, container, options = {}) {
           mediaArea.innerHTML = '';
 
           const img = document.createElement('img');
-          const networkUrl = mediaUrl.startsWith('blob:') ? '' : mediaUrl;
           const onImageReady = () => {
             if (!stillCurrent()) return;
             mediaArea.classList.remove('loading');
             onLearnMediaSettled(learnMediaMark);
-            if (networkUrl) {
-              void captureViewedImage(networkUrl).then((blobUrl) => {
-                if (blobUrl) URL.revokeObjectURL(blobUrl);
-              });
-            }
           };
           img.onload = onImageReady;
           img.onerror = () => {
@@ -701,7 +713,6 @@ function fillAnswerChoices(answersDiv, q) {
   answersDiv.classList.remove('yn-answers');
   answersDiv.classList.add('abc-answers');
   const dock = answersDiv.closest('.quiz-dock');
-  void dock?.offsetHeight;
   const aSize = dock?.style.getPropertyValue('--dock-a-size') || '';
   ['A', 'B', 'C'].forEach(val => {
     const btn = document.createElement('button');

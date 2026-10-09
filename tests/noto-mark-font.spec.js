@@ -67,3 +67,22 @@ test('learn-mark font file contains U+2713 and U+2717 so Windows does not fall b
   const found = cmapHas(buf, [0x2713, 0x2717]);
   expect(found).toEqual({ 0x2713: true, 0x2717: true });
 });
+
+test('learn-mark font is preloaded and does not swap after first paint', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.html'), 'utf8');
+  const css = fs.readFileSync(path.join(__dirname, '..', 'src', 'css', 'style.css'), 'utf8');
+  const scale = fs.readFileSync(path.join(__dirname, '..', 'src', 'js', 'scale.js'), 'utf8');
+  expect(html).toMatch(/rel="preload"[^>]*NotoSansSymbols-Regular\.ttf/);
+  expect(css).toMatch(/Noto Sans Symbols[\s\S]*?font-display:\s*optional/);
+  expect(css).not.toMatch(/Noto Sans Symbols[\s\S]*?font-display:\s*swap/);
+  expect(scale).toMatch(/Noto Sans Symbols/);
+  expect(scale).toMatch(/\\u2713\\u2717/);
+});
+
+test('Noto mark face is ready after home reveal', async ({ page }) => {
+  await page.goto('/');
+  await page.waitForSelector('#home.active');
+  await expect.poll(() => page.evaluate(() => (
+    document.fonts.check('400 12rem "Noto Sans Symbols"', '\u2713')
+  ))).toBe(true);
+});

@@ -63,7 +63,7 @@ function padding(el) {
 }
 
 /** Landscape dock row from the design canvas (800×35% Panel, 28% Station).
- *  Live clientHeight follows media paint on a slow VM; design height does not. */
+ *  Live clientHeight follows media paint; design height does not. */
 function dockRowHeight(dock) {
   const root = document.documentElement;
   if (root.getAttribute('data-ui-orient') === 'portrait') {
@@ -118,39 +118,33 @@ function applyDockFont(dock, slot, px) {
   const els = slot === 'a'
     ? [...dock.querySelectorAll('.answer-text')]
     : [dock.querySelector('.question-text')].filter(Boolean);
-  for (const el of els) el.style.fontSize = css;
-}
-
-function labelReserve(btn) {
-  const label = btn.querySelector('.answer-label');
-  if (!label) return 0;
-  const cs = getComputedStyle(label);
-  const specified = parseFloat(cs.minWidth) || parseFloat(cs.width) || 0;
-  return Math.max(label.offsetWidth, specified);
-}
-
-function answerBox(el) {
-  const fonts = fontMetrics(el);
-  const btn = el.closest('.answer-btn');
-  const dock = el.closest('.quiz-dock');
-  if (!btn || !dock) {
-    const pad = padding(el);
-    return {
-      ...fonts,
-      width: Math.max(0, el.clientWidth - pad.x),
-      height: Math.max(0, el.clientHeight - pad.y),
-    };
+  for (const el of els) {
+    if (el.style.fontSize !== css) el.style.fontSize = css;
   }
-  const answers = dock.querySelector('.abc-answers');
-  const n = Math.max(1, answers?.querySelectorAll('.answer-btn').length || 3);
-  const gap = parseFloat(getComputedStyle(answers).rowGap || getComputedStyle(answers).gap) || 0;
-  const pad = padding(btn);
-  const btnGap = parseFloat(getComputedStyle(btn).gap) || 0;
-  return {
-    ...fonts,
-    width: Math.max(0, dock.clientWidth - labelReserve(btn) - btnGap - pad.x),
-    height: Math.max(0, (dockRowHeight(dock) * ABC_A_FRAC - gap * (n - 1)) / n - pad.y),
-  };
+}
+
+function sharedAbcPx(dock, answers, sampleEl) {
+  const sample = sampleEl || dock.querySelector('.question-text');
+  if (!sample) return null;
+  const box = abcAnswerBox(dock, sample);
+  let shared = null;
+  for (const raw of answers) {
+    const px = largestFit(raw, box);
+    if (px == null) return null;
+    if (shared == null || px < shared) shared = px;
+  }
+  return shared;
+}
+
+/** Set --dock-a-size for this question before the answer buttons exist. */
+export function prepareAnswerFit(dock, q) {
+  if (!dock || !q) return;
+  if (!isPanelFit() || q.type === 'basic') {
+    dock.style.removeProperty('--dock-a-size');
+    return;
+  }
+  const shared = sharedAbcPx(dock, [q.a, q.b, q.c]);
+  if (shared != null) dock.style.setProperty('--dock-a-size', `${shared}px`);
 }
 
 function setMeasureFont(ctx, box, px) {
@@ -259,12 +253,8 @@ function fitQuestion(dock) {
 function fitAnswers(dock) {
   const texts = [...dock.querySelectorAll('.abc-answers .answer-text')];
   if (!texts.length) return true;
-  let shared = null;
-  for (const el of texts) {
-    const px = largestFit(el.textContent, answerBox(el));
-    if (px == null) return false;
-    if (shared == null || px < shared) shared = px;
-  }
+  const shared = sharedAbcPx(dock, texts.map((el) => el.textContent), texts[0]);
+  if (shared == null) return false;
   applyDockFont(dock, 'a', shared);
   return true;
 }
@@ -295,20 +285,15 @@ export function prepareDockFit(dock, q) {
   if (px != null) p.style.fontSize = `${px}px`;
   old.replaceWith(p);
   if (asAbc) {
-    const box = abcAnswerBox(dock, p);
-    let shared = null;
-    for (const raw of [q.a, q.b, q.c]) {
-      const answerPx = largestFit(raw, box);
-      if (answerPx == null) {
-        shared = null;
-        break;
-      }
-      if (shared == null || answerPx < shared) shared = answerPx;
-    }
-    if (shared != null) applyDockFont(dock, 'a', shared);
+    const shared = sharedAbcPx(dock, [q.a, q.b, q.c], p);
+    if (shared == null || px == null) return;
+    applyDockFont(dock, 'a', shared);
+  } else if (px == null) {
+    return;
   } else {
     dock.style.removeProperty('--dock-a-size');
   }
+  lastFitKey = currentFitKey(dock);
 }
 
 function dockReady(dock) {

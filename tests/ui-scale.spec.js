@@ -729,6 +729,50 @@ test('hidden update banner does not reserve chrome space', async ({ page }) => {
   expect(chromeTop).toBeLessThan(2);
 });
 
+test('update and offline banners keep canvas proportions across viewports', async ({ page }) => {
+  await page.goto('/');
+  await waitForHomeScale(page);
+  await page.evaluate(() => {
+    const update = document.getElementById('update-banner');
+    const offline = document.getElementById('offline-banner');
+    if (update) update.hidden = false;
+    if (offline) offline.hidden = false;
+    window.dispatchEvent(new Event('resize'));
+  });
+  const sample = async (viewport) => {
+    await page.setViewportSize(viewport);
+    await page.waitForFunction((w) => window.innerWidth === w, viewport.width);
+    await waitForHomeScale(page);
+    await page.waitForFunction((w) => {
+      const scale = Number(getComputedStyle(document.documentElement).getPropertyValue('--ui-scale')) || 0;
+      const chrome = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ui-chrome-top')) || 0;
+      if (chrome <= 4 || scale < 0.05) return false;
+      if (w >= 1200) return scale > 0.55;
+      return scale > 0.05 && scale < 0.55;
+    }, viewport.width);
+    return page.evaluate(() => {
+      const update = document.getElementById('update-banner');
+      const offline = document.getElementById('offline-banner');
+      const btn = document.getElementById('update-banner-btn');
+      const scale = Number(getComputedStyle(document.documentElement).getPropertyValue('--ui-scale')) || 1;
+      return {
+        scale,
+        updateFont: parseFloat(getComputedStyle(update).fontSize),
+        updatePad: parseFloat(getComputedStyle(update).paddingTop),
+        btnFont: parseFloat(getComputedStyle(btn).fontSize),
+        offlineFont: parseFloat(getComputedStyle(offline).fontSize),
+      };
+    });
+  };
+  const small = await sample({ width: 640, height: 450 });
+  const large = await sample({ width: 1280, height: 900 });
+  expect(small.scale).toBeLessThan(large.scale - 0.05);
+  expect(Math.abs(small.updateFont / small.scale - large.updateFont / large.scale)).toBeLessThan(1.2);
+  expect(Math.abs(small.updatePad / small.scale - large.updatePad / large.scale)).toBeLessThan(1.2);
+  expect(Math.abs(small.btnFont / small.scale - large.btnFont / large.scale)).toBeLessThan(1.2);
+  expect(Math.abs(small.offlineFont / small.scale - large.offlineFont / large.scale)).toBeLessThan(1.2);
+});
+
 test('offline banner is reserved above the scaled canvas', async ({ page }) => {
   await page.setViewportSize({ width: 640, height: 450 });
   await page.goto('/');
