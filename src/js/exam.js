@@ -758,6 +758,16 @@ function beginAnswerPhase() {
     const current = currentItem();
     if (!current || current.locked) return;
     current.timedOut = !current.given;
+    if (isOnLastQuestion() && !isPracticeItem()) {
+      current.locked = true;
+      current.isCorrect = current.given === current.question.correct;
+      stopWatchClock();
+      stopQuestionClock();
+      setAnswerButtonsEnabled(false);
+      updateExamNextButton();
+      finishExam();
+      return;
+    }
     confirmAndAdvance();
   });
   updateExamNextButton();
@@ -778,6 +788,8 @@ function confirmAndAdvance() {
   if (!state || state.finished || !state.started || isNextGuarded()) return;
   const item = currentItem();
   if (!item || item.locked) return;
+  // Last scored question has no Next: keep the answer clock running until it expires.
+  if (isOnLastQuestion() && !isPracticeItem()) return;
   const next = state.questions[state.currentIndex + 1];
   if (item.practice && (!next || !next.practice)) {
     showPracticeHandoff();

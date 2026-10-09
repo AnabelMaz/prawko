@@ -130,6 +130,27 @@ test.describe('App flows', () => {
     await page.locator('.abc-answers .answer-btn').first().click();
     await expect(page.locator('.abc-answers .answer-btn').first()).toHaveClass(/selected/);
   });
+  test('last exam question ends the exam when the answer clock runs out', async ({ page }) => {
+    await page.clock.install();
+    await startExamMode(page);
+    await page.click('.btn-confirm-end');
+    await page.waitForSelector('#quiz.active');
+    await page.waitForSelector('.answers .answer-btn');
+    for (let i = 0; i < 31; i += 1) {
+      const progress = await page.locator('.question-progress').textContent();
+      await page.locator('.answers .answer-btn').first().click();
+      await page.clock.fastForward(1100);
+      await page.locator('.btn-exam-next.visible').click();
+      await expect(page.locator('.question-progress')).not.toHaveText(progress);
+    }
+    await page.locator('.answers .answer-btn').first().click();
+    await expect(page.locator('.btn-exam-next.visible')).toBeDisabled();
+    await expect(page.locator('#quiz.active')).toBeVisible();
+    await page.clock.fastForward(51000);
+    await expect(page.locator('#results.active')).toBeVisible();
+    await expect(page.locator('.review-item')).toHaveCount(32);
+  });
+
   test('stale quiz route redirects to categories', async ({ page }) => {
     await page.goto('/#quiz');
     await page.waitForSelector('#categories.active');
@@ -204,7 +225,7 @@ test.describe('App flows', () => {
     await expect(page.locator('.question-text')).not.toBeEmpty();
   });
 
-  test('CACHE_VERSION poll on tab return is only when serviceWorker is missing', async ({ page }) => {
+  test('CACHE_VERSION check on HTTP without SW is an in-app load click after 30s, not tab focus', async ({ page }) => {
     await page.addInitScript(() => {
       Object.defineProperty(navigator, 'serviceWorker', {
         configurable: true,
@@ -230,18 +251,18 @@ test.describe('App flows', () => {
     await page.evaluate(() => {
       Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
       window.dispatchEvent(new Event('focus'));
-      window.dispatchEvent(new Event('focus'));
+      document.dispatchEvent(new Event('visibilitychange'));
     });
     await page.waitForTimeout(200);
     expect(hits).toBe(afterLoad);
-    const before = hits;
+    await page.locator('#home [data-navigate="categories"]').click();
+    await page.waitForSelector('#categories.active');
+    expect(hits).toBe(afterLoad);
     version = 'prawko-test-2';
     await page.clock.install();
     await page.clock.fastForward(30_001);
-    await page.evaluate(() => {
-      window.dispatchEvent(new Event('focus'));
-    });
-    await expect.poll(() => hits).toBeGreaterThan(before);
+    await page.locator('#categories [data-navigate="home"]').click();
+    await expect.poll(() => hits).toBeGreaterThan(afterLoad);
     await expect(page.locator('#update-banner')).toBeVisible();
   });
 
@@ -300,6 +321,7 @@ test.describe('App flows', () => {
         installing: null,
         active: { scriptURL: `${location.origin}/sw.js` },
         addEventListener() {},
+        async update() {},
       });
     });
     await page.goto('/');

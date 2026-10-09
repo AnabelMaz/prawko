@@ -617,8 +617,19 @@ async function setupAppUpdateChecks(registration) {
   ignoreUpdatesUntil = Math.max(ignoreUpdatesUntil, readIgnoreUpdatesUntil());
   if (registration) {
     if (registration.waiting) showUpdateBanner({ force: true });
+    const pokeWorker = () => {
+      if (document.hidden) return;
+      if (registration.waiting) {
+        showUpdateBanner({ force: true });
+        return;
+      }
+      if (typeof registration.update === 'function') registration.update().catch(() => {});
+    };
+    pokeWorker();
+    setInterval(pokeWorker, UPDATE_CHECK_INTERVAL_MS);
     return;
   }
+
   let lastVersionCheckAt = 0;
   const checkVersion = async () => {
     try {
@@ -631,21 +642,27 @@ async function setupAppUpdateChecks(registration) {
       if (ver !== knownSwVersion) showUpdateBanner({ force: true });
     } catch { /* no sw.js / offline */ }
   };
-  const tick = ({ force = false } = {}) => {
-    if (document.hidden) return false;
+  const tick = () => {
     const banner = document.getElementById('update-banner');
-    if (banner && !banner.hidden) return false;
+    if (banner && !banner.hidden) return;
     const now = Date.now();
-    if (!force && now - lastVersionCheckAt < UPDATE_CHECK_INTERVAL_MS) return false;
+    if (now - lastVersionCheckAt < UPDATE_CHECK_INTERVAL_MS) return;
     lastVersionCheckAt = now;
-    if (!navigator.onLine) return false;
+    if (!navigator.onLine) return;
     return checkVersion();
   };
-  await tick({ force: true });
-  document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) void tick();
-  });
-  window.addEventListener('focus', () => { void tick(); });
+  try {
+    knownSwVersion = (await readSwCacheVersion()) || knownSwVersion;
+    lastVersionCheckAt = Date.now();
+  } catch { /* no sw.js / offline */ }
+
+  document.addEventListener('click', (event) => {
+    const el = event.target.closest?.(
+      '.btn-next, .btn-prev, .btn-exam-next, .quiz-back, .btn-back, [data-navigate], .category-card, .mode-btn, .btn-retry, .btn-confirm-end, .exam-film-start'
+    );
+    if (!el || el.disabled || el.getAttribute('aria-disabled') === 'true') return;
+    void tick();
+  }, true);
 }
 
 function reloadForUpdate() {
