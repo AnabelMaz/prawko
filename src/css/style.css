@@ -2238,6 +2238,10 @@ footer a {
   box-shadow: none;
 }
 
+#quiz.learn-active .answer-btn:disabled {
+  cursor: var(--cursor-rest);
+}
+
 :root[data-theme="dark"] .answer-btn:disabled:not(.correct):not(.incorrect) {
   background: #27272a;
   color: #71717a;
@@ -3825,7 +3829,11 @@ html[data-ui-mode="fit"] #quiz.active:is(.exam-active, .learn-active) .yn-answer
   opacity: 1;
   background: var(--word-blue);
   color: #fff;
-  cursor: var(--cursor-click);
+}
+
+html[data-ui-mode="fit"] #quiz.active:is(.exam-active, .learn-active) .yn-answers .answer-btn:disabled,
+html[data-ui-mode="fit"] #quiz.active:is(.exam-active, .learn-active) .abc-answers .answer-btn:disabled {
+  cursor: var(--cursor-rest);
 }
 
 html[data-ui-mode="fit"] #quiz.active:is(.exam-active, .learn-active) .yn-answers .answer-btn:nth-child(1),

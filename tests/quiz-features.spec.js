@@ -616,6 +616,23 @@ test.describe('Learn queue filter', () => {
     expect(parseFloat(pwpw)).toBe(0);
   });
 
+  test('learn uses the arrow cursor on answers after they are locked', async ({ page }) => {
+    await startLearnMode(page);
+    const firstBtn = page.locator('.answer-btn').first();
+    await expect(firstBtn).toBeEnabled();
+    const before = await firstBtn.evaluate((el) => getComputedStyle(el).cursor);
+    expect(before).toMatch(/cursor-pointer/);
+    await firstBtn.click();
+    await expect(firstBtn).toBeDisabled();
+    const after = await firstBtn.evaluate((el) => getComputedStyle(el).cursor);
+    expect(after).toMatch(/cursor-(black|white)\.png/);
+    expect(after).not.toMatch(/cursor-pointer/);
+    const other = page.locator('.answer-btn').nth(1);
+    await expect(other).toBeDisabled();
+    const otherCursor = await other.evaluate((el) => getComputedStyle(el).cursor);
+    expect(otherCursor).not.toMatch(/cursor-pointer/);
+  });
+
   test('learn locks the first answer in a session when going back', async ({ page }) => {
     await page.addInitScript(() => {
       localStorage.setItem('prawko_p_p1_learn_queue_mode', JSON.stringify({
