@@ -1,5 +1,6 @@
 const { test, expect } = require('@playwright/test');
 const { goToCategories, cycleLanguage, cycleSkin, learnCatalogLabel, waitForUiHold } = require('./helpers');
+const TINY_MP4 = require('./tiny-mp4');
 
 // Helper: navigate to categories and start learn mode for category B
 async function startLearnMode(page, { localJson, category = 'B' } = {}) {
@@ -27,6 +28,29 @@ async function setLearnQueue(page, kind, value) {
   const root = page.locator(`.learn-${kind}-select`);
   await root.locator('.learn-queue-select').click();
   await root.locator(`[role="option"][data-value="${value}"]`).click();
+}
+
+/** Player waits for captureViewedMedia; a hanging mp4 route never creates <video>. */
+async function stubLearnVideoFiles(page) {
+  const body = TINY_MP4;
+  await page.route(/\.(mp4|webm)(\?|$)/i, async (route) => {
+    if (route.request().method() === 'OPTIONS') {
+      await route.fulfill({
+        status: 204,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET',
+        },
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'video/mp4',
+      headers: { 'Access-Control-Allow-Origin': '*' },
+      body,
+    });
+  });
 }
 
 // Helper: navigate to categories and start exam mode for category PT (smallest)
@@ -159,7 +183,7 @@ test.describe('Learn media is only the current question', () => {
 
 test.describe('Learn video result mark', () => {
   test('mark stays on after answer while the clip plays; only replay hides it', async ({ page }) => {
-    await page.route(/\.(mp4|webm)(\?|$)/i, async () => {});
+    await stubLearnVideoFiles(page);
     await startLearnMode(page, {
       localJson: { mediaBase: 'cdn', learnQuestionJump: true },
     });
@@ -175,6 +199,18 @@ test.describe('Learn video result mark', () => {
     await page.locator('.learn-qnum-input').press('Enter');
     const mediaArea = page.locator('#quiz .media-area');
     await expect(mediaArea.locator('video')).toHaveCount(1);
+    await mediaArea.locator('video').evaluate((video) => {
+      video.autoplay = false;
+      video.pause();
+      video.play = () => Promise.resolve();
+      Object.defineProperty(video, 'ended', { configurable: true, get: () => false });
+      Object.defineProperty(video, 'seeking', { configurable: true, get: () => false });
+      for (const type of ['play', 'pause', 'ended', 'seeking', 'seeked']) {
+        video.addEventListener(type, (event) => {
+          if (event.isTrusted) event.stopImmediatePropagation();
+        }, true);
+      }
+    });
     await page.locator('.answers .answer-btn').first().click();
     const mark = page.locator('#quiz .learn-media-mark');
     await expect(mark).toBeVisible();
@@ -202,6 +238,7 @@ test.describe('Learn video result mark', () => {
     await mediaArea.locator('video').evaluate((video) => {
       Object.defineProperty(video, 'currentTime', { configurable: true, get: () => 1, set: () => {} });
       video.pause();
+      video.dispatchEvent(new Event('pause'));
     });
     await expect(mark).toBeVisible();
     await mediaArea.locator('video').evaluate((video) => {
@@ -217,7 +254,7 @@ test.describe('Learn video result mark', () => {
   });
 
   test('answer mark returns after next/prev on image and video questions', async ({ page }) => {
-    await page.route(/\.(mp4|webm)(\?|$)/i, async () => {});
+    await stubLearnVideoFiles(page);
     await startLearnMode(page, {
       localJson: { mediaBase: 'cdn', learnQuestionJump: true },
     });
