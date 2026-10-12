@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { goToCategories, cycleSkin, waitForExamMediaAlign, waitForUiSwap } = require('./helpers');
+const { goToCategories, cycleSkin, clickControl, waitForExamMediaAlign, waitForUiSwap } = require('./helpers');
 
 async function waitForHomeScale(page) {
   await page.waitForSelector('#home.active');
@@ -374,6 +374,144 @@ test('category search does not grow remaining tiles', async ({ page }) => {
   expect(ptShort, 'PT card missing after clearing search').toBeTruthy();
   expect(Math.abs(filteredScreenW - ptShort.w)).toBeLessThan(2);
   expect(Math.abs(filteredScreenW - pt.w)).toBeGreaterThan(8);
+});
+
+test('category tiles stay as large after history as on the first visit', async ({ page }) => {
+  await page.setViewportSize({ width: 826, height: 519 });
+  await page.goto('/');
+  await goToCategories(page);
+  await page.click('.mode-btn[data-mode="exam"]');
+  const before = await categoryGridMetrics(page);
+  await page.click('.btn-history-link');
+  await page.waitForSelector('#history.active');
+  await page.click('#history .btn-back');
+  await page.waitForSelector('#categories.active');
+  await waitForUiSwap(page);
+  const afterHistory = await categoryGridMetrics(page);
+  expect(afterHistory.cardW).toBeGreaterThanOrEqual(before.cardW - 1);
+  expect(afterHistory.cardH).toBeGreaterThanOrEqual(before.cardH - 1);
+  await page.click('.mode-btn[data-mode="learn"]');
+  await page.click('.btn-history-link');
+  await page.waitForSelector('#learn-progress.active');
+  await page.click('#learn-progress .btn-back');
+  await page.waitForSelector('#categories.active');
+  await waitForUiSwap(page);
+  const afterLearn = await categoryGridMetrics(page);
+  expect(afterLearn.cardW).toBeGreaterThanOrEqual(before.cardW - 1);
+  expect(afterLearn.cardH).toBeGreaterThanOrEqual(before.cardH - 1);
+
+  const slack = await page.evaluate(() => {
+    const grid = document.querySelector('.category-grid');
+    const card = grid.querySelector('.category-card');
+    const cs = getComputedStyle(grid);
+    const padX = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
+    const padY = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+    const gap = parseFloat(cs.columnGap || cs.gap) || 10;
+    const cols = Number(cs.getPropertyValue('--cat-cols')) || 4;
+    const rows = Number(cs.getPropertyValue('--cat-rows')) || 3;
+    const contentW = grid.clientWidth - padX;
+    const contentH = grid.clientHeight - padY;
+    return {
+      slackW: contentW - (cols * card.offsetWidth + gap * (cols - 1)),
+      slackH: contentH - (rows * card.offsetHeight + gap * (rows - 1)),
+    };
+  });
+  expect(slack.slackW < 28 || slack.slackH < 28).toBe(true);
+});
+
+test('category tiles grow again after the grid widens', async ({ page }) => {
+  await page.setViewportSize({ width: 826, height: 519 });
+  await page.goto('/');
+  await goToCategories(page);
+  const full = await categoryGridMetrics(page);
+  await page.evaluate(() => {
+    document.querySelector('.category-grid').style.maxWidth = '484px';
+  });
+  await page.waitForFunction(() => {
+    const grid = document.querySelector('.category-grid');
+    return parseFloat(grid.style.getPropertyValue('--cat-card-w')) < 160;
+  });
+  await page.evaluate(() => {
+    document.querySelector('.category-grid').style.removeProperty('max-width');
+  });
+  await page.waitForFunction((cardW) => {
+    const grid = document.querySelector('.category-grid');
+    return parseFloat(grid.style.getPropertyValue('--cat-card-w')) >= cardW - 1;
+  }, full.cardW);
+});
+
+test('empty history does not flash a scrollbar', async ({ page }) => {
+  await page.setViewportSize({ width: 826, height: 519 });
+  await page.goto('/');
+  await goToCategories(page);
+  await page.evaluate(() => {
+    window.__barFlash = 0;
+    window.__barSeen = 0;
+    const frame = document.querySelector('.ui-frame');
+    const tick = () => {
+      const history = document.getElementById('history')?.classList.contains('active');
+      const learn = document.getElementById('learn-progress')?.classList.contains('active');
+      const held = document.documentElement.hasAttribute('data-ui-hold');
+      if ((history || learn) && !held) {
+        window.__barSeen += 1;
+        if (frame && frame.scrollHeight > frame.clientHeight + 1) window.__barFlash += 1;
+      }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+  await page.click('.mode-btn[data-mode="exam"]');
+  await page.click('.btn-history-link');
+  await page.waitForSelector('#history.active');
+  await waitForUiSwap(page);
+  await page.waitForFunction(() => window.__barSeen >= 8);
+  expect(await page.evaluate(() => window.__barFlash)).toBe(0);
+
+  await page.click('#history .btn-back');
+  await page.waitForSelector('#categories.active');
+  await waitForUiSwap(page);
+  await page.evaluate(() => { window.__barFlash = 0; window.__barSeen = 0; });
+  await page.click('.mode-btn[data-mode="learn"]');
+  await page.click('.btn-history-link');
+  await page.waitForSelector('#learn-progress.active');
+  await waitForUiSwap(page);
+  await page.waitForFunction(() => window.__barSeen >= 8);
+  expect(await page.evaluate(() => window.__barFlash)).toBe(0);
+});
+
+test('returning from history shows the large tiles on the first visible frame', async ({ page }) => {
+  await page.setViewportSize({ width: 826, height: 519 });
+  await page.goto('/');
+  await goToCategories(page);
+  const openList = async (mode) => {
+    await page.click(`.mode-btn[data-mode="${mode}"]`);
+    await page.click('.btn-history-link');
+    await page.waitForSelector(mode === 'exam' ? '#history.active' : '#learn-progress.active');
+    await waitForUiSwap(page);
+  };
+  const backAndSample = async () => {
+    await page.evaluate(() => {
+      window.__tileWidths = [];
+      const tick = () => {
+        const held = document.documentElement.hasAttribute('data-ui-hold');
+        const card = document.querySelector('#categories.active .category-grid .category-card');
+        if (!held && card) window.__tileWidths.push(Math.round(card.getBoundingClientRect().width));
+        if (window.__tileWidths.length < 6) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+    await page.locator('.screen.active .btn-back').click();
+    await page.waitForSelector('#categories.active');
+    await waitForUiSwap(page);
+    await page.waitForFunction(() => window.__tileWidths.length >= 6);
+    const widths = await page.evaluate(() => window.__tileWidths);
+    const full = Math.max(...widths);
+    for (const w of widths) expect(w).toBeGreaterThan(full - 4);
+  };
+  await openList('exam');
+  await backAndSample();
+  await openList('learn');
+  await backAndSample();
 });
 
 test('category tiles stay the same after returning from learn', async ({ page }) => {
@@ -946,7 +1084,7 @@ test('wide home hero spans the full window width', async ({ page }) => {
 test('station-skin learn quiz keeps question text below the media on a short window', async ({ page }) => {
   await page.setViewportSize({ width: 1100, height: 520 });
   await page.goto('/');
-  await page.click('.skin-btn');
+  await clickControl(page, '.skin-btn');
   await page.waitForFunction(() => document.documentElement.getAttribute('data-exam-skin') === 'station');
   await goToCategories(page);
   await page.click('.mode-btn[data-mode="learn"]');
@@ -979,7 +1117,7 @@ test('TAK/NIE sit on panel thirds in Panel and on the film in Station', async ({
   await page.goto('/');
   await page.waitForSelector('#home.active');
   if ((await page.locator('html').getAttribute('data-exam-skin')) !== 'panel') {
-    await page.click('.skin-btn');
+    await clickControl(page, '.skin-btn');
   }
   await goToCategories(page);
   await page.click('.mode-btn[data-mode="exam"]');
@@ -1043,7 +1181,7 @@ test('Panel learn filters match header labels and open above the film', async ({
   await page.goto('/');
   await page.waitForSelector('#home.active');
   if ((await page.locator('html').getAttribute('data-exam-skin')) !== 'panel') {
-    await page.click('.skin-btn');
+    await clickControl(page, '.skin-btn');
   }
   await goToCategories(page);
   await page.click('.mode-btn[data-mode="learn"]');
@@ -1125,7 +1263,7 @@ test('portrait Station learn media is 16:9 without extra letterbox; Panel questi
   await page.goto('/');
   await page.waitForSelector('#home.active');
   if ((await page.locator('html').getAttribute('data-exam-skin')) !== 'station') {
-    await page.click('.skin-btn');
+    await clickControl(page, '.skin-btn');
     await page.waitForFunction(() => document.documentElement.getAttribute('data-exam-skin') === 'station');
   }
   await goToCategories(page);
@@ -1440,7 +1578,7 @@ test('portrait Panel exam header fits above the film; question matches learn siz
   await page.goto('/');
   await page.waitForSelector('#home.active');
   if ((await page.locator('html').getAttribute('data-exam-skin')) !== 'panel') {
-    await page.click('.skin-btn');
+    await clickControl(page, '.skin-btn');
     await page.waitForFunction(() => document.documentElement.getAttribute('data-exam-skin') === 'panel');
   }
   await goToCategories(page);
@@ -1495,7 +1633,7 @@ test('Panel exam keeps time-bar space while the clip plays so chrome does not ju
   await page.goto('/');
   await page.waitForSelector('#home.active');
   if ((await page.locator('html').getAttribute('data-exam-skin')) !== 'panel') {
-    await page.click('.skin-btn');
+    await clickControl(page, '.skin-btn');
     await page.waitForFunction(() => document.documentElement.getAttribute('data-exam-skin') === 'panel');
   }
   await goToCategories(page);

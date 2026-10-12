@@ -115,6 +115,47 @@ function profileStorageKeyFor(profileId, legacyKey) {
   return `prawko_p_${profileId}_${short}`;
 }
 
+const APPEARANCE_KEYS = ['prawko_theme', 'prawko_lang', 'prawko_exam_skin'];
+
+function appearanceSnapshot(profileId) {
+  const data = {};
+  APPEARANCE_KEYS.forEach((key) => {
+    const raw = localStorage.getItem(profileStorageKeyFor(profileId, key));
+    if (typeof raw !== 'string') return;
+    data[key.replace(/^prawko_/, '')] = raw;
+  });
+  return data;
+}
+
+function fillMissingAppearance(profileId, data) {
+  Object.entries(data || {}).forEach(([short, value]) => {
+    if (!APPEARANCE_KEYS.includes(`prawko_${short}`)) return;
+    const storageKey = profileStorageKeyFor(profileId, `prawko_${short}`);
+    if (localStorage.getItem(storageKey) != null) return;
+    try { localStorage.setItem(storageKey, value); } catch {}
+  });
+}
+
+function migrateAppearance(registry) {
+  const globals = {};
+  APPEARANCE_KEYS.forEach((key) => {
+    const raw = localStorage.getItem(key);
+    if (typeof raw === 'string') globals[key] = raw;
+  });
+  registry.profiles.forEach((profile) => {
+    APPEARANCE_KEYS.forEach((key) => {
+      if (globals[key] == null) return;
+      const nextKey = profileStorageKeyFor(profile.id, key);
+      if (localStorage.getItem(nextKey) == null) {
+        try { localStorage.setItem(nextKey, globals[key]); } catch {}
+      }
+    });
+  });
+  APPEARANCE_KEYS.forEach((key) => {
+    try { localStorage.removeItem(key); } catch {}
+  });
+}
+
 function migrateLegacyKeys(profileId) {
   LEGACY_KEYS.forEach((key) => {
     const raw = localStorage.getItem(key);
@@ -132,6 +173,7 @@ function ensureMigrated() {
   migrated = true;
   const hadRegistry = localStorage.getItem(REGISTRY_KEY) != null;
   const registry = normalizeRegistry(readJson(REGISTRY_KEY, null));
+  migrateAppearance(registry);
   if (!hadRegistry) migrateLegacyKeys(registry.activeId);
   writeJson(REGISTRY_KEY, registry);
 }
@@ -212,6 +254,7 @@ export function setActiveProfile(id) {
 export function createProfile(name) {
   const registry = loadRegistry();
   if (registry.profiles.length >= PROFILE_LIMIT) return null;
+  const fromId = registry.activeId;
   const id = `p${Date.now().toString(36)}`;
   const requested = String(name || '').trim().slice(0, NAME_MAX);
   const clean = uniqueProfileName(
@@ -219,6 +262,7 @@ export function createProfile(name) {
     registry.profiles.map((p) => p.name),
   );
   registry.profiles.push({ id, name: clean, createdAt: Date.now() });
+  fillMissingAppearance(id, appearanceSnapshot(fromId));
   registry.activeId = id;
   saveRegistry(registry);
   bumpProfileEpoch();
@@ -237,15 +281,118 @@ export function renameProfile(id, name) {
   return true;
 }
 
+const SNAPSHOT_KEY_RE = /^[a-z0-9_]{1,40}$/;
+const SNAPSHOT_VALUE_MAX = 4_000_000;
+
+/** Active profile as a JSON file the other origin can import. */
+export function snapshotActiveProfile() {
+  const id = getActiveProfileId();
+  const profile = loadRegistry().profiles.find((p) => p.id === id);
+  const prefix = `prawko_p_${id}_`;
+  const data = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (!key || !key.startsWith(prefix)) continue;
+    const short = key.slice(prefix.length);
+    if (!SNAPSHOT_KEY_RE.test(short)) continue;
+    const value = localStorage.getItem(key);
+    if (typeof value === 'string') data[short] = value;
+  }
+  return {
+    v: 1,
+    profile: {
+      name: profile?.name || DEFAULT_PROFILE_NAME,
+      createdAt: profile?.createdAt || Date.now(),
+    },
+    data,
+  };
+}
+
+function snapshotData(raw) {
+  if (!raw || raw.v !== 1 || !raw.profile || typeof raw.profile !== 'object') return null;
+  if (!raw.data || typeof raw.data !== 'object' || Array.isArray(raw.data)) return null;
+  const name = String(raw.profile.name || '').trim().slice(0, NAME_MAX);
+  if (!name) return null;
+  const data = {};
+  let total = 0;
+  for (const [key, value] of Object.entries(raw.data)) {
+    if (!SNAPSHOT_KEY_RE.test(key) || typeof value !== 'string') continue;
+    if (value.length > SNAPSHOT_VALUE_MAX) return null;
+    total += value.length;
+    if (total > SNAPSHOT_VALUE_MAX) return null;
+    data[key] = value;
+  }
+  const createdAt = Number(raw.profile.createdAt);
+  return {
+    name,
+    createdAt: Number.isFinite(createdAt) ? createdAt : Date.now(),
+    data,
+  };
+}
+
+function writeProfileData(profileId, data) {
+  const prefix = `prawko_p_${profileId}_`;
+  const written = [];
+  try {
+    for (const [key, value] of Object.entries(data)) {
+      localStorage.setItem(prefix + key, value);
+      written.push(prefix + key);
+    }
+    return true;
+  } catch {
+    written.forEach((key) => {
+      try { localStorage.removeItem(key); } catch {}
+    });
+    return false;
+  }
+}
+
+/** Load a snapshot. Same stored name asks the caller first: overwrite, or add another profile. */
+export function importProfileSnapshot(raw, options = {}) {
+  const snapshot = snapshotData(raw);
+  if (!snapshot) return { ok: false, reason: 'bad' };
+  const registry = loadRegistry();
+  const sameName = registry.profiles.find((p) => p.name === snapshot.name);
+  if (sameName && options.overwrite == null) {
+    return { ok: false, reason: 'exists', name: sameName.name };
+  }
+  let target = sameName && options.overwrite === true ? sameName : null;
+  let added = false;
+  if (!target) {
+    if (registry.profiles.length >= PROFILE_LIMIT) return { ok: false, reason: 'limit' };
+    const id = `p${Date.now().toString(36)}`;
+    target = {
+      id,
+      name: uniqueProfileName(snapshot.name, registry.profiles.map((p) => p.name)),
+      createdAt: snapshot.createdAt,
+    };
+    registry.profiles.push(target);
+    added = true;
+  }
+  const inherited = appearanceSnapshot(target === sameName ? sameName.id : registry.activeId);
+  if (target === sameName) wipeProfileKeys(target.id);
+  if (!writeProfileData(target.id, snapshot.data)) {
+    if (added) registry.profiles = registry.profiles.filter((p) => p.id !== target.id);
+    return { ok: false, reason: 'bad' };
+  }
+  fillMissingAppearance(target.id, inherited);
+  registry.activeId = target.id;
+  saveRegistry(registry);
+  bumpProfileEpoch();
+  return { ok: true, id: target.id };
+}
+
 export function deleteProfile(id) {
   const registry = loadRegistry();
   if (!registry.profiles.some((p) => p.id === id)) return false;
 
+  const look = registry.profiles.length <= 1 ? appearanceSnapshot(id) : null;
   wipeProfileKeys(id);
 
   if (registry.profiles.length <= 1) {
     if (id !== DEFAULT_PROFILE_ID) wipeProfileKeys(DEFAULT_PROFILE_ID);
     saveRegistry(defaultRegistry());
+    fillMissingAppearance(DEFAULT_PROFILE_ID, look);
     bumpProfileEpoch();
     return true;
   }

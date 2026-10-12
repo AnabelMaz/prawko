@@ -8,6 +8,7 @@ import {
   playExamVideo,
   renderResults,
   showConfirmModal,
+  cancelModalAction,
   confirmModalAction,
   hideModal,
 } from './ui.js';
@@ -931,6 +932,10 @@ export function setupExamListeners() {
   document.querySelector('.btn-cancel-end').addEventListener('click', () => {
     if (cancelExamIntroIfPending()) return;
     if (state?.practiceHandoff) return;
+    cancelModalAction();
+  });
+
+  document.querySelector('.modal-dismiss')?.addEventListener('click', () => {
     hideModal();
   });
 

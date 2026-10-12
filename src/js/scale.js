@@ -22,6 +22,16 @@ const PIN_SETTLE_MAX_FRAMES = 30;
 
 const SCROLL_SCREEN_IDS = ['results', 'history', 'learn-progress'];
 
+/** Home↔categories and categories↔scroll lists stay hidden until one settled frame. */
+export function shouldHoldScreenChange(prev, next) {
+  if ((prev === 'home' && next === 'categories') || (prev === 'categories' && next === 'home')) return true;
+  const prevScroll = SCROLL_SCREEN_IDS.includes(prev);
+  const nextScroll = SCROLL_SCREEN_IDS.includes(next);
+  if (prev === 'categories' && nextScroll) return true;
+  if (prevScroll && next === 'categories') return true;
+  return false;
+}
+
 function isPortraitAspect(vw, vh) {
   return vw < vh;
 }
@@ -43,6 +53,10 @@ let lastStation = '';
 let lastChromeH = -1;
 let lastOrient = '';
 let categoryLayoutTries = 0;
+let lastPackedGridW = -1;
+let lastPackedGridH = -1;
+let categorySettleQueued = false;
+let categoryGridObserver = null;
 
 function viewportSize() {
   return {
@@ -88,6 +102,31 @@ function measurePageHeight() {
   return Math.max(1, Math.ceil(screen.scrollHeight));
 }
 
+/** List height without the previous fill stage stretching #app to 800px.
+ *  That stretch plus the bottom inset overflows for one frame and flashes a scrollbar. */
+function measureScrollContentHeight() {
+  const root = document.documentElement;
+  const stage = document.querySelector('.ui-stage');
+  const app = document.getElementById('app');
+  const prevH = stage?.style.height ?? '';
+  const prevMode = root.getAttribute('data-ui-mode');
+  const prevStation = root.getAttribute('data-ui-station');
+  if (stage) stage.style.height = 'auto';
+  root.setAttribute('data-ui-mode', 'scroll');
+  root.setAttribute('data-ui-station', 'scroll');
+  void app?.offsetHeight;
+  const h = Math.max(1, Math.ceil(app?.scrollHeight || 1));
+  if (prevMode) root.setAttribute('data-ui-mode', prevMode);
+  else root.removeAttribute('data-ui-mode');
+  if (prevStation) root.setAttribute('data-ui-station', prevStation);
+  else root.removeAttribute('data-ui-station');
+  if (stage) {
+    if (prevH) stage.style.height = prevH;
+    else stage.style.removeProperty('height');
+  }
+  return h;
+}
+
 function rememberCurrentScale(root) {
   lastDesignW = parseFloat(root.style.getPropertyValue('--ui-design-width')) || lastDesignW;
   lastDesignH = parseFloat(root.style.getPropertyValue('--ui-design-height')) || lastDesignH;
@@ -120,7 +159,22 @@ function categoryGridLeftover(section, grid) {
     innerW: grid.clientWidth - padX,
     innerH: section.clientHeight - sectionPadY - used - padY - 2,
     gap,
+    padX,
+    padY,
   };
+}
+
+/** Real flex slot when it is taller than the sibling subtraction.
+ *  After a scroll screen the subtraction stays short and the tiles
+ *  no longer fill the width and height that are actually free. */
+function categoryPackBox(section, grid) {
+  const fromSiblings = categoryGridLeftover(section, grid);
+  const boxW = grid.clientWidth - fromSiblings.padX;
+  const boxH = grid.clientHeight - fromSiblings.padY;
+  if (boxW >= fromSiblings.innerW - 1 && boxH > fromSiblings.innerH + 8) {
+    return { innerW: boxW, innerH: boxH, gap: fromSiblings.gap, padX: fromSiblings.padX, padY: fromSiblings.padY };
+  }
+  return fromSiblings;
 }
 
 /** Pack the full category set after the fill stage has a real leftover.
@@ -144,7 +198,7 @@ export function layoutCategoryGrid() {
 
   const cards = [...grid.querySelectorAll('.category-card')].filter((c) => !c.hidden);
   const n = Math.max(1, cards.length);
-  const { innerW, innerH, gap } = categoryGridLeftover(section, grid);
+  const { innerW, innerH, gap, padX, padY } = categoryPackBox(section, grid);
   if (innerW < 32 || innerH < 32) {
     if (categoryLayoutTries < 4) {
       categoryLayoutTries += 1;
@@ -152,9 +206,10 @@ export function layoutCategoryGrid() {
     }
     return;
   }
-  categoryLayoutTries = 0;
 
   const { cols, rows, cardW, cardH } = packCategoryGrid(n, innerW, innerH, gap);
+  lastPackedGridW = grid.clientWidth;
+  lastPackedGridH = grid.clientHeight;
   grid.style.setProperty('--cat-cols', String(cols));
   grid.style.setProperty('--cat-rows', String(rows));
   grid.style.setProperty('--cat-card-w', `${cardW}px`);
@@ -163,6 +218,15 @@ export function layoutCategoryGrid() {
   grid.style.gridTemplateColumns = `repeat(${cols}, minmax(0, ${cardW}px))`;
   grid.style.gridTemplateRows = `repeat(${rows}, minmax(0, ${cardH}px))`;
   void grid.offsetHeight;
+
+  const slackW = (grid.clientWidth - padX) - (cols * cardW + gap * Math.max(0, cols - 1));
+  const slackH = (grid.clientHeight - padY) - (rows * cardH + gap * Math.max(0, rows - 1));
+  if (slackW > 24 && slackH > 16 && categoryLayoutTries < 4) {
+    categoryLayoutTries += 1;
+    requestAnimationFrame(() => layoutCategoryGrid());
+    return;
+  }
+  categoryLayoutTries = 0;
 
   const designH = Number.parseFloat(
     getComputedStyle(document.documentElement).getPropertyValue('--ui-design-height')
@@ -174,6 +238,57 @@ export function layoutCategoryGrid() {
     void section.offsetHeight;
     layoutCategoryGrid();
   }
+}
+
+/** The grid is often still the scroll-screen width on the first pack.
+ *  Cards then stay small after the flex slot widens. Repack when it does. */
+function queueCategorySettle() {
+  if (categorySettleQueued) return;
+  categorySettleQueued = true;
+  let frames = 0;
+  let stable = 0;
+  const tick = () => {
+    frames += 1;
+    const section = document.getElementById('categories');
+    const grid = document.querySelector('.category-grid');
+    const fill = document.documentElement.getAttribute('data-ui-station') === 'fill';
+    if (!section?.classList.contains('active') || !grid || !fill || frames > 12) {
+      categorySettleQueued = false;
+      return;
+    }
+    const w = grid.clientWidth;
+    const h = grid.clientHeight;
+    if (w > 32 && h > 32 && (Math.abs(w - lastPackedGridW) > 1 || Math.abs(h - lastPackedGridH) > 1)) {
+      stable = 0;
+      categoryLayoutTries = 0;
+      layoutCategoryGrid();
+    } else {
+      stable += 1;
+    }
+    if (stable >= 2) {
+      categorySettleQueued = false;
+      return;
+    }
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+
+function watchCategoryGridBox() {
+  if (categoryGridObserver || typeof ResizeObserver === 'undefined') return;
+  const grid = document.querySelector('.category-grid');
+  if (!grid) return;
+  categoryGridObserver = new ResizeObserver(() => {
+    if (!document.getElementById('categories')?.classList.contains('active')) return;
+    if (document.documentElement.getAttribute('data-ui-station') !== 'fill') return;
+    const w = grid.clientWidth;
+    const h = grid.clientHeight;
+    if (w < 32 || h < 32) return;
+    if (Math.abs(w - lastPackedGridW) <= 1 && Math.abs(h - lastPackedGridH) <= 1) return;
+    categoryLayoutTries = 0;
+    layoutCategoryGrid();
+  });
+  categoryGridObserver.observe(grid);
 }
 
 let pinOutstanding = false;
@@ -226,7 +341,11 @@ function categoryPackReady() {
   if (designH > 0 && section && section.clientHeight > designH + 24) return false;
   const cols = Number(grid?.style.getPropertyValue('--cat-cols'));
   const card = grid?.querySelector('.category-card');
-  return cols > 0 && Boolean(card) && card.getBoundingClientRect().width > 8;
+  if (!(cols > 0 && card && card.getBoundingClientRect().width > 8)) return false;
+  const w = grid.clientWidth;
+  const h = grid.clientHeight;
+  if (w < 32 || h < 32) return false;
+  return Math.abs(w - lastPackedGridW) <= 1 && Math.abs(h - lastPackedGridH) <= 1;
 }
 
 function holdPaintKey() {
@@ -389,7 +508,7 @@ export function applyUiFitScale(opts = {}) {
       scale = clampScale(vw / Math.max(1, designW));
     }
     const inset = Math.max(24, Math.round(designW * UI_BOTTOM_INSET_RATIO));
-    const contentH = Math.max(1, Math.ceil(app.scrollHeight));
+    const contentH = measureScrollContentHeight();
     designH = contentH + inset;
   } else if (station === 'fill') {
     designW = portrait ? UI_PORTRAIT_WIDTH : UI_DESIGN_WIDTH;
@@ -423,7 +542,10 @@ export function applyUiFitScale(opts = {}) {
     commitStageBox(lastDesignW, lastDesignH, lastScale, false, opts.holdPin);
     void app.offsetHeight;
     syncExamMediaAlign();
-    if (isCategoriesScreen()) layoutCategoryGrid();
+    if (isCategoriesScreen()) {
+      layoutCategoryGrid();
+      queueCategorySettle();
+    }
     return;
   }
 
@@ -448,7 +570,10 @@ export function applyUiFitScale(opts = {}) {
   applying = false;
   syncExamMediaAlign();
   scheduleFitQuizDockText();
-  if (isCategoriesScreen()) layoutCategoryGrid();
+  if (isCategoriesScreen()) {
+    layoutCategoryGrid();
+    queueCategorySettle();
+  }
   if ((opts.chromePass || 0) < 1) {
     const chromeNow = chromeTopHeight();
     if (Math.abs(chromeNow - chromeH) >= 1) {
@@ -534,6 +659,7 @@ export function setupUiFitScale() {
   }
   started = true;
   rememberCurrentScale(document.documentElement);
+  watchCategoryGridBox();
   applyUiFitScale();
   const onViewportResize = () => refitUiScale();
   window.addEventListener('resize', onViewportResize);

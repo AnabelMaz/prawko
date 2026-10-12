@@ -1,5 +1,7 @@
 // i18n.js — Internationalization module (Polish / English)
 
+import { profileGet, profileSet } from './profiles.js';
+
 const translations = {
   pl: {
     appName: 'Prawko',
@@ -188,7 +190,15 @@ const translations = {
     learnJumpInvalid: 'Podaj numer od 1 do {n}',
     learnJumpAria: 'Numer pytania',
     profileLabel: 'Profil',
+    profileExport: 'Eksportuj profil',
+    profileImport: 'Importuj profil',
+    profileImportBad: 'Nie da się wczytać tego pliku.',
+    profileImportOverwriteTitle: 'Nadpisać profil?',
+    profileImportOverwriteDesc: 'Profil „{name}” już jest. Nadpisać jego naukę i egzaminy tym plikiem?',
+    profileImportOverwriteYes: 'Tak, nadpisz',
+    profileImportOverwriteNo: 'Nie, nowy profil',
     profileNew: 'Nowy',
+    profileAddPlaceholder: 'Nowy profil',
     profileNamePrompt: 'Nazwa nowego profilu (nauka od zera, ten zostaje)',
     profileDefaultMe: 'Ja',
     profileDefaultNew: 'Nowy',
@@ -198,6 +208,7 @@ const translations = {
     profileLearn: 'Nauka: {known} umiem',
     profileExams: 'Egzaminy: {n} ({passed} zdane)',
     profileClose: 'Zamknij',
+    profileList: 'Lista profili',
     profileDelete: 'Usuń',
     profileDeleteTitle: 'Usunąć profil?',
     profileDeleteDesc: 'Profil „{name}” i jego postęp nauki oraz historia egzaminów znikną. Inne profile zostaną.',
@@ -208,6 +219,9 @@ const translations = {
     profileResetDesc: 'Nauka i historia egzaminów znikną. Zostanie pusty profil „{name}”.',
     profileResetConfirm: 'Tak, resetuj',
     langToggle: 'Język',
+    themeLight: 'Jasny',
+    themeDark: 'Ciemny',
+    themeSystem: 'Jak w systemie',
   },
   en: {
     appName: 'Prawko',
@@ -396,7 +410,15 @@ const translations = {
     learnJumpInvalid: 'Enter a number from 1 to {n}',
     learnJumpAria: 'Question number',
     profileLabel: 'Profile',
+    profileExport: 'Export profile',
+    profileImport: 'Import profile',
+    profileImportBad: 'This file cannot be loaded.',
+    profileImportOverwriteTitle: 'Overwrite profile?',
+    profileImportOverwriteDesc: 'Profile “{name}” is already here. Overwrite its learn progress and exams with this file?',
+    profileImportOverwriteYes: 'Yes, overwrite',
+    profileImportOverwriteNo: 'No, new profile',
     profileNew: 'New',
+    profileAddPlaceholder: 'New profile',
     profileNamePrompt: 'Name for the new profile (starts from scratch, this one stays)',
     profileDefaultMe: 'Me',
     profileDefaultNew: 'New',
@@ -406,6 +428,7 @@ const translations = {
     profileLearn: 'Learn: {known} known',
     profileExams: 'Exams: {n} ({passed} passed)',
     profileClose: 'Close',
+    profileList: 'Profiles',
     profileDelete: 'Delete',
     profileDeleteTitle: 'Delete profile?',
     profileDeleteDesc: 'Profile “{name}” and its learn progress and exam history will be removed. Other profiles stay.',
@@ -416,6 +439,9 @@ const translations = {
     profileResetDesc: 'Learn progress and exam history will be removed. An empty profile named “{name}” will remain.',
     profileResetConfirm: 'Yes, reset',
     langToggle: 'Language',
+    themeLight: 'Light',
+    themeDark: 'Dark',
+    themeSystem: 'Match system',
   },
   de: {
     appName: 'Prawko',
@@ -604,7 +630,15 @@ const translations = {
     learnJumpInvalid: 'Gib eine Zahl von 1 bis {n} ein',
     learnJumpAria: 'Fragenummer',
     profileLabel: 'Profil',
+    profileExport: 'Profil exportieren',
+    profileImport: 'Profil importieren',
+    profileImportBad: 'Diese Datei lässt sich nicht laden.',
+    profileImportOverwriteTitle: 'Profil überschreiben?',
+    profileImportOverwriteDesc: 'Profil „{name}“ gibt es schon. Lernfortschritt und Prüfungen mit dieser Datei überschreiben?',
+    profileImportOverwriteYes: 'Ja, überschreiben',
+    profileImportOverwriteNo: 'Nein, neues Profil',
     profileNew: 'Neu',
+    profileAddPlaceholder: 'Neues Profil',
     profileNamePrompt: 'Name für das neue Profil (startet bei null, dieses bleibt)',
     profileDefaultMe: 'Ich',
     profileDefaultNew: 'Neu',
@@ -614,6 +648,7 @@ const translations = {
     profileLearn: 'Lernen: {known} kann ich',
     profileExams: 'Prüfungen: {n} ({passed} bestanden)',
     profileClose: 'Schließen',
+    profileList: 'Profile',
     profileDelete: 'Löschen',
     profileDeleteTitle: 'Profil löschen?',
     profileDeleteDesc: 'Profil „{name}“ sowie Lernfortschritt und Prüfungshistorie verschwinden. Andere Profile bleiben.',
@@ -624,6 +659,9 @@ const translations = {
     profileResetDesc: 'Lernfortschritt und Prüfungshistorie verschwinden. Es bleibt ein leeres Profil „{name}“.',
     profileResetConfirm: 'Ja, zurücksetzen',
     langToggle: 'Sprache',
+    themeLight: 'Hell',
+    themeDark: 'Dunkel',
+    themeSystem: 'Wie das System',
   },
   uk: {
     appName: 'Prawko',
@@ -812,7 +850,15 @@ const translations = {
     learnJumpInvalid: 'Вкажи номер від 1 до {n}',
     learnJumpAria: 'Номер питання',
     profileLabel: 'Профіль',
+    profileExport: 'Експортувати профіль',
+    profileImport: 'Імпортувати профіль',
+    profileImportBad: 'Цей файл не вдається завантажити.',
+    profileImportOverwriteTitle: 'Перезаписати профіль?',
+    profileImportOverwriteDesc: 'Профіль «{name}» уже є. Перезаписати його навчання й іспити цим файлом?',
+    profileImportOverwriteYes: 'Так, перезаписати',
+    profileImportOverwriteNo: 'Ні, новий профіль',
     profileNew: 'Новий',
+    profileAddPlaceholder: 'Новий профіль',
     profileNamePrompt: 'Назва нового профілю (починає з нуля, цей лишається)',
     profileDefaultMe: 'Я',
     profileDefaultNew: 'Новий',
@@ -822,6 +868,7 @@ const translations = {
     profileLearn: 'Навчання: {known} вмію',
     profileExams: 'Іспити: {n} ({passed} складено)',
     profileClose: 'Закрити',
+    profileList: 'Профілі',
     profileDelete: 'Видалити',
     profileDeleteTitle: 'Видалити профіль?',
     profileDeleteDesc: 'Профіль «{name}» і його прогрес навчання та історія іспитів зникнуть. Інші профілі залишаться.',
@@ -832,6 +879,9 @@ const translations = {
     profileResetDesc: 'Прогрес навчання та історія іспитів зникнуть. Залишиться порожній профіль «{name}».',
     profileResetConfirm: 'Так, скинути',
     langToggle: 'Мова',
+    themeLight: 'Світла',
+    themeDark: 'Темна',
+    themeSystem: 'Як у системі',
   },
 };
 
@@ -855,11 +905,17 @@ function normalizeLang(raw) {
   return primary;
 }
 
-function detectInitialLang() {
+export function readStoredLang() {
   try {
-    const stored = normalizeLang(localStorage.getItem('prawko_lang'));
+    const stored = normalizeLang(profileGet('prawko_lang'));
     if (SUPPORTED_LANGS.includes(stored)) return stored;
   } catch { /* ignore */ }
+  return null;
+}
+
+function detectInitialLang() {
+  const stored = readStoredLang();
+  if (stored) return stored;
   const candidates = [];
   if (typeof navigator !== 'undefined') {
     if (Array.isArray(navigator.languages)) candidates.push(...navigator.languages);
@@ -882,7 +938,7 @@ export function getLang() {
 
 export function setLang(lang) {
   currentLang = SUPPORTED_LANGS.includes(lang) ? lang : 'en';
-  try { localStorage.setItem('prawko_lang', currentLang); } catch {}
+  try { profileSet('prawko_lang', currentLang); } catch {}
   document.documentElement.lang = currentLang;
 }
 

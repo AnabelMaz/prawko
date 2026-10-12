@@ -44,8 +44,16 @@ async function recentCategoryIds(page) {
   });
 }
 
+async function clickControl(page, selector) {
+  await page.evaluate((sel) => {
+    const el = document.querySelector(sel);
+    if (!el) throw new Error(`Missing ${sel}`);
+    el.click();
+  }, selector);
+}
+
 async function cycleLanguage(page) {
-  await page.evaluate(() => document.querySelector('.lang-cycle')?.click());
+  await clickControl(page, '.lang-cycle');
 }
 
 async function cycleSkin(page) {
@@ -70,6 +78,7 @@ module.exports = {
   goToCategories,
   enablePracticeExam,
   recentCategoryIds,
+  clickControl,
   cycleLanguage,
   cycleSkin,
   learnCatalogLabel,

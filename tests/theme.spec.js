@@ -1,16 +1,55 @@
 const { test, expect } = require('@playwright/test');
-const { goToCategories } = require('./helpers');
+const { goToCategories, clickControl } = require('./helpers');
 
 test.describe('Warm & Soft Theme', () => {
   test('theme button exposes aria-pressed state', async ({ page }) => {
     await page.goto('/');
-    await page.waitForSelector('.theme-btn');
+    await page.waitForSelector('#home.active');
 
     const themeBtn = page.locator('.theme-btn');
     const initial = await themeBtn.getAttribute('aria-pressed');
     expect(initial === 'true' || initial === 'false').toBe(true);
-    await themeBtn.click();
+    await clickControl(page, '.theme-btn');
     await expect(themeBtn).toHaveAttribute('aria-pressed', initial === 'true' ? 'false' : 'true');
+  });
+
+  test('theme cycles light, dark, and the operating system', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'light' });
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    const btn = page.locator('.theme-btn');
+    const icon = page.locator('.theme-icon use');
+
+    await expect(page.locator('html')).toHaveAttribute('data-theme-choice', 'light');
+    await expect(btn).toHaveAttribute('aria-label', 'Jasny');
+    await expect(icon).toHaveAttribute('href', '#icon-sun');
+
+    await clickControl(page, '.theme-btn');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await expect(page.locator('html')).toHaveAttribute('data-theme-choice', 'dark');
+    await expect(btn).toHaveAttribute('aria-label', 'Ciemny');
+    await expect(icon).toHaveAttribute('href', '#icon-moon');
+
+    await clickControl(page, '.theme-btn');
+    await expect(page.locator('html')).toHaveAttribute('data-theme-choice', 'system');
+    await expect(page.locator('html')).not.toHaveAttribute('data-theme', 'dark');
+    await expect(btn).toHaveAttribute('aria-pressed', 'mixed');
+    await expect(btn).toHaveAttribute('aria-label', 'Jak w systemie');
+    await expect(icon).toHaveAttribute('href', '#icon-system');
+
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await expect(page.locator('html')).toHaveAttribute('data-theme-choice', 'system');
+
+    await page.emulateMedia({ colorScheme: 'light' });
+    await expect(page.locator('html')).not.toHaveAttribute('data-theme', 'dark');
+    await expect(page.locator('html')).toHaveAttribute('data-theme-choice', 'system');
+
+    await clickControl(page, '.theme-btn');
+    await expect(page.locator('html')).toHaveAttribute('data-theme-choice', 'light');
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await expect(page.locator('html')).toHaveAttribute('data-theme-choice', 'light');
+    await expect(page.locator('html')).not.toHaveAttribute('data-theme', 'dark');
   });
 
   test('landing page loads with correct theme colors', async ({ page }) => {
@@ -37,8 +76,8 @@ test.describe('Warm & Soft Theme', () => {
 
   test('Station skin uses flattened examiner chrome on home', async ({ page }) => {
     await page.goto('/');
-    await page.waitForSelector('.skin-btn');
-    await page.click('.skin-btn');
+    await page.waitForSelector('#home.active');
+    await clickControl(page, '.skin-btn');
     await expect(page.locator('.skin-btn')).toHaveText('Stacja');
     await page.waitForSelector('.hero');
 
@@ -52,8 +91,8 @@ test.describe('Warm & Soft Theme', () => {
 
   test('feature cards have no drop shadow in Station examiner chrome', async ({ page }) => {
     await page.goto('/');
-    await page.waitForSelector('.skin-btn');
-    await page.click('.skin-btn');
+    await page.waitForSelector('#home.active');
+    await clickControl(page, '.skin-btn');
     await expect(page.locator('.skin-btn')).toHaveText('Stacja');
     await expect(page.locator('html')).toHaveAttribute('data-exam-skin', 'station');
     await page.waitForSelector('.feature-card');
@@ -69,8 +108,8 @@ test.describe('Warm & Soft Theme', () => {
 
   test('feature cards have 6px border-radius in Station examiner chrome', async ({ page }) => {
     await page.goto('/');
-    await page.waitForSelector('.skin-btn');
-    await page.click('.skin-btn');
+    await page.waitForSelector('#home.active');
+    await clickControl(page, '.skin-btn');
     await expect(page.locator('.skin-btn')).toHaveText('Stacja');
     await page.waitForSelector('.feature-card');
 
@@ -82,7 +121,7 @@ test.describe('Warm & Soft Theme', () => {
 
   test('light theme uses a black Windows pointer, dark theme a white one', async ({ page }) => {
     await page.goto('/');
-    await page.waitForSelector('.theme-btn');
+    await page.waitForSelector('#home.active');
 
     const light = await page.evaluate(() => ({
       body: getComputedStyle(document.body).cursor,
@@ -95,7 +134,7 @@ test.describe('Warm & Soft Theme', () => {
     expect(light.body).toMatch(/cursor-black\.png/);
     expect(light.btn).toMatch(/cursor-pointer-black\.png/);
 
-    await page.click('.theme-btn');
+    await clickControl(page, '.theme-btn');
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 
     const dark = await page.evaluate(() => ({
@@ -175,10 +214,10 @@ test.describe('Warm & Soft Theme', () => {
 
   test('dark mode switches to warm dark palette', async ({ page }) => {
     await page.goto('/');
-    await page.waitForSelector('.theme-btn');
+    await page.waitForSelector('#home.active');
 
     // Click theme toggle
-    await page.click('.theme-btn');
+    await clickControl(page, '.theme-btn');
 
     const bgDark = await page.evaluate(() =>
       getComputedStyle(document.documentElement).getPropertyValue('--bg').trim()
@@ -232,7 +271,7 @@ test.describe('Warm & Soft Theme', () => {
   test('screenshot - landing dark', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('#home.active');
-    await page.click('.theme-btn');
+    await clickControl(page, '.theme-btn');
     await page.waitForTimeout(300);
   });
 
@@ -244,7 +283,7 @@ test.describe('Warm & Soft Theme', () => {
 
   test('screenshot - categories dark', async ({ page }) => {
     await page.goto('/');
-    await page.click('.theme-btn');
+    await clickControl(page, '.theme-btn');
     await goToCategories(page);
     await page.waitForTimeout(300);
   });
@@ -275,7 +314,7 @@ test.describe('Warm & Soft Theme', () => {
   test('Station skin flattens home to examiner chrome', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('#home.active');
-    await page.click('.skin-btn');
+    await clickControl(page, '.skin-btn');
     await expect(page.locator('.skin-btn')).toHaveText('Stacja');
     await expect(page.locator('.skin-btn')).toHaveAttribute('aria-pressed', 'false');
     const after = await page.evaluate(() => ({

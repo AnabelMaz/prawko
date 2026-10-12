@@ -39,6 +39,9 @@
       <symbol id="icon-offline" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/>
       </symbol>
+      <symbol id="icon-system" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+      </symbol>
       <symbol id="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
       </symbol>
@@ -66,11 +69,6 @@
   <div class="ui-slot" id="ui-slot">
   <div class="ui-stage" id="ui-stage">
   <div class="top-controls">
-    <button class="theme-btn" aria-label="Toggle dark mode" aria-pressed="false">
-      <svg class="theme-icon" width="20" height="20"><use href="#icon-moon"/></svg>
-    </button>
-    <button class="skin-btn" type="button" aria-pressed="true" data-i18n-aria="examSkinToggle" aria-label="Skórka">Panel</button>
-    <button class="lang-btn lang-cycle active" type="button" data-lang="pl" data-i18n-aria="langToggle" aria-label="Język">PL</button>
     <div class="profile-switch">
       <button type="button" class="profile-toggle" aria-expanded="false" aria-controls="profile-panel" aria-haspopup="dialog" aria-label="Profil">
         <svg class="profile-toggle-icon" width="16" height="16" aria-hidden="true"><use href="#icon-profile"/></svg>
@@ -81,18 +79,34 @@
           <h2 id="profile-panel-title" data-i18n="profileLabel">Profil</h2>
           <button type="button" class="profile-panel-close" data-i18n-aria="profileClose" aria-label="Zamknij">&times;</button>
         </div>
-        <ul class="profile-list"></ul>
+        <div class="profile-current">
+          <input class="profile-name-input" type="text" maxlength="20" value="Ja" aria-label="Ja">
+          <button type="button" class="profile-icon-btn profile-list-toggle" data-i18n-aria="profileList" aria-label="Lista profili" aria-expanded="false">
+            <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <button type="button" class="profile-icon-btn profile-io-btn profile-action-export" data-i18n-aria="profileExport" aria-label="Eksportuj profil" title="Eksportuj profil">
+            <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v7M5.2 7.2 8 10l2.8-2.8M3 13.2h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <button type="button" class="profile-icon-btn profile-io-btn profile-action-import" data-i18n-aria="profileImport" aria-label="Importuj profil" title="Importuj profil">
+            <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 10.5v-7M5.2 5.8 8 3l2.8 2.8M3 13.2h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <button type="button" class="profile-icon-btn profile-action-delete" aria-label="Usuń" title="Usuń">&times;</button>
+          <ul class="profile-list" hidden></ul>
+        </div>
+        <div class="profile-appearance">
+          <button class="theme-btn" aria-label="Jasny" aria-pressed="false">
+            <svg class="theme-icon" width="20" height="20"><use href="#icon-sun"/></svg>
+          </button>
+          <button class="skin-btn" type="button" aria-pressed="true" data-i18n-aria="examSkinToggle" aria-label="Skórka">Panel</button>
+          <button class="lang-btn lang-cycle active" type="button" data-lang="pl" data-i18n-aria="langToggle" aria-label="Język">PL</button>
+        </div>
+        <input type="file" class="profile-import-file" accept="application/json,.json" hidden>
         <button type="button" class="profile-stat profile-stat-learn" data-navigate="learn-progress">Nauka: 0 umiem</button>
         <button type="button" class="profile-stat profile-stat-exams" data-navigate="history">Egzaminy: 0 (0 zdane)</button>
         <label class="profile-pref">
           <input type="checkbox" class="profile-practice-exam">
           <span data-i18n="profilePracticeExam">Egzamin próbny (5 pytań)</span>
         </label>
-        <div class="profile-panel-actions">
-          <button type="button" class="profile-action-rename" data-i18n="profileRename">Zmień nazwę</button>
-          <button type="button" class="profile-action-new" data-i18n="profileNew">Nowy</button>
-          <button type="button" class="profile-action-delete">Usuń</button>
-        </div>
       </div>
     </div>
   </div>
@@ -520,6 +534,7 @@
           <button class="btn btn-danger btn-confirm-end" data-i18n="confirmYes">Tak, zakończ</button>
           <button class="btn btn-secondary btn-cancel-end" data-i18n="confirmNo">Nie, kontynuuj</button>
         </div>
+        <button type="button" class="modal-dismiss" data-i18n-aria="profileClose" aria-label="Zamknij" hidden>&times;</button>
       </div>
     </div>
   </div>

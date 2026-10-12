@@ -1703,13 +1703,46 @@ test.describe('Local profiles', () => {
     await toggle.click();
     const panel = page.locator('#profile-panel');
     await expect(panel).toBeVisible();
-    await expect(page.locator('.profile-list-btn')).toHaveCount(1);
+    await expect(page.locator('.profile-name-input')).toHaveValue('Ja');
+    await expect(page.locator('.profile-list-toggle')).toBeVisible();
+    await expect(page.locator('.profile-list-toggle')).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.locator('.profile-list-btn')).toHaveCount(0);
+    await expect(page.locator('.profile-appearance .theme-btn')).toBeVisible();
+    await expect(page.locator('.profile-appearance .skin-btn')).toBeVisible();
+    await expect(page.locator('.profile-appearance .lang-cycle')).toBeVisible();
+    await expect(page.locator('.top-controls > .theme-btn')).toHaveCount(0);
     await expect(page.locator('.profile-stat-learn')).toContainText('Nauka:');
     await expect(page.locator('.profile-stat-exams')).toContainText('Egzaminy:');
     await expect(page.locator('.profile-action-history')).toHaveCount(0);
-    await expect(page.locator('.profile-action-rename')).toBeVisible();
-    await expect(page.locator('.profile-action-new')).toBeVisible();
-    await expect(page.locator('.profile-action-delete')).toHaveText('Resetuj');
+    await expect(page.locator('.profile-action-rename')).toHaveCount(0);
+    await expect(page.locator('.profile-action-new')).toHaveCount(0);
+    await expect(page.locator('.profile-action-delete')).toHaveAttribute('aria-label', 'Resetuj');
+    const nameBox = await page.locator('.profile-name-input').boundingBox();
+    const iconBoxes = await page.locator('.profile-current .profile-icon-btn').evaluateAll((els) => els.map((el) => {
+      const r = el.getBoundingClientRect();
+      return { x: r.x, y: r.y, w: r.width, h: r.height };
+    }));
+    expect(iconBoxes).toHaveLength(4);
+    expect(nameBox.x).toBeLessThan(iconBoxes[0].x);
+    const gap0 = iconBoxes[1].x - (iconBoxes[0].x + iconBoxes[0].w);
+    for (let i = 1; i < iconBoxes.length; i++) {
+      expect(iconBoxes[i].x).toBeGreaterThan(iconBoxes[i - 1].x);
+      expect(iconBoxes[i].w).toBe(iconBoxes[0].w);
+      expect(iconBoxes[i].h).toBe(iconBoxes[0].h);
+      const gap = iconBoxes[i].x - (iconBoxes[i - 1].x + iconBoxes[i - 1].w);
+      expect(Math.abs(gap - gap0)).toBeLessThan(1.5);
+      expect(gap).toBeLessThan(6);
+    }
+    const closedBox = await panel.boundingBox();
+    await page.click('.profile-list-toggle');
+    await expect(page.locator('.profile-list')).toBeVisible();
+    await expect(page.locator('.profile-list-new')).toHaveAttribute('placeholder', 'Nowy profil');
+    const openBox = await panel.boundingBox();
+    expect(Math.abs(openBox.height - closedBox.height)).toBeLessThan(1);
+    const listBox = await page.locator('.profile-list').boundingBox();
+    const themeBox = await page.locator('.profile-appearance .theme-btn').boundingBox();
+    expect(listBox.y).toBeLessThan(themeBox.y + themeBox.height);
+    expect(listBox.y + listBox.height).toBeGreaterThan(themeBox.y);
     await page.click('.profile-panel-close');
     await expect(panel).toBeHidden();
     await expect(page.locator('.profile-toggle-name')).toHaveText('Ja');
@@ -1729,17 +1762,24 @@ test.describe('Local profiles', () => {
     await page.goto('/');
     await page.waitForSelector('#home.active');
     await page.click('.profile-toggle');
-    await expect(page.locator('.profile-list-btn')).toHaveCount(2);
-    await expect(page.locator('.profile-action-delete')).toHaveText('Usuń');
+    await expect(page.locator('.profile-list-toggle')).toBeVisible();
+    await expect(page.locator('.profile-action-delete')).toHaveAttribute('aria-label', 'Usuń');
     await page.click('.profile-action-delete');
     await page.waitForSelector('.modal-overlay.active');
     await expect(page.locator('#modal-desc')).toContainText('Anabela');
+    await expect(page.locator('.modal-dismiss')).toBeVisible();
+    await page.click('.modal-dismiss');
+    await expect(page.locator('.modal-overlay')).not.toHaveClass(/active/);
+    await expect(page.locator('#profile-panel')).toBeVisible();
+    await expect(page.locator('.profile-toggle-name')).toHaveText('Anabela');
+    await page.click('.profile-action-delete');
+    await page.waitForSelector('.modal-overlay.active');
     await page.click('.btn-confirm-end');
     await page.waitForSelector('#home.active');
+    await expect(page.locator('#profile-panel')).toBeVisible();
     await expect(page.locator('.profile-toggle-name')).toHaveText('Ja');
-    await page.click('.profile-toggle');
-    await expect(page.locator('.profile-list-btn')).toHaveCount(1);
-    await expect(page.locator('.profile-action-delete')).toHaveText('Resetuj');
+    await expect(page.locator('.profile-list-btn')).toHaveCount(0);
+    await expect(page.locator('.profile-action-delete')).toHaveAttribute('aria-label', 'Resetuj');
   });
 
   test('switching profiles updates stats without a full reload', async ({ page }) => {
@@ -1758,11 +1798,12 @@ test.describe('Local profiles', () => {
     await page.evaluate(() => { window.__prawkoStay = 1; });
     await page.click('.profile-toggle');
     await expect(page.locator('.profile-stat-learn')).toContainText('1');
+    await page.click('.profile-list-toggle');
     await page.click('.profile-list-btn[data-id="p2"]');
-    await expect(page.locator('#profile-panel')).toBeHidden();
+    await expect(page.locator('#profile-panel')).toBeVisible();
     await expect(page.locator('.profile-toggle-name')).toHaveText('Anabela');
+    await expect(page.locator('.profile-name-input')).toHaveValue('Anabela');
     expect(await page.evaluate(() => window.__prawkoStay)).toBe(1);
-    await page.click('.profile-toggle');
     await expect(page.locator('.profile-stat-learn')).toHaveText('Nauka: 0 umiem');
   });
 
@@ -1788,8 +1829,8 @@ test.describe('Local profiles', () => {
     await expect(page.locator('#modal-title')).toContainText('Zresetować');
     await page.click('.btn-confirm-end');
     await page.waitForSelector('#home.active');
+    await expect(page.locator('#profile-panel')).toBeVisible();
     await expect(page.locator('.profile-toggle-name')).toHaveText('Ja');
-    await page.click('.profile-toggle');
     await expect(page.locator('.profile-stat-learn')).toHaveText('Nauka: 0 umiem');
     await expect(page.locator('.profile-stat-exams')).toHaveText('Egzaminy: 0 (0 zdane)');
   });
@@ -1833,17 +1874,42 @@ test.describe('Local profiles', () => {
   test('adding another New profile gets a Windows-style (2) suffix', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('#home.active');
-    page.once('dialog', (dialog) => dialog.accept('Nowy'));
     await page.click('.profile-toggle');
-    await page.click('.profile-action-new');
+    await page.click('.profile-list-toggle');
+    const add = page.locator('.profile-list-new');
+    await add.fill('Nowy');
+    await add.press('Enter');
     await expect(page.locator('.profile-toggle-name')).toHaveText('Nowy');
-
-    page.once('dialog', (dialog) => dialog.accept('Nowy'));
-    await page.click('.profile-toggle');
-    await page.click('.profile-action-new');
+    await expect(page.locator('#profile-panel')).toBeVisible();
+    const addAgain = page.locator('.profile-list-new');
+    await addAgain.fill('Nowy');
+    await addAgain.press('Enter');
     await expect(page.locator('.profile-toggle-name')).toHaveText('Nowy (2)');
+    await expect(page.locator('.profile-list-btn')).toHaveText(['Ja', 'Nowy']);
+  });
+
+  test('the profile list scrolls once it no longer fits', async ({ page }) => {
+    await page.addInitScript(() => {
+      const profiles = Array.from({ length: 8 }, (_, i) => ({
+        id: `p${i + 1}`,
+        name: i === 0 ? 'Ja' : `Osoba ${i}`,
+        createdAt: i + 1,
+      }));
+      localStorage.setItem('prawko_profiles', JSON.stringify({ activeId: 'p1', profiles }));
+    });
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
     await page.click('.profile-toggle');
-    await expect(page.locator('.profile-list-btn')).toHaveText(['Ja', 'Nowy', 'Nowy (2)']);
+    const panel = page.locator('#profile-panel');
+    const closedBox = await panel.boundingBox();
+    await page.click('.profile-list-toggle');
+    const list = page.locator('.profile-list');
+    await expect(list).toBeVisible();
+    const openBox = await panel.boundingBox();
+    expect(Math.abs(openBox.height - closedBox.height)).toBeLessThan(1);
+    await expect(page.locator('.profile-list-btn')).toHaveCount(7);
+    await expect(page.locator('.profile-list-new')).toHaveCount(0);
+    expect(await list.evaluate((el) => el.scrollHeight > el.clientHeight + 1)).toBe(true);
   });
 
   test('Nowy and New count as the same profile name', async ({ page }) => {
@@ -1858,9 +1924,10 @@ test.describe('Local profiles', () => {
     });
     await page.goto('/');
     await page.waitForSelector('#home.active');
-    page.once('dialog', (dialog) => dialog.accept('New'));
     await page.click('.profile-toggle');
-    await page.click('.profile-action-new');
+    const input = page.locator('.profile-name-input');
+    await input.fill('New');
+    await input.press('Enter');
     await expect(page.locator('.profile-toggle-name')).toHaveText('Nowy (2)');
   });
 
@@ -1870,7 +1937,8 @@ test.describe('Local profiles', () => {
     await cycleLanguage(page);
     await expect(page.locator('.profile-toggle-name')).toHaveText('Me');
     await page.click('.profile-toggle');
-    await expect(page.locator('.profile-action-new')).toHaveText('New');
+    await expect(page.locator('.profile-name-input')).toHaveValue('Me');
+    await expect(page.locator('.profile-list-new')).toHaveAttribute('placeholder', 'New profile');
     await expect(page.locator('.profile-stat-exams')).toContainText('Exams:');
   });
 
@@ -1882,11 +1950,211 @@ test.describe('Local profiles', () => {
     await page.waitForSelector('.modal-overlay.active');
     await page.click('.btn-confirm-end');
     await page.waitForSelector('#home.active');
+    await expect(page.locator('#profile-panel')).toBeVisible();
     await expect(page.locator('.profile-toggle-name')).toHaveText('Ja');
     await cycleLanguage(page);
     await expect(page.locator('.profile-toggle-name')).toHaveText('Me');
+    await expect(page.locator('#profile-panel')).toBeVisible();
+    await expect(page.locator('.profile-name-input')).toHaveValue('Me');
+  });
+
+  test('profile arrows export and import learn progress', async ({ page }) => {
+    const learn = JSON.stringify({ B: { q1: { answer: 'T', streak: 2, misses: 0 } } });
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    await page.evaluate((payload) => {
+      localStorage.setItem('prawko_p_p1_learn', payload);
+    }, learn);
     await page.click('.profile-toggle');
-    await expect(page.locator('.profile-list-btn')).toHaveText(['Me']);
+    const exp = page.locator('.profile-action-export');
+    const imp = page.locator('.profile-action-import');
+    await expect(page.locator('#profile-panel-title')).toHaveText('Profil');
+    await expect(exp).toBeVisible();
+    await expect(imp).toBeVisible();
+    await expect(exp).toHaveText('');
+    await expect(imp).toHaveText('');
+    const nameBox = await page.locator('.profile-name-input').boundingBox();
+    const box = await exp.boundingBox();
+    const impBox = await imp.boundingBox();
+    const panelBox = await page.locator('#profile-panel').boundingBox();
+    const chevronBox = await page.locator('.profile-list-toggle').boundingBox();
+    expect(box.width).toBeLessThan(36);
+    expect(box.height).toBeLessThan(36);
+    expect(chevronBox.x).toBeGreaterThan(nameBox.x + nameBox.width);
+    expect(box.x).toBeGreaterThan(chevronBox.x + chevronBox.width);
+    expect(Math.abs((box.y + box.height / 2) - (nameBox.y + nameBox.height / 2))).toBeLessThan(8);
+    expect(impBox.x).toBeGreaterThan(box.x);
+    const delBox = await page.locator('.profile-action-delete').boundingBox();
+    expect(delBox.x).toBeGreaterThan(impBox.x);
+    expect(panelBox.x + panelBox.width - (delBox.x + delBox.width)).toBeLessThan(24);
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      exp.click(),
+    ]);
+    expect(download.suggestedFilename()).toBe('prawko-ja.json');
+    const chunks = [];
+    const stream = await download.createReadStream();
+    for await (const chunk of stream) chunks.push(chunk);
+    const file = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    expect(file.v).toBe(1);
+    expect(file.profile.name).toBe('Ja');
+    expect(file.data.learn).toBe(learn);
+    const chrome = await page.evaluate(() => ({
+      theme: document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light',
+      lang: document.documentElement.lang,
+      skin: document.documentElement.getAttribute('data-exam-skin'),
+    }));
+    expect(file.data.theme).toBe(chrome.theme);
+    expect(file.data.lang).toBe(chrome.lang);
+    expect(file.data.exam_skin).toBe(chrome.skin);
+
+    await page.evaluate(() => localStorage.removeItem('prawko_p_p1_learn'));
+    const snapshot = {
+      name: 'prawko-ja.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(JSON.stringify(file)),
+    };
+    await page.locator('.profile-import-file').setInputFiles(snapshot);
+    const modal = page.locator('#confirm-modal.active');
+    await expect(modal.locator('#modal-title')).toHaveText('Nadpisać profil?');
+    await expect(modal.locator('.btn-confirm-end')).toHaveText('Tak, nadpisz');
+    await expect(modal.locator('.btn-cancel-end')).toHaveText('Nie, nowy profil');
+    const dismiss = modal.locator('.modal-dismiss');
+    await expect(dismiss).toBeVisible();
+    await expect(dismiss).toHaveText('×');
+    const dismissBox = await dismiss.boundingBox();
+    const contentBox = await modal.locator('.modal-content').boundingBox();
+    expect(contentBox.x + contentBox.width - (dismissBox.x + dismissBox.width)).toBeLessThan(16);
+    expect(dismissBox.y - contentBox.y).toBeLessThan(16);
+    expect(await page.evaluate(() => localStorage.getItem('prawko_p_p1_learn'))).toBeNull();
+    await modal.locator('.btn-confirm-end').click();
+    await expect(page.locator('#profile-panel')).toBeVisible();
+    await expect(page.locator('.profile-toggle-name')).toHaveText('Ja');
+    await expect(page.locator('.profile-stat-learn')).toContainText('1 umiem');
+    const stored = await page.evaluate(() => localStorage.getItem('prawko_p_p1_learn'));
+    expect(stored).toBe(learn);
+    const names = await page.evaluate(() => {
+      const raw = JSON.parse(localStorage.getItem('prawko_profiles'));
+      return raw.profiles.map((p) => p.name);
+    });
+    expect(names).toEqual(['Ja']);
+
+    await page.locator('.profile-import-file').setInputFiles(snapshot);
+    await expect(modal.locator('#modal-title')).toHaveText('Nadpisać profil?');
+    await modal.locator('.btn-cancel-end').click();
+    await expect(page.locator('.profile-toggle-name')).toHaveText('Ja (2)');
+    const afterNew = await page.evaluate(() => {
+      const raw = JSON.parse(localStorage.getItem('prawko_profiles'));
+      const copy = raw.profiles.find((p) => p.name === 'Ja (2)');
+      return {
+        names: raw.profiles.map((p) => p.name),
+        original: localStorage.getItem('prawko_p_p1_learn'),
+        copy: copy ? localStorage.getItem(`prawko_p_${copy.id}_learn`) : null,
+      };
+    });
+    expect(afterNew.names).toEqual(['Ja', 'Ja (2)']);
+    expect(afterNew.original).toBe(learn);
+    expect(afterNew.copy).toBe(learn);
+
+    await page.locator('.profile-import-file').setInputFiles(snapshot);
+    await expect(modal.locator('.modal-dismiss')).toBeVisible();
+    await modal.locator('.modal-dismiss').click();
+    await expect(modal).toBeHidden();
+    const afterDismiss = await page.evaluate(() => {
+      const raw = JSON.parse(localStorage.getItem('prawko_profiles'));
+      return raw.profiles.map((p) => p.name);
+    });
+    expect(afterDismiss).toEqual(['Ja', 'Ja (2)']);
+    await expect(page.locator('.profile-toggle-name')).toHaveText('Ja (2)');
+
+    const dialogPromise = page.waitForEvent('dialog');
+    await page.locator('.profile-import-file').setInputFiles({
+      name: 'bad.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from('{}'),
+    });
+    const dialog = await dialogPromise;
+    expect(dialog.message()).toContain('Nie da się');
+    await dialog.accept();
+    expect(await page.evaluate(() => localStorage.getItem('prawko_p_p1_learn'))).toBe(learn);
+  });
+
+  test('theme language and skin follow the profile', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    await page.evaluate(() => {
+      localStorage.setItem('prawko_p_p1_theme', 'dark');
+      localStorage.setItem('prawko_p_p1_lang', 'pl');
+      localStorage.setItem('prawko_p_p1_exam_skin', 'station');
+    });
+    await page.reload();
+    await page.waitForSelector('#home.active');
+    await expect.poll(() => page.locator('html').getAttribute('data-theme')).toBe('dark');
+    await expect.poll(() => page.locator('html').getAttribute('lang')).toBe('pl');
+    await expect.poll(() => page.locator('html').getAttribute('data-exam-skin')).toBe('station');
+    await expect(page.locator('.skin-btn')).toHaveText('Stacja');
+
+    await page.click('.profile-toggle');
+    await page.click('.profile-list-toggle');
+    await page.locator('.profile-list-new').fill('Nowy');
+    await page.locator('.profile-list-new').press('Enter');
+    await expect(page.locator('.profile-toggle-name')).toHaveText('Nowy');
+    await expect.poll(() => page.locator('html').getAttribute('data-theme')).toBe('dark');
+    await expect.poll(() => page.locator('html').getAttribute('lang')).toBe('pl');
+    await expect.poll(() => page.locator('html').getAttribute('data-exam-skin')).toBe('station');
+
+    await page.evaluate(() => {
+      document.querySelector('.theme-btn')?.click();
+      document.querySelector('.skin-btn')?.click();
+      document.querySelector('.lang-cycle')?.click();
+    });
+    await expect.poll(() => page.locator('html').getAttribute('data-theme-choice')).toBe('system');
+    await expect.poll(() => page.locator('html').getAttribute('data-theme')).toBeNull();
+    await expect.poll(() => page.locator('html').getAttribute('data-exam-skin')).toBe('panel');
+    await expect.poll(() => page.locator('html').getAttribute('lang')).toBe('en');
+    await expect(page.locator('.skin-btn')).toHaveText('Panel');
+
+    if (await page.locator('#profile-panel').isHidden()) await page.click('.profile-toggle');
+    if (await page.locator('.profile-list-toggle').getAttribute('aria-expanded') !== 'true') {
+      await page.click('.profile-list-toggle');
+    }
+    await page.locator('.profile-list-btn').click();
+    await expect.poll(() => page.locator('html').getAttribute('data-theme')).toBe('dark');
+    await expect.poll(() => page.locator('html').getAttribute('lang')).toBe('pl');
+    await expect.poll(() => page.locator('html').getAttribute('data-exam-skin')).toBe('station');
+    await expect(page.locator('.skin-btn')).toHaveText('Stacja');
+
+    if (await page.locator('#profile-panel').isHidden()) await page.click('.profile-toggle');
+    if (await page.locator('.profile-list-toggle').getAttribute('aria-expanded') !== 'true') {
+      await page.click('.profile-list-toggle');
+    }
+    await page.locator('.profile-list-btn').click();
+    await expect.poll(() => page.locator('html').getAttribute('data-theme')).toBeNull();
+    await expect.poll(() => page.locator('html').getAttribute('lang')).toBe('en');
+    await expect.poll(() => page.locator('html').getAttribute('data-exam-skin')).toBe('panel');
+    await expect(page.locator('.skin-btn')).toHaveText('Panel');
+
+    await page.locator('.profile-import-file').setInputFiles({
+      name: 'stary.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(JSON.stringify({
+        v: 1,
+        profile: { name: 'Stary', createdAt: 1 },
+        data: { learn: '{}' },
+      })),
+    });
+    await expect(page.locator('.profile-toggle-name')).toHaveText('Stary');
+    await expect.poll(() => page.locator('html').getAttribute('lang')).toBe('en');
+    const inherited = await page.evaluate(() => {
+      const raw = JSON.parse(localStorage.getItem('prawko_profiles'));
+      const id = raw.activeId;
+      return {
+        theme: localStorage.getItem(`prawko_p_${id}_theme`),
+        lang: localStorage.getItem(`prawko_p_${id}_lang`),
+        skin: localStorage.getItem(`prawko_p_${id}_exam_skin`),
+      };
+    });
+    expect(inherited).toEqual({ theme: 'system', lang: 'en', skin: 'panel' });
   });
 });
 
@@ -1900,7 +2168,8 @@ test.describe('Language fallback', () => {
       await expect(page.locator('.profile-toggle-name')).toHaveText('Ich');
       await expect(page.locator('[data-navigate="categories"]').first()).toHaveText('Start');
       await page.click('.profile-toggle');
-      await expect(page.locator('.profile-action-new')).toHaveText('Neu');
+      await expect(page.locator('.profile-name-input')).toHaveValue('Ich');
+      await expect(page.locator('.profile-list-new')).toHaveAttribute('placeholder', 'Neues Profil');
     });
   });
 
@@ -1913,7 +2182,8 @@ test.describe('Language fallback', () => {
       await expect(page.locator('.profile-toggle-name')).toHaveText('Me');
       await expect(page.locator('[data-navigate="categories"]').first()).toHaveText('Start');
       await page.click('.profile-toggle');
-      await expect(page.locator('.profile-action-new')).toHaveText('New');
+      await expect(page.locator('.profile-name-input')).toHaveValue('Me');
+      await expect(page.locator('.profile-list-new')).toHaveAttribute('placeholder', 'New profile');
     });
   });
 });

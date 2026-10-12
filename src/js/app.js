@@ -4,7 +4,7 @@ import { fetchMeta, fetchCategory, fetchUniqueQuestionCount, loadLocalConfig } f
 import { startExam, setupExamListeners, cleanupExam, getLastExamCategory, refreshExamQuestion } from './exam.js';
 import { startLearn, setupLearnListeners, cleanupLearn, refreshLearnQuestion, loadLearnLocalFlags } from './learn.js';
 import { showScreen, renderCategories, applyLanguage, renderHistory, renderLearnProgress, renderResults, showConfirmModal, refreshOfflineCoverage } from './ui.js';
-import { setLang, getLang, loadQuestionTranslations, nextLang, LANG_LABELS, t } from './i18n.js';
+import { setLang, getLang, loadQuestionTranslations, nextLang, LANG_LABELS, t, readStoredLang } from './i18n.js';
 import { downloadCategoryMedia, getDownloadedCategories, reconcileDownloadedCategories, offlineCoverageHue, getInProgressOfflineCategory, getActiveDownloadProgress } from './offline.js';
 import { getProfileSummary, loadHistory, loadLastResult, clearHistory, clearLearnProgress } from './stats.js';
 import { setupUiFitScale, refitUiScale, revealUiScale, layoutCategoryGrid, applyUiFitScale } from './scale.js';
@@ -16,10 +16,12 @@ import {
   formatProfileName,
   getActiveProfileId,
   getPracticeExamEnabled,
+  importProfileSnapshot,
   listProfiles,
   profileGet,
   profileSet,
   renameProfile,
+  snapshotActiveProfile,
   setActiveProfile,
   setPracticeExamEnabled,
 } from './profiles.js';
@@ -90,7 +92,6 @@ const EXAM_SKIN_KEY = 'prawko_exam_skin';
 
 // ---- Router ----
 function navigate(screen) {
-  setProfilePanelOpen(false);
   window.location.hash = screen;
 }
 
@@ -358,20 +359,63 @@ function updateLanguageButtons(lang) {
   btn.setAttribute('aria-label', t('langToggle'));
 }
 
+const THEME_CYCLE = ['light', 'dark', 'system'];
+
+function normalizeThemeChoice(raw) {
+  if (raw === 'light' || raw === 'dark' || raw === 'system') return raw;
+  return null;
+}
+
+function systemPrefersDark() {
+  return window.matchMedia?.('(prefers-color-scheme: dark)').matches === true;
+}
+
 function getInitialTheme() {
   try {
-    const stored = localStorage.getItem('prawko_theme');
-    if (stored === 'dark' || stored === 'light') return stored;
+    const stored = normalizeThemeChoice(profileGet('prawko_theme'));
+    if (stored) return stored;
   } catch {}
-  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  const fallback = systemPrefersDark() ? 'dark' : 'light';
+  try { profileSet('prawko_theme', fallback); } catch {}
+  return fallback;
+}
+
+function themeChoiceLabel(choice) {
+  if (choice === 'dark') return t('themeDark');
+  if (choice === 'system') return t('themeSystem');
+  return t('themeLight');
 }
 
 function applyTheme(theme, themeIcon, themeBtn) {
-  const isDark = theme === 'dark';
+  const choice = normalizeThemeChoice(theme) || 'light';
+  const isDark = choice === 'dark' || (choice === 'system' && systemPrefersDark());
   if (isDark) document.documentElement.setAttribute('data-theme', 'dark');
   else document.documentElement.removeAttribute('data-theme');
-  if (themeIcon) themeIcon.innerHTML = isDark ? '<use href="#icon-sun"/>' : '<use href="#icon-moon"/>';
-  if (themeBtn) themeBtn.setAttribute('aria-pressed', isDark ? 'true' : 'false');
+  document.documentElement.setAttribute('data-theme-choice', choice);
+  const icon = choice === 'dark' ? '#icon-moon' : choice === 'system' ? '#icon-system' : '#icon-sun';
+  if (themeIcon) themeIcon.innerHTML = `<use href="${icon}"/>`;
+  if (themeBtn) {
+    const pressed = choice === 'dark' ? 'true' : choice === 'system' ? 'mixed' : 'false';
+    themeBtn.setAttribute('aria-pressed', pressed);
+    const label = themeChoiceLabel(choice);
+    themeBtn.setAttribute('aria-label', label);
+    themeBtn.title = label;
+  }
+}
+
+function watchSystemTheme() {
+  const mq = window.matchMedia?.('(prefers-color-scheme: dark)');
+  if (!mq?.addEventListener) return;
+  mq.addEventListener('change', () => {
+    if (getInitialTheme() !== 'system') return;
+    const themeBtn = document.querySelector('.theme-btn');
+    applyTheme('system', themeBtn?.querySelector('.theme-icon'), themeBtn);
+  });
+}
+
+function nextThemeChoice(choice) {
+  const index = THEME_CYCLE.indexOf(normalizeThemeChoice(choice) || 'light');
+  return THEME_CYCLE[(index + 1) % THEME_CYCLE.length];
 }
 
 function normalizeExamSkin(raw) {
@@ -380,11 +424,13 @@ function normalizeExamSkin(raw) {
 }
 
 function getInitialExamSkin() {
-  try {
-    return normalizeExamSkin(localStorage.getItem(EXAM_SKIN_KEY));
-  } catch {
-    return 'panel';
+  let raw = null;
+  try { raw = profileGet(EXAM_SKIN_KEY); } catch {}
+  const next = normalizeExamSkin(raw);
+  if (raw !== 'panel' && raw !== 'station') {
+    try { profileSet(EXAM_SKIN_KEY, next); } catch {}
   }
+  return next;
 }
 
 function applyExamSkin(skin) {
@@ -400,9 +446,26 @@ function applyExamSkin(skin) {
   refitUiScale();
 }
 
+let profileListOpen = false;
+
+function setProfileListOpen(open) {
+  const list = document.querySelector('.profile-list');
+  const toggle = document.querySelector('.profile-list-toggle');
+  profileListOpen = Boolean(open);
+  if (list) list.hidden = !profileListOpen;
+  if (toggle) {
+    toggle.hidden = false;
+    toggle.setAttribute('aria-expanded', profileListOpen ? 'true' : 'false');
+    const label = t('profileList');
+    toggle.setAttribute('aria-label', label);
+    toggle.title = label;
+  }
+}
+
 function fillProfilePanel() {
   const toggle = document.querySelector('.profile-toggle');
   const nameEl = document.querySelector('.profile-toggle-name');
+  const nameInput = document.querySelector('.profile-name-input');
   const list = document.querySelector('.profile-list');
   const learnEl = document.querySelector('.profile-stat-learn');
   const examsEl = document.querySelector('.profile-stat-exams');
@@ -413,22 +476,48 @@ function fillProfilePanel() {
   const activeId = getActiveProfileId();
   const profiles = listProfiles();
   const active = profiles.find((p) => p.id === activeId);
-  if (nameEl) nameEl.textContent = formatProfileName(active?.name || DEFAULT_PROFILE_NAME, t);
-  toggle.setAttribute('aria-label', `${t('profileLabel')}: ${formatProfileName(active?.name || DEFAULT_PROFILE_NAME, t)}`);
+  const activeName = formatProfileName(active?.name || DEFAULT_PROFILE_NAME, t);
+  if (nameEl) nameEl.textContent = activeName;
+  if (nameInput && document.activeElement !== nameInput) {
+    nameInput.value = activeName;
+    nameInput.setAttribute('aria-label', activeName);
+  }
+  toggle.setAttribute('aria-label', `${t('profileLabel')}: ${activeName}`);
   if (closeBtn) closeBtn.setAttribute('aria-label', t('profileClose'));
-
+  document.querySelectorAll('.profile-io-btn').forEach((btn) => {
+    const key = btn.getAttribute('data-i18n-aria');
+    if (!key) return;
+    const label = t(key);
+    btn.setAttribute('aria-label', label);
+    btn.title = label;
+  });
   list.innerHTML = '';
   profiles.forEach((profile) => {
+    if (profile.id === activeId) return;
     const item = document.createElement('li');
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'profile-list-btn' + (profile.id === activeId ? ' active' : '');
+    btn.className = 'profile-list-btn';
     btn.dataset.id = profile.id;
     btn.textContent = formatProfileName(profile.name, t);
-    if (profile.id === activeId) btn.setAttribute('aria-current', 'true');
     item.appendChild(btn);
     list.appendChild(item);
   });
+  if (profiles.length < PROFILE_LIMIT) {
+    const add = document.createElement('li');
+    add.className = 'profile-list-add';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'profile-list-new';
+    input.maxLength = 20;
+    input.autocomplete = 'off';
+    const hint = t('profileAddPlaceholder');
+    input.placeholder = hint;
+    input.setAttribute('aria-label', hint);
+    add.appendChild(input);
+    list.appendChild(add);
+  }
+  setProfileListOpen(profileListOpen);
 
   const summary = getProfileSummary();
   if (learnEl) {
@@ -443,33 +532,158 @@ function fillProfilePanel() {
     examsEl.textContent = examsText;
     examsEl.setAttribute('aria-label', `${examsText}. ${t('examHistory')}`);
   }
-  if (deleteBtn) deleteBtn.textContent = profiles.length <= 1 ? t('profileReset') : t('profileDelete');
+  if (deleteBtn) {
+    const label = profiles.length <= 1 ? t('profileReset') : t('profileDelete');
+    deleteBtn.setAttribute('aria-label', label);
+    deleteBtn.title = label;
+  }
   const practiceBox = document.querySelector('.profile-practice-exam');
   if (practiceBox) practiceBox.checked = getPracticeExamEnabled();
+}
+
+let committingNewProfile = false;
+
+function commitNewProfile() {
+  if (committingNewProfile) return;
+  const input = document.querySelector('.profile-list-new');
+  if (!input) return;
+  const typed = input.value.trim();
+  if (!typed) return;
+  if (listProfiles().length >= PROFILE_LIMIT) {
+    window.alert(t('profileLimit'));
+    input.value = '';
+    return;
+  }
+  committingNewProfile = true;
+  profileListOpen = true;
+  createProfile(typed);
+  refreshAfterProfileChange().finally(() => {
+    committingNewProfile = false;
+  });
+}
+
+function commitProfileName() {
+  const input = document.querySelector('.profile-name-input');
+  if (!input) return;
+  const id = getActiveProfileId();
+  const current = listProfiles().find((p) => p.id === id);
+  if (!current) return;
+  const typed = input.value.trim();
+  const display = formatProfileName(current.name, t);
+  if (!typed || typed === display || typed === current.name) {
+    input.value = display;
+    return;
+  }
+  renameProfile(id, typed);
+  const updated = listProfiles().find((p) => p.id === id);
+  input.value = formatProfileName(updated?.name || typed, t);
+  fillProfilePanel();
+}
+
+function profileFileSlug(name) {
+  const slug = String(name || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[^\p{L}\p{N}-]+/gu, '')
+    .replace(/^-+|-+$/g, '');
+  return slug || 'profil';
+}
+
+function downloadProfileSnapshot() {
+  const snapshot = snapshotActiveProfile();
+  const blob = new Blob([JSON.stringify(snapshot)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `prawko-${profileFileSlug(snapshot.profile.name)}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function finishProfileImport(parsed, overwrite) {
+  const result = importProfileSnapshot(parsed, { overwrite });
+  if (!result.ok) {
+    window.alert(t(result.reason === 'limit' ? 'profileLimit' : 'profileImportBad'));
+    return;
+  }
+  refreshAfterProfileChange();
+}
+
+async function importProfileFile(file) {
+  if (!file) return;
+  let parsed;
+  try {
+    parsed = JSON.parse(await file.text());
+  } catch {
+    window.alert(t('profileImportBad'));
+    return;
+  }
+  const result = importProfileSnapshot(parsed);
+  if (!result.ok && result.reason === 'exists') {
+    const name = formatProfileName(result.name, t);
+    showConfirmModal(
+      t('profileImportOverwriteTitle'),
+      t('profileImportOverwriteDesc').replace('{name}', name),
+      () => finishProfileImport(parsed, true),
+      {
+        confirmLabel: t('profileImportOverwriteYes'),
+        cancelLabel: t('profileImportOverwriteNo'),
+        dismiss: true,
+        onCancel: () => finishProfileImport(parsed, false),
+      }
+    );
+    return;
+  }
+  if (!result.ok) {
+    window.alert(t(result.reason === 'limit' ? 'profileLimit' : 'profileImportBad'));
+    return;
+  }
+  refreshAfterProfileChange();
 }
 
 function setProfilePanelOpen(open) {
   const toggle = document.querySelector('.profile-toggle');
   const panel = document.getElementById('profile-panel');
   if (!toggle || !panel) return;
+  profileListOpen = false;
   panel.hidden = !open;
   toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
   fillProfilePanel();
 }
 
-function refreshAfterProfileChange() {
+async function applyActiveProfileChrome() {
+  const lang = readStoredLang() || getLang();
+  const changed = lang !== getLang();
+  setLang(lang);
+  updateLanguageButtons(lang);
+  if (changed) {
+    applyLanguage();
+    paintHomeTagline();
+    fillProfilePanel();
+    syncCategoriesProgressLink();
+    applyCategoryUiTranslations();
+    await loadQuestionTranslations(lang);
+  }
+  const themeBtn = document.querySelector('.theme-btn');
+  applyTheme(getInitialTheme(), themeBtn?.querySelector('.theme-icon'), themeBtn);
+  applyExamSkin(getInitialExamSkin());
+}
+
+async function refreshAfterProfileChange() {
+  await applyActiveProfileChrome();
   const hash = window.location.hash.slice(1) || 'home';
   if (hash === 'quiz' || hash === 'results') {
     pendingCategory = null;
     cleanupLearn();
     cleanupExam();
     fillProfilePanel();
-    setProfilePanelOpen(false);
     navigate('categories');
     return;
   }
   fillProfilePanel();
-  setProfilePanelOpen(false);
   if (hash === 'categories' && meta) {
     renderCategories(meta, getDownloadedCategories());
     syncCategoryCardVisibility();
@@ -500,39 +714,60 @@ function setupProfileSwitcher() {
     toggle.focus();
   });
 
-  panel.querySelector('.profile-list')?.addEventListener('click', (e) => {
+  panel.querySelector('.profile-current')?.addEventListener('click', (e) => {
+    if (e.target.closest('button, .profile-list')) return;
+    const input = panel.querySelector('.profile-name-input');
+    if (input && document.activeElement !== input) input.focus();
+  });
+
+  const nameInput = panel.querySelector('.profile-name-input');
+  nameInput?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      nameInput.blur();
+    } else if (e.key === 'Escape') {
+      const current = listProfiles().find((p) => p.id === getActiveProfileId());
+      nameInput.value = formatProfileName(current?.name || '', t);
+      nameInput.blur();
+    }
+  });
+  nameInput?.addEventListener('blur', () => {
+    commitProfileName();
+  });
+
+  panel.querySelector('.profile-list-toggle')?.addEventListener('click', () => {
+    setProfileListOpen(!profileListOpen);
+  });
+
+  const profileList = panel.querySelector('.profile-list');
+  profileList?.addEventListener('click', (e) => {
     const btn = e.target.closest('.profile-list-btn');
     if (!btn?.dataset.id) return;
     if (btn.dataset.id === getActiveProfileId()) return;
     setActiveProfile(btn.dataset.id);
     refreshAfterProfileChange();
   });
-
-  panel.querySelector('.profile-action-rename')?.addEventListener('click', () => {
-    setProfilePanelOpen(false);
-    const current = listProfiles().find((p) => p.id === getActiveProfileId());
-    const name = window.prompt(t('profileRenamePrompt'), formatProfileName(current?.name || '', t));
-    if (!name || !String(name).trim()) return;
-    if (renameProfile(getActiveProfileId(), name)) fillProfilePanel();
-  });
-
-  panel.querySelector('.profile-action-new')?.addEventListener('click', () => {
-    setProfilePanelOpen(false);
-    if (listProfiles().length >= PROFILE_LIMIT) {
-      window.alert(t('profileLimit'));
-      return;
+  profileList?.addEventListener('keydown', (e) => {
+    const input = e.target.closest?.('.profile-list-new');
+    if (!input) return;
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      input.blur();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      input.value = '';
+      input.blur();
     }
-    const name = window.prompt(t('profileNamePrompt'), t('profileDefaultNew'));
-    if (!name || !String(name).trim()) return;
-    createProfile(name);
-    refreshAfterProfileChange();
+  });
+  profileList?.addEventListener('focusout', (e) => {
+    if (!e.target.classList?.contains('profile-list-new')) return;
+    commitNewProfile();
   });
 
   panel.querySelector('.profile-action-delete')?.addEventListener('click', () => {
     const profiles = listProfiles();
     const current = profiles.find((p) => p.id === getActiveProfileId());
     const isLast = profiles.length <= 1;
-    setProfilePanelOpen(false);
     showConfirmModal(
       t(isLast ? 'profileResetTitle' : 'profileDeleteTitle'),
       isLast
@@ -545,20 +780,27 @@ function setupProfileSwitcher() {
       {
         confirmLabel: t(isLast ? 'profileResetConfirm' : 'profileDeleteConfirm'),
         cancelLabel: t('profileDeleteCancel'),
+        dismiss: true,
       }
     );
   });
 
-  panel.querySelector('.profile-stat-exams')?.addEventListener('click', () => {
-    setProfilePanelOpen(false);
-  });
-
-  panel.querySelector('.profile-stat-learn')?.addEventListener('click', () => {
-    setProfilePanelOpen(false);
-  });
-
   panel.querySelector('.profile-practice-exam')?.addEventListener('change', (e) => {
     setPracticeExamEnabled(Boolean(e.target.checked));
+  });
+
+  const importInput = panel.querySelector('.profile-import-file');
+  panel.addEventListener('click', (e) => {
+    if (e.target.closest('.profile-action-export')) {
+      downloadProfileSnapshot();
+      return;
+    }
+    if (e.target.closest('.profile-action-import')) importInput?.click();
+  });
+  importInput?.addEventListener('change', () => {
+    const file = importInput.files && importInput.files[0];
+    importInput.value = '';
+    importProfileFile(file);
   });
 
   document.addEventListener('pointerdown', (e) => {
@@ -792,23 +1034,24 @@ async function init() {
   const themeBtn = document.querySelector('.theme-btn');
   const themeIcon = themeBtn?.querySelector('.theme-icon');
   applyTheme(getInitialTheme(), themeIcon, themeBtn);
+  watchSystemTheme();
   applyExamSkin(getInitialExamSkin());
   setupProfileSwitcher();
   themeBtn?.addEventListener('click', () => {
-    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-    const nextTheme = isDark ? 'light' : 'dark';
+    const nextTheme = nextThemeChoice(getInitialTheme());
     applyTheme(nextTheme, themeIcon, themeBtn);
-    try { localStorage.setItem('prawko_theme', nextTheme); } catch {}
+    try { profileSet('prawko_theme', nextTheme); } catch {}
   });
   document.querySelector('.skin-btn')?.addEventListener('click', () => {
     const current = normalizeExamSkin(document.documentElement.getAttribute('data-exam-skin'));
     const next = current === 'panel' ? 'station' : 'panel';
     applyExamSkin(next);
-    try { localStorage.setItem(EXAM_SKIN_KEY, next); } catch {}
+    try { profileSet(EXAM_SKIN_KEY, next); } catch {}
   });
 
   // Language toggle
   const savedLang = getLang();
+  setLang(savedLang);
   updateLanguageButtons(savedLang);
   if (savedLang !== 'pl') {
     setLang(savedLang);
@@ -827,6 +1070,7 @@ async function init() {
     paintHomeTagline();
     refitUiScale();
     fillProfilePanel();
+    applyTheme(getInitialTheme(), themeIcon, themeBtn);
     applyExamSkin(document.documentElement.getAttribute('data-exam-skin'));
     syncCategoriesProgressLink();
     renderCategories(meta, getDownloadedCategories());

@@ -4,13 +4,12 @@ import { t, getLang, translateQuestion } from './i18n.js';
 import { getCategoryStats, getLearnProgress, loadHistory, getLearnTouchedCategories, getLearnCategoryBreakdown, getLearnUniqueFilterCounts } from './stats.js';
 import { getMediaUrls, fetchCategory, usesLocalMedia } from './data.js';
 import { getCategoryMediaAccess, getCategoriesOfflineCoverage, getDownloadedCategories, getActiveDownloadProgress, isAppOnline, offlineCoverageHue, resolvePlayableMediaUrl, captureViewedMedia } from './offline.js';
-import { refitUiScale, layoutCategoryGrid, syncExamMediaAlign, alignAndFitExamDock, fitAfterShowScreen } from './scale.js';
+import { refitUiScale, layoutCategoryGrid, syncExamMediaAlign, alignAndFitExamDock, fitAfterShowScreen, shouldHoldScreenChange } from './scale.js';
 import { prepareAnswerFit, prepareDockFit } from './fit-text.js';
 
 export function showScreen(id) {
   const prev = document.querySelector('.screen.active')?.id;
-  const swap = (prev === 'home' && id === 'categories')
-    || (prev === 'categories' && id === 'home');
+  const swap = shouldHoldScreenChange(prev, id);
   if (swap) document.documentElement.setAttribute('data-ui-hold', '1');
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   const screen = document.getElementById(id);
@@ -19,6 +18,7 @@ export function showScreen(id) {
 }
 
 let _modalOnConfirm = null;
+let _modalOnCancel = null;
 let _categorySearchUiInitialized = false;
 let _quizModeUiInitialized = false;
 
@@ -135,6 +135,8 @@ export function showConfirmModal(title, description, onConfirm, options = {}) {
     if (options.cancelVariant === 'word-yellow') cancelBtn.classList.add('btn-word-yellow');
     else cancelBtn.classList.add('btn-secondary');
   }
+  const dismissBtn = modal.querySelector('.modal-dismiss');
+  if (dismissBtn) dismissBtn.hidden = !options.dismiss;
   modal.classList.toggle('exam-handoff', Boolean(options.handoff));
   modal.classList.toggle('exam-end', Boolean(options.wordEnd));
   restoreModalButtonOrder();
@@ -143,6 +145,7 @@ export function showConfirmModal(title, description, onConfirm, options = {}) {
   }
 
   _modalOnConfirm = onConfirm;
+  _modalOnCancel = options.onCancel || null;
   modal.classList.add('active');
   const focusBtn = options.wordEnd
     ? cancelBtn
@@ -164,9 +167,17 @@ export function confirmModalAction() {
   if (cb) cb();
 }
 
+export function cancelModalAction() {
+  const cb = _modalOnCancel;
+  hideModal();
+  if (cb) cb();
+}
+
 export function hideModal() {
   const modal = document.getElementById('confirm-modal');
   modal.classList.remove('active', 'exam-handoff', 'exam-end');
+  const dismissBtn = modal.querySelector('.modal-dismiss');
+  if (dismissBtn) dismissBtn.hidden = true;
   const descEl = document.getElementById('modal-desc');
   if (descEl) descEl.hidden = false;
   const confirmBtn = document.querySelector('.btn-confirm-end');
@@ -182,6 +193,7 @@ export function hideModal() {
   }
   restoreModalButtonOrder();
   _modalOnConfirm = null;
+  _modalOnCancel = null;
 }
 
 function applyCategoryAccess(card, access) {
