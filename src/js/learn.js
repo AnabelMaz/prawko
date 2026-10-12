@@ -8,6 +8,7 @@ import { renderQuestion, highlightAnswer, markSelectedAnswer, showLearnMediaMark
 import {
   saveLearnAnswer,
   getLearnKnownCount,
+  getLearnAnswerForQuestion,
   getLearnQuestionStatus,
   isLearnQuestionHard,
 } from './stats.js';
@@ -550,6 +551,13 @@ function applyLearnAnswerFeedback(q, answer) {
   highlightAnswer(answersDiv, answer, q.correct);
 }
 
+function hasGivenLearnAnswer(q) {
+  if (!state || !q) return false;
+  if (state.sessionAnswers.has(q.id)) return true;
+  const saved = getLearnAnswerForQuestion(state.category, q.id);
+  return typeof saved === 'string' && saved !== '';
+}
+
 function learnRenderOptions(q) {
   const sessionAnswer = state?.sessionAnswers?.get(q.id);
   return {
@@ -557,6 +565,7 @@ function learnRenderOptions(q) {
     learnMediaMark: sessionAnswer !== undefined
       ? { isCorrect: sessionAnswer === q.correct }
       : null,
+    holdVideoEnd: q.mediaType === 'video' && hasGivenLearnAnswer(q),
   };
 }
 

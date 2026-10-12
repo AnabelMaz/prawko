@@ -148,9 +148,87 @@ test.describe('Video autoplay', () => {
         return resp.text();
       });
       expect(uiSource).toContain('video.muted = true');
-      expect(uiSource).toContain('video.autoplay = true');
+      expect(uiSource).toContain('video.autoplay = !holdEnd');
       expect(uiSource).toContain("video.preload = 'auto'");
     }
+  });
+
+  test('returning to an answered video shows the last frame and does not play', async ({ page }) => {
+    await stubLearnVideoFiles(page);
+    await startLearnMode(page, {
+      localJson: { mediaBase: 'cdn', learnQuestionJump: true },
+    });
+    await setLearnQueue(page, 'filter', 'all');
+    await setLearnQueue(page, 'order', 'sequential');
+    const pos = await page.evaluate(async () => {
+      const data = await fetch('data/B.json').then((res) => res.json());
+      const i = data.questions.findIndex((q) => q.mediaType === 'video');
+      return i >= 0 ? i + 1 : 0;
+    });
+    expect(pos).toBeGreaterThan(0);
+    const input = page.locator('.learn-qnum-input');
+    await input.fill(String(pos));
+    await input.press('Enter');
+    const video = page.locator('#quiz .media-area video');
+    await expect(video).toHaveCount(1);
+    await expect(video).toHaveJSProperty('autoplay', true);
+    const qid = await page.locator('.question-card').getAttribute('data-question-id');
+
+    await page.locator('.btn-next').click();
+    await expect(input).not.toHaveValue(String(pos));
+    await page.locator('.btn-prev').click();
+    await expect(input).toHaveValue(String(pos));
+    await expect(video).toHaveJSProperty('autoplay', true);
+
+    await page.locator('.answers .answer-btn').first().click();
+    await page.locator('.btn-next').click();
+    await expect(input).not.toHaveValue(String(pos));
+
+    await page.evaluate((id) => {
+      window.__learnFrames = [];
+      const sample = () => {
+        const card = document.querySelector('.question-card');
+        if (card?.dataset.questionId !== id) return;
+        const el = document.querySelector('#quiz .media-area video');
+        if (!el) return;
+        window.__learnFrames.push({
+          t: el.currentTime,
+          dur: el.duration,
+          opacity: Number(getComputedStyle(el).opacity),
+        });
+      };
+      window.__learnFrameTimer = setInterval(sample, 16);
+    }, qid);
+
+    await page.locator('.btn-prev').click();
+    await expect(input).toHaveValue(String(pos));
+    await page.waitForFunction(() => {
+      const el = document.querySelector('#quiz .media-area video');
+      if (!el || !Number.isFinite(el.duration) || el.duration <= 0) return false;
+      const opacity = Number(getComputedStyle(el).opacity);
+      return opacity > 0.9 && el.paused && el.currentTime >= el.duration - 0.05;
+    });
+    const snap = await video.evaluate((el) => ({
+      autoplay: el.autoplay,
+      paused: el.paused,
+      t: el.currentTime,
+      dur: el.duration,
+    }));
+    expect(snap.autoplay).toBe(false);
+    expect(snap.paused).toBe(true);
+    expect(snap.t).toBeGreaterThanOrEqual(snap.dur - 0.05);
+    await expect(page.locator('#quiz .media-replay-btn')).toBeVisible();
+
+    const earlyVisible = await page.evaluate(() => {
+      clearInterval(window.__learnFrameTimer);
+      return (window.__learnFrames || []).filter((frame) => (
+        frame.opacity > 0.9
+        && Number.isFinite(frame.dur)
+        && frame.dur > 0
+        && frame.t < frame.dur - 0.05
+      ));
+    });
+    expect(earlyVisible).toEqual([]);
   });
 });
 

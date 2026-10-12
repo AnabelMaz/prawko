@@ -361,6 +361,62 @@ export function renderCategories(meta, downloadedSet = new Set()) {
 }
 
 
+// Keep the element invisible until currentTime is on the last frame, so frame 0 never paints.
+function holdLearnVideoAtEnd(video, mediaArea, stillCurrent, onReady) {
+  mediaArea.classList.add('learn-video-hold');
+  let pinned = false;
+  let seekArmed = false;
+
+  const atEnd = () => {
+    const duration = video.duration;
+    if (!Number.isFinite(duration) || duration <= 0) return false;
+    const target = Math.max(0, duration - 0.001);
+    return video.currentTime >= target - 0.0005;
+  };
+
+  const show = () => {
+    if (pinned || !stillCurrent() || !atEnd()) return;
+    pinned = true;
+    video.pause();
+    mediaArea.classList.remove('learn-video-hold', 'loading');
+    onReady();
+  };
+
+  const pin = () => {
+    if (pinned || !stillCurrent()) return;
+    const duration = video.duration;
+    if (!Number.isFinite(duration) || duration <= 0) return;
+    if (atEnd()) {
+      show();
+      return;
+    }
+    if (seekArmed) return;
+    seekArmed = true;
+    try {
+      video.currentTime = Math.max(0, duration - 0.001);
+    } catch {
+      seekArmed = false;
+    }
+  };
+
+  video.addEventListener('play', () => {
+    if (!pinned) video.pause();
+  });
+  video.addEventListener('loadedmetadata', pin);
+  video.addEventListener('loadeddata', pin);
+  video.addEventListener('durationchange', pin);
+  video.addEventListener('seeked', () => {
+    if (pinned || !stillCurrent()) return;
+    if (atEnd()) {
+      show();
+      return;
+    }
+    seekArmed = false;
+    pin();
+  });
+  video.addEventListener('ended', show);
+}
+
 function lockVideoChrome(video) {
   video.controls = false;
   video.playsInline = true;
@@ -396,7 +452,7 @@ export function renderQuestion(question, container, options = {}) {
   revokePlayableBlob();
   const mediaGen = ++mediaLoadGen;
   mediaArea.onclick = null;
-  mediaArea.classList.remove('has-media', 'loading', 'has-learn-video', 'exam-film-pending', 'media-empty');
+  mediaArea.classList.remove('has-media', 'loading', 'has-learn-video', 'learn-video-hold', 'exam-film-pending', 'media-empty');
   mediaArea.removeAttribute('aria-hidden');
   mediaArea.removeAttribute('role');
   mediaArea.removeAttribute('aria-label');
@@ -576,9 +632,12 @@ export function renderQuestion(question, container, options = {}) {
             video.src = mediaUrl;
             syncExamMediaAlign();
           } else {
+            const holdEnd = options.holdVideoEnd === true;
             video.muted = true;
-            video.autoplay = true;
-            video.onloadeddata = () => mediaArea.classList.remove('loading');
+            video.autoplay = !holdEnd;
+            video.onloadeddata = () => {
+              if (!holdEnd) mediaArea.classList.remove('loading');
+            };
 
             const replay = document.createElement('button');
             replay.type = 'button';
@@ -604,6 +663,7 @@ export function renderQuestion(question, container, options = {}) {
               e.preventDefault();
               e.stopPropagation();
               hideMarkForReplayPlay = true;
+              mediaArea.classList.remove('learn-video-hold', 'loading');
               video.currentTime = 0;
               video.muted = false;
               setReplayVisible(false);
@@ -622,6 +682,12 @@ export function renderQuestion(question, container, options = {}) {
             });
 
             mediaArea.classList.add('has-learn-video');
+            if (holdEnd) {
+              holdLearnVideoAtEnd(video, mediaArea, stillCurrent, () => {
+                setReplayVisible(true);
+                onLearnMediaSettled(learnMediaMark);
+              });
+            }
             mediaArea.append(video, replay);
             video.src = mediaUrl;
             onLearnMediaSettled(learnMediaMark);
