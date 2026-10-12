@@ -3201,7 +3201,7 @@ html[data-ui-mode="fit"] #categories.active .category-grid .category-card {
   height: 100%;
   max-width: 100%;
   max-height: 100%;
-  padding: clamp(6px, 8cqh, 14px) clamp(8px, 2cqw, 16px);
+  padding: 4% 5%;
   box-sizing: border-box;
   container-type: size;
   justify-content: flex-start;
@@ -3214,19 +3214,44 @@ html[data-ui-mode="fit"] #categories.active .category-grid .category-card:hover 
   transform: none;
 }
 
-html[data-ui-mode="fit"] #categories.active .category-letter {
-  font-size: clamp(0.85rem, 22cqh, 1.35rem);
-  padding: 1px 6px;
+html[data-ui-mode="fit"] #categories.active .category-grid .category-letter {
+  font-size: 13cqw;
+  line-height: 1.15;
+  padding: 0.15em 0.35em;
 }
 
-html[data-ui-mode="fit"] #categories.active .category-card .category-name {
-  font-size: clamp(0.72rem, 14cqh, 0.92rem);
-  margin-bottom: 2px;
-  line-height: 1.25;
+html[data-ui-mode="fit"] #categories.active .category-grid .category-card .category-name {
+  font-size: 8.4cqw;
+  margin-bottom: 0.15em;
+  line-height: 1.15;
+  white-space: nowrap;
+  max-width: 100%;
 }
 
-html[data-ui-mode="fit"] #categories.active .category-card .question-count {
-  font-size: clamp(0.65rem, 11cqh, 0.78rem);
+html[data-ui-mode="fit"] #categories.active .category-grid .category-card .question-count {
+  font-size: 7cqw;
+  line-height: 1.15;
+}
+
+html[data-ui-mode="fit"] #categories.active .category-grid .category-progress {
+  flex-wrap: nowrap;
+  width: 100%;
+  min-width: 0;
+  margin-top: 0.35em;
+  gap: 0.4em;
+}
+
+html[data-ui-mode="fit"] #categories.active .category-grid .progress-text {
+  font-size: 6.4cqw;
+}
+
+html[data-ui-mode="fit"] #categories.active .category-grid .offline-btn {
+  margin-top: 0.4em;
+  padding: 0.2em 0.45em;
+  font-size: 6.2cqw;
+  line-height: 1.15;
+  white-space: nowrap;
+  max-width: 100%;
 }
 
 html[data-ui-mode="fit"] #categories.active.categories-compact .mode-description,

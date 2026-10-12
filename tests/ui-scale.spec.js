@@ -185,12 +185,22 @@ async function categoryGridMetrics(page) {
       boxes: cards.map((c) => {
         const r = c.getBoundingClientRect();
         const name = c.querySelector('.category-name');
+        const offline = c.querySelector('.offline-btn');
+        const off = offline?.getBoundingClientRect();
         return {
           id: c.dataset.category,
           w: r.width,
           h: r.height,
           ratio: r.width / Math.max(1, r.height),
           nameLines: name ? name.getClientRects().length : 0,
+          nameFits: !name || name.scrollWidth <= name.clientWidth + 1,
+          offlineFits: !offline || (
+            offline.scrollWidth <= offline.clientWidth + 1
+            && off.top >= r.top - 1
+            && off.bottom <= r.bottom + 1
+            && off.left >= r.left - 1
+            && off.right <= r.right + 1
+          ),
         };
       }),
     };
@@ -212,6 +222,11 @@ function expectCategoryTiles(metrics, minPx) {
   expect(letters.length).toBe(metrics.n);
   for (const letter of letters) {
     expect(letter.visible).toBe(true);
+  }
+  for (const box of metrics.boxes) {
+    expect(box.nameLines, box.id).toBeLessThanOrEqual(1);
+    expect(box.nameFits, box.id).toBe(true);
+    expect(box.offlineFits, box.id).toBe(true);
   }
   expect(metrics.searchGap).toBeGreaterThanOrEqual(-1);
 }
