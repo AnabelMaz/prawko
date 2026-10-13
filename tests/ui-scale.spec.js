@@ -910,6 +910,7 @@ test('update and offline banners keep canvas proportions across viewports', asyn
       const scale = Number(getComputedStyle(document.documentElement).getPropertyValue('--ui-scale')) || 1;
       return {
         scale,
+        boost: Number(getComputedStyle(document.documentElement).getPropertyValue('--type-boost')) || 1,
         updateFont: parseFloat(getComputedStyle(update).fontSize),
         updatePad: parseFloat(getComputedStyle(update).paddingTop),
         btnFont: parseFloat(getComputedStyle(btn).fontSize),
@@ -920,10 +921,10 @@ test('update and offline banners keep canvas proportions across viewports', asyn
   const small = await sample({ width: 640, height: 450 });
   const large = await sample({ width: 1280, height: 900 });
   expect(small.scale).toBeLessThan(large.scale - 0.05);
-  expect(Math.abs(small.updateFont / small.scale - large.updateFont / large.scale)).toBeLessThan(1.2);
+  expect(Math.abs(small.updateFont / small.scale / small.boost - large.updateFont / large.scale / large.boost)).toBeLessThan(1.2);
   expect(Math.abs(small.updatePad / small.scale - large.updatePad / large.scale)).toBeLessThan(1.2);
-  expect(Math.abs(small.btnFont / small.scale - large.btnFont / large.scale)).toBeLessThan(1.2);
-  expect(Math.abs(small.offlineFont / small.scale - large.offlineFont / large.scale)).toBeLessThan(1.2);
+  expect(Math.abs(small.btnFont / small.scale / small.boost - large.btnFont / large.scale / large.boost)).toBeLessThan(1.2);
+  expect(Math.abs(small.offlineFont / small.scale / small.boost - large.offlineFont / large.scale / large.boost)).toBeLessThan(1.2);
 });
 
 test('offline banner is reserved above the scaled canvas', async ({ page }) => {
