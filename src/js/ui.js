@@ -648,7 +648,9 @@ export function renderQuestion(question, container, options = {}) {
             video.muted = true;
             video.autoplay = !holdEnd;
             video.onloadeddata = () => {
-              if (!holdEnd) mediaArea.classList.remove('loading');
+              if (!stillCurrent() || holdEnd) return;
+              mediaArea.classList.remove('loading');
+              onLearnMediaSettled(learnMediaMark);
             };
 
             const replay = document.createElement('button');
@@ -702,7 +704,10 @@ export function renderQuestion(question, container, options = {}) {
             }
             mediaArea.append(video, replay);
             video.src = mediaUrl;
-            onLearnMediaSettled(learnMediaMark);
+            if (!holdEnd && video.readyState >= 2) {
+              mediaArea.classList.remove('loading');
+              onLearnMediaSettled(learnMediaMark);
+            }
             syncExamMediaAlign();
           }
         })();
@@ -766,8 +771,8 @@ export function renderQuestion(question, container, options = {}) {
       mediaArea.setAttribute('aria-label', t('noMedia'));
       mediaArea.innerHTML = '<svg class="media-empty-icon" viewBox="0 0 96 72" aria-hidden="true"><rect x="16" y="24" width="52" height="36" rx="6" fill="none" stroke="currentColor" stroke-width="3"/><rect x="24" y="14" width="18" height="12" rx="3" fill="none" stroke="currentColor" stroke-width="3"/><circle cx="42" cy="42" r="10" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/></svg>';
     }
+    onLearnMediaSettled(learnMediaMark);
   }
-  onLearnMediaSettled(learnMediaMark);
 
   alignAndFitExamDock();
 }

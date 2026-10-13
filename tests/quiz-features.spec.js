@@ -355,6 +355,20 @@ test.describe('Learn video result mark', () => {
       await page.locator('.learn-qnum-input').press('Enter');
     };
 
+    const watchMarkDuringLoad = () => page.evaluate(() => {
+      window.__markDuringLoad = false;
+      const area = document.querySelector('#quiz .media-area');
+      const see = () => {
+        const badge = area.querySelector('.learn-media-mark');
+        if (area.classList.contains('loading') && badge && !badge.hidden) window.__markDuringLoad = true;
+      };
+      new MutationObserver(see).observe(area, {
+        attributes: true,
+        childList: true,
+        subtree: true,
+      });
+    });
+
     await jump(targets.emptyPos);
     await expect(page.locator('#quiz .media-area')).toHaveClass(/media-empty/);
     await page.locator('.answers .answer-btn').first().click();
@@ -369,9 +383,11 @@ test.describe('Learn video result mark', () => {
     await page.locator('.answers .answer-btn').first().click();
     await expect(mark).toBeVisible();
     await page.locator('.btn-next').click();
+    await watchMarkDuringLoad();
     await page.locator('.btn-prev').click();
     await expect(page.locator('#quiz .media-area img')).toHaveCount(1);
     await expect(mark).toBeVisible();
+    expect(await page.evaluate(() => window.__markDuringLoad)).toBe(false);
 
     await jump(targets.videoPos);
     await expect(page.locator('#quiz .media-area video')).toHaveCount(1);
@@ -382,9 +398,11 @@ test.describe('Learn video result mark', () => {
     });
     await expect(mark).toBeVisible();
     await page.locator('.btn-next').click();
+    await watchMarkDuringLoad();
     await page.locator('.btn-prev').click();
     await expect(page.locator('#quiz .media-area video')).toHaveCount(1);
     await expect(mark).toBeVisible();
+    expect(await page.evaluate(() => window.__markDuringLoad)).toBe(false);
     await page.locator('#quiz .media-area video').evaluate((video) => {
       video.dispatchEvent(new Event('play'));
     });
