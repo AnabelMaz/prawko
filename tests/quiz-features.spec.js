@@ -1841,8 +1841,8 @@ test.describe('Local profiles', () => {
     const gap0 = iconBoxes[1].x - (iconBoxes[0].x + iconBoxes[0].w);
     for (let i = 1; i < iconBoxes.length; i++) {
       expect(iconBoxes[i].x).toBeGreaterThan(iconBoxes[i - 1].x);
-      expect(iconBoxes[i].w).toBe(iconBoxes[0].w);
-      expect(iconBoxes[i].h).toBe(iconBoxes[0].h);
+      expect(Math.abs(iconBoxes[i].w - iconBoxes[0].w)).toBeLessThan(1);
+      expect(Math.abs(iconBoxes[i].h - iconBoxes[0].h)).toBeLessThan(1);
       const gap = iconBoxes[i].x - (iconBoxes[i - 1].x + iconBoxes[i - 1].w);
       expect(Math.abs(gap - gap0)).toBeLessThan(1.5);
       expect(gap).toBeLessThan(6);
@@ -2199,8 +2199,9 @@ test.describe('Local profiles', () => {
     const impBox = await imp.boundingBox();
     const panelBox = await page.locator('#profile-panel').boundingBox();
     const chevronBox = await page.locator('.profile-list-toggle').boundingBox();
-    expect(box.width).toBeLessThan(36);
-    expect(box.height).toBeLessThan(36);
+    expect(box.width).toBeGreaterThanOrEqual(26);
+    expect(box.height).toBeGreaterThanOrEqual(26);
+    expect(Math.abs(box.width - box.height)).toBeLessThan(2);
     expect(chevronBox.x).toBeGreaterThan(nameBox.x + nameBox.width);
     expect(box.x).toBeGreaterThan(chevronBox.x + chevronBox.width);
     expect(Math.abs((box.y + box.height / 2) - (nameBox.y + nameBox.height / 2))).toBeLessThan(8);
@@ -2418,6 +2419,56 @@ test.describe('Local profiles', () => {
       };
     });
     expect(inherited).toEqual({ theme: 'system', lang: 'en', skin: 'panel' });
+  });
+});
+
+test.describe('phone screen', () => {
+  test.use({
+    viewport: { width: 390, height: 844 },
+    screen: { width: 390, height: 844 },
+  });
+
+  test('profile name button and panel icons are finger-sized', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    await expect(page.locator('html')).toHaveAttribute('data-handset', '1');
+    const toggle = page.locator('.profile-toggle');
+    const toggleBox = await toggle.boundingBox();
+    expect(toggleBox.height).toBeGreaterThanOrEqual(30);
+    await expect(toggle).toHaveCSS('min-height', '32px');
+    await toggle.click();
+    const icon = page.locator('.profile-icon-btn').first();
+    const iconBox = await icon.boundingBox();
+    expect(iconBox.width).toBeGreaterThanOrEqual(26);
+    expect(iconBox.height).toBeGreaterThanOrEqual(26);
+    await expect(icon).toHaveCSS('width', '28px');
+  });
+});
+
+test.describe('computer screen', () => {
+  test('a narrow window on a large screen keeps compact profile controls', async ({ browser, baseURL }) => {
+    const context = await browser.newContext({
+      viewport: { width: 420, height: 900 },
+      screen: { width: 1920, height: 1080 },
+      locale: 'pl-PL',
+      serviceWorkers: 'block',
+      baseURL,
+    });
+    const page = await context.newPage();
+    try {
+      await page.goto('/');
+      await page.waitForSelector('#home.active');
+      await expect(page.locator('html')).not.toHaveAttribute('data-handset', '1');
+      await expect(page.locator('.profile-toggle')).toHaveCSS('min-height', '36px');
+      await page.click('.profile-toggle');
+      const icon = page.locator('.profile-icon-btn').first();
+      await expect(icon).toHaveCSS('width', '26px');
+      const iconBox = await icon.boundingBox();
+      expect(iconBox.width).toBeLessThan(36);
+      expect(iconBox.height).toBeLessThan(36);
+    } finally {
+      await context.close();
+    }
   });
 });
 

@@ -20,4 +20,7 @@
   root.setAttribute('data-ui-station', 'page');
   root.setAttribute('data-ui-fit', '1');
   root.setAttribute('data-ui-pending', '1');
+  // Screen, not the window. Phones are about 320–430 CSS px on the short side.
+  var shortSide = Math.min(screen.width || 0, screen.height || 0);
+  if (shortSide > 0 && shortSide <= 600) root.setAttribute('data-handset', '1');
 })();
