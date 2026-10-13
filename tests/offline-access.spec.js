@@ -547,7 +547,7 @@ test.describe('Category media access', () => {
         return origOpen(name);
       };
     });
-    await page.route('**/data/B.json', async (route) => {
+    await page.route('**/data/B.json*', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',

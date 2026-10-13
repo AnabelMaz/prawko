@@ -1304,7 +1304,7 @@ test.describe('Learn catalog jump', () => {
 
   test('panel question is fitted on the first learn frame', async ({ page }) => {
     await page.setViewportSize({ width: 874, height: 580 });
-    await page.route('**/data/B.json', async (route) => {
+    await page.route('**/data/B.json*', async (route) => {
       const res = await route.fetch();
       const data = await res.json();
       const [facts, polish] = await Promise.all([
@@ -2213,6 +2213,9 @@ test.describe('Local profiles', () => {
     const exp = page.locator('.profile-action-export');
     const imp = page.locator('.profile-action-import');
     await expect(page.locator('#profile-panel-title')).toHaveText('Profil');
+    const csp = await page.locator('meta[http-equiv="Content-Security-Policy"]').getAttribute('content');
+    expect(csp).toContain("default-src 'self' blob:");
+    expect(csp).toContain("script-src 'self'");
     await expect(exp).toBeVisible();
     await expect(imp).toBeVisible();
     await expect(exp).toHaveText('');

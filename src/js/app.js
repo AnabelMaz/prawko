@@ -646,7 +646,9 @@ async function downloadProfileSnapshot() {
   document.body.appendChild(link);
   link.click();
   link.remove();
-  URL.revokeObjectURL(url);
+  // Chrome reads the blob after this click returns. Revoking in the same
+  // turn leaves the download pointed at a dead blob: URL.
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 
 function finishProfileImport(parsed, overwrite) {
