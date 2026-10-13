@@ -80,7 +80,7 @@
           <button type="button" class="profile-panel-close" data-i18n-aria="profileClose" aria-label="Zamknij">&times;</button>
         </div>
         <div class="profile-current">
-          <input class="profile-name-input" type="text" maxlength="20" value="Ja" aria-label="Ja">
+          <input id="profile-name" name="profile-name" class="profile-name-input" type="text" maxlength="20" value="Ja" autocomplete="off" aria-label="Ja">
           <button type="button" class="profile-icon-btn profile-list-toggle" data-i18n-aria="profileList" aria-label="Lista profili" aria-expanded="false">
             <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
@@ -100,11 +100,11 @@
           <button class="skin-btn" type="button" aria-pressed="true" data-i18n-aria="examSkinToggle" aria-label="Skórka">Panel</button>
           <button class="lang-btn lang-cycle active" type="button" data-lang="pl" data-i18n-aria="langToggle" aria-label="Język">PL</button>
         </div>
-        <input type="file" class="profile-import-file" accept="application/json,.json" hidden>
+        <input id="profile-import-file" name="profile-import-file" type="file" class="profile-import-file" accept="application/json,.json" hidden>
         <button type="button" class="profile-stat profile-stat-learn" data-navigate="learn-progress">Nauka: 0 umiem</button>
         <button type="button" class="profile-stat profile-stat-exams" data-navigate="history">Egzaminy: 0 (0 zdane)</button>
-        <label class="profile-pref">
-          <input type="checkbox" class="profile-practice-exam">
+        <label class="profile-pref" for="profile-practice-exam">
+          <input id="profile-practice-exam" name="profile-practice-exam" type="checkbox" class="profile-practice-exam">
           <span data-i18n="profilePracticeExam">Egzamin próbny (5 pytań)</span>
         </label>
       </div>
@@ -193,6 +193,7 @@
           <span class="category-search-icon" aria-hidden="true">&#128269;</span>
           <input
             id="category-search"
+            name="category-search"
             class="category-search-input"
             type="search"
             autocomplete="off"
@@ -313,7 +314,7 @@
                 <span data-i18n="examQuestionNumLine2">pytania</span>
               </span>
               <b class="word-meta-box learn-qnum">
-                <input class="learn-qnum-input" type="text" inputmode="numeric" enterkeyhint="go" autocomplete="off" spellcheck="false" readonly tabindex="-1" aria-label="Numer pytania">
+                <input id="learn-question-number" name="learn-question-number" class="learn-qnum-input" type="text" inputmode="numeric" enterkeyhint="go" autocomplete="off" spellcheck="false" readonly tabindex="-1" aria-label="Numer pytania">
                 <span class="learn-qnum-suffix"> / 1</span>
               </b>
             </span>

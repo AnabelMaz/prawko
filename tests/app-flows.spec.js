@@ -25,6 +25,19 @@ async function expectFilmPlayingOrAnswerClock(page) {
 }
 
 test.describe('App flows', () => {
+  test('every form field has an id or a name', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    await page.click('.profile-toggle');
+    await page.click('.profile-list-toggle');
+    const missing = await page.evaluate(() => (
+      [...document.querySelectorAll('input, select, textarea')]
+        .filter((el) => !el.id && !el.getAttribute('name'))
+        .map((el) => el.className || el.type)
+    ));
+    expect(missing).toEqual([]);
+  });
+
   test('exam starts with an unscored practice banner', async ({ page }) => {
     await enablePracticeExam(page);
     await startExamMode(page);

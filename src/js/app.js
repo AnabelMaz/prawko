@@ -509,6 +509,8 @@ function fillProfilePanel() {
     add.className = 'profile-list-add';
     const input = document.createElement('input');
     input.type = 'text';
+    input.id = 'profile-new-name';
+    input.name = 'profile-new-name';
     input.className = 'profile-list-new';
     input.maxLength = 20;
     input.autocomplete = 'off';
