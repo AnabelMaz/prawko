@@ -151,6 +151,16 @@ $utf8 = New-Object System.Text.UTF8Encoding $false
 $results = @()
 $totalRemoved = 0
 $totalOriginal = 0
+$facts = $null
+$polish = $null
+$factsPath = Join-Path $DataDir "questions.json"
+$plPath = Join-Path $DataDir "translations_pl.json"
+if (Test-Path -LiteralPath $factsPath) {
+    $facts = Get-Content -LiteralPath $factsPath -Raw -Encoding UTF8 | ConvertFrom-Json
+}
+if (Test-Path -LiteralPath $plPath) {
+    $polish = Get-Content -LiteralPath $plPath -Raw -Encoding UTF8 | ConvertFrom-Json
+}
 
 foreach ($cat in $Categories) {
     $path = Join-Path $DataDir "$cat.json"
@@ -158,7 +168,30 @@ foreach ($cat in $Categories) {
         throw "Missing $path"
     }
     $data = Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
-    $questions = @($data.questions)
+    if ($null -eq $data.PSObject.Properties['questionIds']) {
+        throw "$path has no questionIds"
+    }
+    $questions = New-Object System.Collections.Generic.List[object]
+    foreach ($id in $data.questionIds) {
+            $key = [string]$id
+            $qtext = ''
+            $media = $null
+            $type = $null
+            if ($polish) {
+                $tp = $polish.PSObject.Properties[$key]
+                if ($tp -and $tp.Value.PSObject.Properties['q'] -and $null -ne $tp.Value.q) {
+                    $qtext = [string]$tp.Value.q
+                }
+            }
+            if ($facts) {
+                $fp = $facts.PSObject.Properties[$key]
+                if ($fp) {
+                    if ($fp.Value.PSObject.Properties['media']) { $media = $fp.Value.media }
+                    if ($fp.Value.PSObject.Properties['type'] -and $fp.Value.type) { $type = [string]$fp.Value.type }
+                }
+            }
+            $questions.Add([pscustomobject]@{ id = $id; q = $qtext; media = $media; type = $type })
+    }
     $kept = New-Object System.Collections.Generic.List[object]
     $removed = New-Object System.Collections.Generic.List[object]
     foreach ($q in $questions) {
@@ -195,7 +228,9 @@ foreach ($cat in $Categories) {
         }
     }
     if ($write -and $removed.Count -gt 0) {
-        $data.questions = $kept.ToArray()
+        $keptIds = New-Object System.Collections.Generic.List[object]
+        foreach ($item in $kept) { $keptIds.Add($item.id) }
+        $data.questionIds = $keptIds
         [IO.File]::WriteAllText($path, ((ConvertTo-PrawkoJson $data) + "`n"), $utf8)
     }
 }

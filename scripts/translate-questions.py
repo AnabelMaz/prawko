@@ -46,14 +46,6 @@ SRC_DATA = REPO_ROOT / "src" / "data"
 SKILL_PATH = Path(__file__).resolve().parent / "translate-questions.skill.md"
 GEMINI_ENV_NAME = ".geminienv"
 _skill_template: str | None = None
-SKIP_JSON = {
-    "meta.json",
-    "translations_en.json",
-    "translations_de.json",
-    "translations_ua.json",
-    "translations_uk.json",
-    "translations_pl.json",
-}
 GOOGLE_LANG = {"en": "en", "de": "de", "uk": "uk"}
 GEMINI_LANG = {
     "en": "English",
@@ -160,16 +152,37 @@ def sanitize_error(msg: str, key: str | None = None) -> str:
 
 def load_unique_questions(data_dir: Path | None = None) -> dict[str, dict]:
     root = data_dir or SRC_DATA
-    questions: dict[str, dict] = {}
-    for path in sorted(root.glob("*.json")):
-        if path.name in SKIP_JSON:
-            continue
-        data = json.loads(path.read_text(encoding="utf-8"))
-        for q in data.get("questions") or []:
-            qid = str(q.get("id", ""))
-            if qid and qid not in questions:
-                questions[qid] = q
-    return questions
+    pl_path = root / "translations_pl.json"
+    if pl_path.is_file():
+        polish = json.loads(pl_path.read_text(encoding="utf-8"))
+        facts = {}
+        facts_path = root / "questions.json"
+        if facts_path.is_file():
+            loaded = json.loads(facts_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                facts = loaded
+        questions: dict[str, dict] = {}
+        if not isinstance(polish, dict):
+            return questions
+        for qid, text in polish.items():
+            if not isinstance(text, dict):
+                continue
+            fact = facts.get(str(qid))
+            if not isinstance(fact, dict):
+                fact = {}
+            question = {
+                "id": int(qid) if str(qid).isdigit() else qid,
+                "q": text.get("q") or "",
+            }
+            for key in ("a", "b", "c"):
+                if text.get(key):
+                    question[key] = text[key]
+            for key in ("type", "correct", "points", "media", "mediaType"):
+                if fact.get(key) not in (None, ""):
+                    question[key] = fact[key]
+            questions[str(qid)] = question
+        return questions
+    raise SystemExit(f"Missing {pl_path}")
 
 
 def translation_path(lang: str, data_dir: Path | None = None) -> Path:

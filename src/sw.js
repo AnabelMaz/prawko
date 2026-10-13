@@ -27,6 +27,8 @@ const APP_SHELL = [
   './js/scale-boot.js',
   './js/fit-text.js',
   './data/meta.json',
+  './data/questions.json',
+  './data/translations_pl.json',
   './data/translations_en.json',
   './data/translations_de.json',
   './data/translations_uk.json',

@@ -41,6 +41,7 @@ SKIP_JSON = frozenset({
     "translations_ua.json",
     "translations_uk.json",
     "translations_pl.json",
+    "questions.json",
 })
 
 # Proxy MB when real files are missing (webp vs mp4 after convert-media).
@@ -141,14 +142,29 @@ class Block:
 def collect_where(data_dir: Path, categories: list[str]):
     where: dict[str, set[str]] = defaultdict(set)
     kinds: dict[str, str] = {}
+    facts = {}
+    facts_path = data_dir / "questions.json"
+    if facts_path.is_file():
+        loaded = json.loads(facts_path.read_text(encoding="utf-8"))
+        if isinstance(loaded, dict):
+            facts = loaded
     for cat in categories:
         path = data_dir / f"{cat}.json"
         if not path.is_file():
             continue
         obj = json.loads(path.read_text(encoding="utf-8"))
-        for name, mtype in iter_media(obj):
-            where[name].add(cat)
-            kinds[name] = file_kind(name, mtype if isinstance(mtype, str) else None)
+        ids = obj.get("questionIds") if isinstance(obj, dict) else None
+        if not isinstance(ids, list):
+            raise SystemExit(f"{path} has no questionIds")
+        if not facts:
+            raise SystemExit(f"Missing {facts_path}")
+        for qid in ids:
+            fact = facts.get(str(qid))
+            if not isinstance(fact, dict):
+                continue
+            for name, mtype in iter_media(fact):
+                where[name].add(cat)
+                kinds[name] = file_kind(name, mtype if isinstance(mtype, str) else None)
     frozen = {k: frozenset(v) for k, v in where.items()}
     return frozen, kinds
 
@@ -480,28 +496,14 @@ def self_test() -> None:
     """Tiny synthetic universe: kernel + merge + split + naming."""
     import tempfile
 
-    data = {
-        "A": {
-            "questions": [
-                {"media": "shared.webp", "mediaType": "image"},
-                {"media": "ab.webp", "mediaType": "image"},
-                {"media": "only-a.webp", "mediaType": "image"},
-            ]
-        },
-        "B": {
-            "questions": [
-                {"media": "shared.webp", "mediaType": "image"},
-                {"media": "ab.webp", "mediaType": "image"},
-                {"media": "only-b.webp", "mediaType": "image"},
-            ]
-        },
-        "C": {
-            "questions": [
-                {"media": "shared.webp", "mediaType": "image"},
-                {"media": "only-c.webp", "mediaType": "image"},
-            ]
-        },
+    facts = {
+        "1": {"media": "shared.webp", "mediaType": "image"},
+        "2": {"media": "ab.webp", "mediaType": "image"},
+        "3": {"media": "only-a.webp", "mediaType": "image"},
+        "4": {"media": "only-b.webp", "mediaType": "image"},
+        "5": {"media": "only-c.webp", "mediaType": "image"},
     }
+    cats = {"A": [1, 2, 3], "B": [1, 2, 4], "C": [1, 5]}
     with tempfile.TemporaryDirectory() as tmp:
         d = Path(tmp) / "data"
         d.mkdir()
@@ -509,8 +511,12 @@ def self_test() -> None:
             json.dumps({"categories": [{"id": "A"}, {"id": "B"}, {"id": "C"}]}),
             encoding="utf-8",
         )
-        for cat, obj in data.items():
-            (d / f"{cat}.json").write_text(json.dumps(obj), encoding="utf-8")
+        (d / "questions.json").write_text(json.dumps(facts), encoding="utf-8")
+        for cat, ids in cats.items():
+            (d / f"{cat}.json").write_text(
+                json.dumps({"category": cat, "questionIds": ids}),
+                encoding="utf-8",
+            )
         out = Path(tmp) / "out"
         man = build(
             data_dir=d,
@@ -530,7 +536,7 @@ def self_test() -> None:
             names = []
             for pid in packs:
                 names.extend((out / f"{pid}.txt").read_text(encoding="utf-8").split())
-            needed = {q["media"] for q in data[cat]["questions"]}
+            needed = {facts[str(qid)]["media"] for qid in cats[cat]}
             assert needed <= set(names), (cat, needed, names)
         print("self-test ok")
 

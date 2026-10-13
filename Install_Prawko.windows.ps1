@@ -110,8 +110,8 @@ SWITCHES
   -MergeGov         On a running server: appends from ministry Excel only the gaps.
                     No server = install with no switches first.
 
-  -Patch            Overlays code from the local checkout (-Dev, next to the script,
-                    ..\prawko-contrib, ..\contrib). Skips data\ and media\.
+  -Patch            Overlays code and question JSON from the local checkout (-Dev,
+                    next to the script, ..\prawko-contrib, ..\contrib). Skips media\.
                     Without contrib it overlays nothing — the server still has AnabelMaz
                     from install. On an already running server: overlay only,
                     no admin, no git checkout, no service reinstall.
@@ -1100,8 +1100,8 @@ function Publish-AppSrcOverlay {
     if (-not (Test-Path -LiteralPath $dstIndex)) {
         throw "Server is not installed (missing $dstIndex). Run Install_Prawko.windows.ps1 with no switches first (or with -Patch)."
     }
-    Write-Host "-> Overlaying $srcApp -> $dstApp (skipping data\ and media\)" -ForegroundColor Cyan
-    Invoke-SafeRobocopy -Quiet -Source $srcApp -Destination $dstApp -ArgumentList @("/E", "/XD", "data", "media", "/R:2", "/W:1", "/NFL", "/NDL", "/NJH", "/NJS", "/nc", "/ns", "/np")
+    Write-Host "-> Overlaying $srcApp -> $dstApp (question JSON included, skipping media\)" -ForegroundColor Cyan
+    Invoke-SafeRobocopy -Quiet -Source $srcApp -Destination $dstApp -ArgumentList @("/E", "/XD", "media", "/R:2", "/W:1", "/NFL", "/NDL", "/NJH", "/NJS", "/nc", "/ns", "/np")
     $trDstDir = Join-Path $dstApp "data"
     if (Test-Path -LiteralPath $trDstDir) {
         $trEnSrc = Join-Path $srcApp "data\translations_en.json"
@@ -2725,8 +2725,8 @@ function Publish-GovQuestions {
     Assert-GovDataParsed -govDir $serverData -excelPath $excelPath
     Set-ServerCacheVersion -Root $targetDir -Prefix "prawko-govq"
     Remove-LegacyServerRawMediaDir
-    Write-Host "Done. Server reads JSON from the ministry. -Patch will not undo this (it skips data\)." -ForegroundColor Green
-    Write-Host "Originals remain in contrib\src\data. Videos from CDN." -ForegroundColor Gray
+    Write-Host "Done. Server question JSON was parsed from the ministry Excel." -ForegroundColor Green
+    Write-Host "contrib\src\data was not changed. The next -Patch copies question JSON from contrib over this server and leaves media\." -ForegroundColor Gray
 }
 
 function Publish-GovInstall {

@@ -46,7 +46,7 @@ Add-Type -AssemblyName System.Web.Extensions
 Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 
-$script:SkipJson = @("meta.json", "translations_en.json", "translations_de.json", "translations_ua.json", "translations_uk.json", "translations_pl.json")
+$script:SkipJson = @("meta.json", "questions.json", "translations_en.json", "translations_de.json", "translations_ua.json", "translations_uk.json", "translations_pl.json")
 $script:RepoRoot = Split-Path -Parent $PSScriptRoot
 
 function Get-DefaultMediaDir {
@@ -167,15 +167,24 @@ function Get-CategoryIds([string]$dataDir) {
 function Get-WhereMap([string]$dataDir, [string[]]$categories) {
     $where = @{}
     $kinds = @{}
+    $facts = $null
+    $factsPath = Join-Path $dataDir "questions.json"
+    if (Test-Path -LiteralPath $factsPath) { $facts = Read-JsonObject $factsPath }
     foreach ($cat in $categories) {
         $path = Join-Path $dataDir "$cat.json"
         if (-not (Test-Path -LiteralPath $path)) { continue }
         $obj = Read-JsonObject $path
-        Walk-MediaNode $obj {
-            param($name, $mtype)
-            if (-not $where.ContainsKey($name)) { $where[$name] = New-Object System.Collections.Generic.HashSet[string] }
-            [void]$where[$name].Add($cat)
-            $kinds[$name] = Get-FileKind $name $mtype
+        if (-not (Test-MapKey $obj "questionIds")) { throw "$path has no questionIds" }
+        if (-not $facts) { throw "Missing $factsPath" }
+        foreach ($id in $obj["questionIds"]) {
+            $key = [string]$id
+            if (-not (Test-MapKey $facts $key)) { continue }
+            Walk-MediaNode $facts[$key] {
+                param($name, $mtype)
+                if (-not $where.ContainsKey($name)) { $where[$name] = New-Object System.Collections.Generic.HashSet[string] }
+                [void]$where[$name].Add($cat)
+                $kinds[$name] = Get-FileKind $name $mtype
+            }
         }
     }
     return @{ Where = $where; Kinds = $kinds }
@@ -578,9 +587,10 @@ function Invoke-SelfTest {
     New-Item -ItemType Directory -Path $data | Out-Null
     $meta = '{"categories":[{"id":"A"},{"id":"B"},{"id":"C"}]}'
     [IO.File]::WriteAllText((Join-Path $data "meta.json"), $meta)
-    [IO.File]::WriteAllText((Join-Path $data "A.json"), '{"questions":[{"media":"shared.webp","mediaType":"image"},{"media":"ab.webp","mediaType":"image"},{"media":"only-a.webp","mediaType":"image"}]}')
-    [IO.File]::WriteAllText((Join-Path $data "B.json"), '{"questions":[{"media":"shared.webp","mediaType":"image"},{"media":"ab.webp","mediaType":"image"},{"media":"only-b.webp","mediaType":"image"}]}')
-    [IO.File]::WriteAllText((Join-Path $data "C.json"), '{"questions":[{"media":"shared.webp","mediaType":"image"},{"media":"only-c.webp","mediaType":"image"}]}')
+    [IO.File]::WriteAllText((Join-Path $data "questions.json"), '{"1":{"media":"shared.webp","mediaType":"image"},"2":{"media":"ab.webp","mediaType":"image"},"3":{"media":"only-a.webp","mediaType":"image"},"4":{"media":"only-b.webp","mediaType":"image"},"5":{"media":"only-c.webp","mediaType":"image"}}')
+    [IO.File]::WriteAllText((Join-Path $data "A.json"), '{"category":"A","questionIds":[1,2,3]}')
+    [IO.File]::WriteAllText((Join-Path $data "B.json"), '{"category":"B","questionIds":[1,2,4]}')
+    [IO.File]::WriteAllText((Join-Path $data "C.json"), '{"category":"C","questionIds":[1,5]}')
     $man = Build-MediaPacks -DataDir $data -MediaDir $null -OutDir $out -Margin 20 -Jaccard 0.45 -PartFiles 1000 -Tiny 2 -MakeZip $false -MaxZipBytes 0
     if ($man.schema -ne 1) { throw "self-test: schema" }
     foreach ($cat in @("A", "B", "C")) {

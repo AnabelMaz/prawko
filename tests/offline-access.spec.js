@@ -262,11 +262,11 @@ test.describe('Category media access', () => {
     await page.goto('/');
     await page.waitForSelector('#home.active');
     const result = await page.evaluate(async () => {
-      const { getMediaUrls } = await import(new URL('./js/data.js', location.href).href);
+      const { getMediaUrls, fetchCategory } = await import(new URL('./js/data.js', location.href).href);
       const { getCategoriesOfflineCoverage } = await import(new URL('./js/offline.js', location.href).href);
       const [bankB, bankA] = await Promise.all([
-        fetch('data/B.json').then((res) => res.json()),
-        fetch('data/A.json').then((res) => res.json()),
+        fetchCategory('B'),
+        fetchCategory('A'),
       ]);
       const bMedia = new Map();
       for (const q of bankB.questions || []) {
@@ -342,9 +342,9 @@ test.describe('Category media access', () => {
     await page.goto('/');
     await page.waitForSelector('#home.active');
     const result = await page.evaluate(async () => {
-      const { getMediaUrls } = await import(new URL('./js/data.js', location.href).href);
+      const { getMediaUrls, fetchCategory } = await import(new URL('./js/data.js', location.href).href);
       const { downloadCategoryMediaFromFiles } = await import(new URL('./js/offline.js', location.href).href);
-      const bank = await fetch('data/PT.json').then((res) => res.json());
+      const bank = await fetchCategory('PT');
       const cache = await caches.open('prawko-offline-media-v1');
       const seen = new Set();
       for (const q of bank.questions || []) {
@@ -551,18 +551,31 @@ test.describe('Category media access', () => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({
-          category: 'B',
-          questions: [{
-            id: 801,
-            q: 'Offline IDB playback',
-            type: 'basic',
-            correct: 'T',
-            points: 3,
-            media: 'offline-idb.png',
-            mediaType: 'image',
-          }],
-        }),
+        body: JSON.stringify({ category: 'B', questionIds: [801] }),
+      });
+    });
+    await page.route('**/data/questions.json', async (route) => {
+      const facts = await (await route.fetch()).json();
+      facts['801'] = {
+        type: 'basic',
+        correct: 'T',
+        points: 3,
+        media: 'offline-idb.png',
+        mediaType: 'image',
+      };
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(facts),
+      });
+    });
+    await page.route('**/data/translations_pl.json', async (route) => {
+      const polish = await (await route.fetch()).json();
+      polish['801'] = { q: 'Offline IDB playback', src: 'excel' };
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(polish),
       });
     });
     await page.route('**/media/**', async (route) => {

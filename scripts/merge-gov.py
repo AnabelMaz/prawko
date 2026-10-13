@@ -48,6 +48,66 @@ def write_json(path: Path, data) -> None:
     path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
+def field(question: dict, name: str) -> str:
+    value = question.get(name)
+    return "" if value is None else str(value)
+
+
+def load_category_questions(path: Path) -> list[dict]:
+    data = read_json(path)
+    ids = data.get("questionIds")
+    if not isinstance(ids, list):
+        die(f"{path} has no questionIds")
+    root = path.parent
+    facts = read_json(root / "questions.json") if (root / "questions.json").is_file() else {}
+    polish = read_json(root / "translations_pl.json") if (root / "translations_pl.json").is_file() else {}
+    if not isinstance(facts, dict):
+        facts = {}
+    if not isinstance(polish, dict):
+        polish = {}
+    loaded = []
+    for qid in ids:
+        key = str(qid)
+        fact = facts.get(key) if isinstance(facts.get(key), dict) else {}
+        text = polish.get(key) if isinstance(polish.get(key), dict) else {}
+        item = {
+            "id": qid,
+            "q": text.get("q") or "",
+            "type": fact.get("type"),
+            "correct": fact.get("correct"),
+            "points": fact.get("points"),
+            "media": fact.get("media"),
+            "mediaType": fact.get("mediaType"),
+        }
+        if text.get("a") or text.get("b") or text.get("c"):
+            item["a"] = text.get("a") or ""
+            item["b"] = text.get("b") or ""
+            item["c"] = text.get("c") or ""
+        loaded.append(item)
+    return loaded
+
+
+def stored_fact(question: dict) -> dict:
+    fact = {
+        "type": question.get("type"),
+        "correct": question.get("correct"),
+        "points": question.get("points"),
+    }
+    if question.get("media"):
+        fact["media"] = question.get("media")
+        fact["mediaType"] = question.get("mediaType")
+    return fact
+
+
+def stored_polish(question: dict) -> dict:
+    text = {"q": field(question, "q"), "src": "excel"}
+    if question.get("a") or question.get("b") or question.get("c"):
+        text["a"] = field(question, "a")
+        text["b"] = field(question, "b")
+        text["c"] = field(question, "c")
+    return text
+
+
 def text_key(text) -> str:
     return re.sub(r"\s+", " ", str(text or "").strip()).lower()
 
@@ -212,6 +272,8 @@ def main() -> None:
 
     added_total = 0
     meta_categories = []
+    fact_map = {}
+    polish_map = {}
     gov_dir = Path(args.gov_dir)
     out_dir = Path(args.out_dir)
 
@@ -222,12 +284,11 @@ def main() -> None:
             die(f"Missing {src} — run parse-excel first.")
         if not dest.is_file():
             die(f"Missing {dest} — merge needs the repo question bank.")
-        incoming = read_json(src).get("questions") or []
-        data = read_json(dest)
+        incoming = load_category_questions(src)
         existing_ids = set()
         by_text = {}
         lst = []
-        for q in data.get("questions") or []:
+        for q in load_category_questions(dest):
             existing_ids.add(str(q.get("id", "")).strip())
             tk = text_key(q.get("q"))
             if tk:
@@ -256,7 +317,15 @@ def main() -> None:
             lst.append(to_add)
             added += 1
 
-        write_json(dest, {"category": cat, "questions": lst})
+        ids = []
+        for question in lst:
+            ids.append(question.get("id"))
+            key = str(question.get("id", "")).strip()
+            if not key or key in fact_map:
+                continue
+            fact_map[key] = stored_fact(question)
+            polish_map[key] = stored_polish(question)
+        write_json(dest, {"category": cat, "questionIds": ids})
         basic = sum(1 for q in lst if q.get("type") == "basic")
         specialist = sum(1 for q in lst if q.get("type") == "specialist")
         meta_categories.append({
@@ -276,6 +345,15 @@ def main() -> None:
             skip_bits.append(f"new id (number taken): {id_rewritten}")
         skip_note = f", skipped {', '.join(skip_bits)}" if skip_bits else ""
         print(f"  {cat:>3}: +{added:4} from ministry (total {len(lst)}{skip_note})")
+
+    (out_dir / "questions.json").write_text(
+        json.dumps(fact_map, ensure_ascii=False, separators=(",", ":")),
+        encoding="utf-8",
+    )
+    (out_dir / "translations_pl.json").write_text(
+        json.dumps(polish_map, ensure_ascii=False, separators=(",", ":")),
+        encoding="utf-8",
+    )
 
     meta_path = out_dir / "meta.json"
     exam = EXAM

@@ -246,6 +246,102 @@ function Convert-MergeMediaDirList ([string[]]$explicit) {
     return $dirs.ToArray()
 }
 
+function Get-MergeField ($question, [string]$name) {
+    $prop = $question.PSObject.Properties[$name]
+    if (-not $prop -or $null -eq $prop.Value) { return '' }
+    return [string]$prop.Value
+}
+
+function Read-MergeJson ([string]$path) {
+    if (-not $script:MergeJsonCache) { $script:MergeJsonCache = @{} }
+    if ($script:MergeJsonCache.ContainsKey($path)) { return $script:MergeJsonCache[$path] }
+    if (-not (Test-Path -LiteralPath $path)) { return $null }
+    $obj = Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
+    $script:MergeJsonCache[$path] = $obj
+    return $obj
+}
+
+function Import-MergeCategoryQuestions ([string]$path) {
+    $data = Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
+    $idsProp = $data.PSObject.Properties['questionIds']
+    if (-not $idsProp) { throw "$path has no questionIds" }
+    $root = Split-Path -Parent $path
+    $facts = Read-MergeJson (Join-Path $root 'questions.json')
+    $polish = Read-MergeJson (Join-Path $root 'translations_pl.json')
+    $list = New-Object System.Collections.Generic.List[object]
+    foreach ($id in $idsProp.Value) {
+        $key = [string]$id
+        $text = $null
+        $fact = $null
+        if ($polish) {
+            $tp = $polish.PSObject.Properties[$key]
+            if ($tp) { $text = $tp.Value }
+        }
+        if ($facts) {
+            $fp = $facts.PSObject.Properties[$key]
+            if ($fp) { $fact = $fp.Value }
+        }
+        $obj = [ordered]@{
+            id        = $id
+            q         = $(if ($text) { Get-MergeField $text 'q' } else { '' })
+            type      = $(if ($fact) { Get-MergeField $fact 'type' } else { '' })
+            correct   = $(if ($fact) { Get-MergeField $fact 'correct' } else { '' })
+            points    = $(if ($fact -and $fact.PSObject.Properties['points']) { $fact.points } else { $null })
+            media     = $null
+            mediaType = $null
+        }
+        if ($text) {
+            $a = Get-MergeField $text 'a'
+            $b = Get-MergeField $text 'b'
+            $c = Get-MergeField $text 'c'
+            if ($a -or $b -or $c) {
+                $obj['a'] = $a
+                $obj['b'] = $b
+                $obj['c'] = $c
+            }
+        }
+        if ($fact) {
+            $media = Get-MergeField $fact 'media'
+            if ($media) {
+                $obj.media = $media
+                $obj.mediaType = Get-MergeField $fact 'mediaType'
+            }
+        }
+        $list.Add([pscustomobject]$obj)
+    }
+    return $list.ToArray()
+}
+
+function ConvertTo-MergeFact ($question) {
+    $fact = [ordered]@{
+        type    = Get-MergeField $question 'type'
+        correct = Get-MergeField $question 'correct'
+        points  = $question.points
+    }
+    $media = Get-MergeField $question 'media'
+    if ($media) {
+        $fact['media'] = $media
+        $fact['mediaType'] = Get-MergeField $question 'mediaType'
+    }
+    return [pscustomobject]$fact
+}
+
+function ConvertTo-MergePolish ($question) {
+    $text = [ordered]@{
+        q   = Get-MergeField $question 'q'
+        src = 'excel'
+    }
+    $a = Get-MergeField $question 'a'
+    $b = Get-MergeField $question 'b'
+    $c = Get-MergeField $question 'c'
+    if ($a -or $b -or $c) {
+        $text['a'] = $a
+        $text['b'] = $b
+        $text['c'] = $c
+    }
+    return [pscustomobject]$text
+}
+
 function Merge-GovExcelIntoDataFiles {
     param(
         [Parameter(Mandatory = $true)][string]$GovDir,
@@ -254,14 +350,14 @@ function Merge-GovExcelIntoDataFiles {
         [string[]]$MediaDir
     )
     $categories = $script:PrawkoMergeCategories
+    $script:MergeJsonCache = @{}
     $parsedCategories = @{}
     foreach ($cat in $categories) {
         $src = Join-Path $GovDir "$cat.json"
         if (-not (Test-Path -LiteralPath $src)) {
             throw "Missing $src — run scripts/parse-excel.ps1 first."
         }
-        $payload = Get-Content -LiteralPath $src -Raw -Encoding UTF8 | ConvertFrom-Json
-        $parsedCategories[$cat] = @($payload.questions)
+        $parsedCategories[$cat] = @(Import-MergeCategoryQuestions $src)
     }
     $utf8 = New-Object System.Text.UTF8Encoding $false
     $addedTotal = 0
@@ -280,16 +376,17 @@ function Merge-GovExcelIntoDataFiles {
         Write-Host "-> Visual media comparison (FFmpeg $($script:MediaVisualSize)x$($script:MediaVisualSize), threshold $([int]($script:MediaVisualThreshold * 100))%, videos: 1st/middle/last frame)." -ForegroundColor Cyan
     }
 
+    $factMap = [ordered]@{}
+    $polishMap = [ordered]@{}
     foreach ($cat in $categories) {
         $path = Join-Path $OutDir "$cat.json"
         if (-not (Test-Path $path)) {
             throw "Missing $path — merge needs the question bank from the repository."
         }
-        $data = Get-Content $path -Raw -Encoding UTF8 | ConvertFrom-Json
         $existingIds = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
         $byText = @{}
         $list = New-Object System.Collections.Generic.List[object]
-        foreach ($q in @($data.questions)) {
+        foreach ($q in @(Import-MergeCategoryQuestions $path)) {
             [void]$existingIds.Add((Get-QuestionIdKey $q.id))
             $tk = Get-QuestionTextKey $q.q
             if ($tk) {
@@ -338,8 +435,16 @@ function Merge-GovExcelIntoDataFiles {
         $questions = $list.ToArray()
         $basic = @($questions | Where-Object { $_.type -eq "basic" }).Count
         $specialist = @($questions | Where-Object { $_.type -eq "specialist" }).Count
-        $payload = [ordered]@{ category = $cat; questions = $questions }
-        [IO.File]::WriteAllText($path, (ConvertTo-Json -InputObject $payload -Depth 8), $utf8)
+        $ids = New-Object System.Collections.Generic.List[object]
+        foreach ($q in $questions) {
+            $ids.Add($q.id)
+            $key = Get-QuestionIdKey $q.id
+            if (-not $key -or $factMap.Contains($key)) { continue }
+            $factMap[$key] = ConvertTo-MergeFact $q
+            $polishMap[$key] = ConvertTo-MergePolish $q
+        }
+        $payload = [ordered]@{ category = $cat; questionIds = $ids }
+        [IO.File]::WriteAllText($path, ((ConvertTo-Json -InputObject $payload -Depth 6) + "`n"), $utf8)
         $metaCategories += [ordered]@{
             id              = $cat
             name            = "Kategoria $cat"
@@ -355,6 +460,9 @@ function Merge-GovExcelIntoDataFiles {
         $skipNote = if ($skipBits.Count) { ", skipped $($skipBits -join ', ')" } else { "" }
         Write-Host ("  {0,3}: +{1,4} from ministry (total {2}{3})" -f $cat, $added, $questions.Length, $skipNote)
     }
+
+    [IO.File]::WriteAllText((Join-Path $OutDir "questions.json"), (ConvertTo-Json -InputObject $factMap -Depth 5 -Compress), $utf8)
+    [IO.File]::WriteAllText((Join-Path $OutDir "translations_pl.json"), (ConvertTo-Json -InputObject $polishMap -Depth 5 -Compress), $utf8)
 
     $metaPath = Join-Path $OutDir "meta.json"
     $exam = $null

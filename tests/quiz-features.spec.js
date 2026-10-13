@@ -161,7 +161,7 @@ test.describe('Video autoplay', () => {
     await setLearnQueue(page, 'filter', 'all');
     await setLearnQueue(page, 'order', 'sequential');
     const pos = await page.evaluate(async () => {
-      const data = await fetch('data/B.json').then((res) => res.json());
+      const data = await import(new URL('./js/data.js', location.href).href).then((m) => m.fetchCategory('B'));
       const i = data.questions.findIndex((q) => q.mediaType === 'video');
       return i >= 0 ? i + 1 : 0;
     });
@@ -268,7 +268,7 @@ test.describe('Learn video result mark', () => {
     await setLearnQueue(page, 'filter', 'all');
     await setLearnQueue(page, 'order', 'sequential');
     const pos = await page.evaluate(async () => {
-      const data = await fetch('data/B.json').then((res) => res.json());
+      const data = await import(new URL('./js/data.js', location.href).href).then((m) => m.fetchCategory('B'));
       const i = data.questions.findIndex((q) => q.mediaType === 'video');
       return i >= 0 ? i + 1 : 0;
     });
@@ -339,7 +339,7 @@ test.describe('Learn video result mark', () => {
     await setLearnQueue(page, 'filter', 'all');
     await setLearnQueue(page, 'order', 'sequential');
     const targets = await page.evaluate(async () => {
-      const data = await fetch('data/B.json').then((res) => res.json());
+      const data = await import(new URL('./js/data.js', location.href).href).then((m) => m.fetchCategory('B'));
       const emptyPos = data.questions.findIndex((q) => !q.media) + 1;
       const imagePos = data.questions.findIndex((q) => q.media && q.mediaType === 'image') + 1;
       const videoPos = data.questions.findIndex((q) => q.mediaType === 'video') + 1;
@@ -411,7 +411,7 @@ test.describe('Media slot size', () => {
     const area = page.locator('.media-area');
     await expect(area).toBeVisible();
     const targets = await page.evaluate(async () => {
-      const data = await fetch('data/B.json').then((res) => res.json());
+      const data = await import(new URL('./js/data.js', location.href).href).then((m) => m.fetchCategory('B'));
       const empty = data.questions.findIndex((q) => !q.media);
       const filled = data.questions.findIndex((q) => q.media && q.mediaType === 'image');
       return {
@@ -1162,7 +1162,7 @@ test.describe('Learn catalog jump', () => {
     await setLearnQueue(page, 'filter', 'all');
     await setLearnQueue(page, 'order', 'sequential');
     const catalog = await page.evaluate(async () => {
-      const data = await fetch('data/B.json').then((res) => res.json());
+      const data = await import(new URL('./js/data.js', location.href).href).then((m) => m.fetchCategory('B'));
       return data.questions.map((q) => String(q.id));
     });
     await expect(page.locator('.learn-qnum-input')).not.toHaveAttribute('readonly');
@@ -1182,7 +1182,7 @@ test.describe('Learn catalog jump', () => {
     await setLearnQueue(page, 'filter', 'all');
     await setLearnQueue(page, 'order', 'sequential');
     const ynPos = await page.evaluate(async () => {
-      const data = await fetch('data/B.json').then((res) => res.json());
+      const data = await import(new URL('./js/data.js', location.href).href).then((m) => m.fetchCategory('B'));
       const pos = data.questions.findIndex((q) => q.type === 'basic');
       return pos >= 0 ? pos + 1 : 0;
     });
@@ -1191,7 +1191,7 @@ test.describe('Learn catalog jump', () => {
     await page.locator('.learn-qnum-input').press('Enter');
     await expect(page.locator('.yn-answers .answer-btn').first()).toBeVisible();
     const targets = await page.evaluate(async () => {
-      const data = await fetch('data/B.json').then((res) => res.json());
+      const data = await import(new URL('./js/data.js', location.href).href).then((m) => m.fetchCategory('B'));
       const ids = ['7516', '11003', '11005'];
       return ids.map((id) => {
         const pos = data.questions.findIndex((q) => String(q.id) === id);
@@ -1246,7 +1246,7 @@ test.describe('Learn catalog jump', () => {
     expect(flicker.unique, `fit-text flickered: ${flicker.samples.join(' → ')}`).toHaveLength(1);
 
     const pos6362 = await page.evaluate(async () => {
-      const data = await fetch('data/B.json').then((res) => res.json());
+      const data = await import(new URL('./js/data.js', location.href).href).then((m) => m.fetchCategory('B'));
       const pos = data.questions.findIndex((q) => String(q.id) === '6362');
       return pos >= 0 ? pos + 1 : 0;
     });
@@ -1289,11 +1289,16 @@ test.describe('Learn catalog jump', () => {
     await page.route('**/data/B.json', async (route) => {
       const res = await route.fetch();
       const data = await res.json();
-      const longYn = [...data.questions]
-        .filter((q) => q.type === 'basic')
-        .sort((a, b) => String(b.q || '').length - String(a.q || '').length)[0];
-      if (longYn) {
-        data.questions = [longYn, ...data.questions.filter((q) => q.id !== longYn.id)];
+      const [facts, polish] = await Promise.all([
+        page.request.get('data/questions.json').then((r) => r.json()),
+        page.request.get('data/translations_pl.json').then((r) => r.json()),
+      ]);
+      const ids = Array.isArray(data.questionIds) ? data.questionIds : [];
+      const longId = [...ids]
+        .filter((id) => facts[String(id)]?.type === 'basic')
+        .sort((a, b) => String(polish[String(b)]?.q || '').length - String(polish[String(a)]?.q || '').length)[0];
+      if (longId != null) {
+        data.questionIds = [longId, ...ids.filter((id) => id !== longId)];
       }
       await route.fulfill({
         status: 200,
@@ -1353,7 +1358,7 @@ test.describe('Learn catalog jump', () => {
     await setLearnQueue(page, 'filter', 'all');
     await setLearnQueue(page, 'order', 'sequential');
     const pos = await page.evaluate(async () => {
-      const data = await fetch('data/B.json').then((res) => res.json());
+      const data = await import(new URL('./js/data.js', location.href).href).then((m) => m.fetchCategory('B'));
       const yn = data.questions.findIndex((q) => String(q.id) === '10526');
       const abc = data.questions.findIndex((q) => String(q.id) === '14063');
       return { yn: yn + 1, abc: abc + 1 };
@@ -1396,7 +1401,7 @@ test.describe('Learn catalog jump', () => {
     await setLearnQueue(page, 'filter', 'all');
     await setLearnQueue(page, 'order', 'sequential');
     const pos = await page.evaluate(async () => {
-      const data = await fetch('data/B.json').then((res) => res.json());
+      const data = await import(new URL('./js/data.js', location.href).href).then((m) => m.fetchCategory('B'));
       const a = data.questions.findIndex((q) => String(q.id) === '14063');
       const b = data.questions.findIndex((q) => String(q.id) === '11003');
       return { a: a + 1, b: b + 1 };
@@ -1449,7 +1454,7 @@ test.describe('Learn catalog jump', () => {
     await setLearnQueue(page, 'filter', 'all');
     await setLearnQueue(page, 'order', 'sequential');
     const targets = await page.evaluate(async () => {
-      const data = await fetch('data/B.json').then((res) => res.json());
+      const data = await import(new URL('./js/data.js', location.href).href).then((m) => m.fetchCategory('B'));
       const yn = data.questions.findIndex((q) => q.type === 'basic' && q.media);
       const abc = data.questions.findIndex((q) => q.type === 'specialist' && q.mediaType === 'image' && q.a);
       return {
@@ -1715,7 +1720,7 @@ test.describe('Learn catalog jump', () => {
     await expect(page.locator('.question-card')).toHaveAttribute('data-question-id', /./);
 
     const catalog = await page.evaluate(async () => {
-      const data = await fetch('data/B.json').then((res) => res.json());
+      const data = await import(new URL('./js/data.js', location.href).href).then((m) => m.fetchCategory('B'));
       return data.questions.map((q) => String(q.id));
     });
     const startId = await page.locator('.question-card').getAttribute('data-question-id');
@@ -1770,7 +1775,7 @@ test.describe('Learn catalog jump', () => {
     await expect(page.locator('.question-card')).toHaveAttribute('data-question-id', /./);
 
     const catalog = await page.evaluate(async () => {
-      const data = await fetch('data/B.json').then((res) => res.json());
+      const data = await import(new URL('./js/data.js', location.href).href).then((m) => m.fetchCategory('B'));
       return data.questions.map((q) => String(q.id));
     });
 

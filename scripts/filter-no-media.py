@@ -58,12 +58,35 @@ def question_needs_media(question_text: str) -> bool:
     return bool(MEDIA_REFERENCE_REGEX.search(question_text or ""))
 
 
+def load_sidecar(name: str):
+    path = os.path.join(DATA_DIR, name)
+    if not os.path.isfile(path):
+        return {}
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    return data if isinstance(data, dict) else {}
+
+
 def process_category(category_id: str, remove: bool) -> dict:
     filepath = os.path.join(DATA_DIR, f"{category_id}.json")
     with open(filepath, "r", encoding="utf-8") as f:
         data = json.load(f)
 
-    questions = data["questions"]
+    if not isinstance(data.get("questionIds"), list):
+        raise SystemExit(f"{filepath} has no questionIds")
+    facts = load_sidecar("questions.json")
+    polish = load_sidecar("translations_pl.json")
+    questions = []
+    for qid in data["questionIds"]:
+        key = str(qid)
+        fact = facts.get(key) if isinstance(facts.get(key), dict) else {}
+        text = polish.get(key) if isinstance(polish.get(key), dict) else {}
+        questions.append({
+            "id": qid,
+            "q": text.get("q") or "",
+            "media": fact.get("media"),
+            "type": fact.get("type"),
+        })
     kept = []
     removed = []
     for q in questions:
@@ -73,7 +96,7 @@ def process_category(category_id: str, remove: bool) -> dict:
             kept.append(q)
 
     if remove and removed:
-        data["questions"] = kept
+        data["questionIds"] = [q["id"] for q in kept]
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
             f.write("\n")

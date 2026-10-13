@@ -13,6 +13,12 @@
 # Default: fill missing EN/DE/UK strings via translate-questions.ps1 (Gemini from
 # -GeminiApiKey, else .geminienv / GEMINI_API_KEY, else Google Translate).
 # -SkipTranslateGaps: Excel columns only (installer -MergeGov uses this; temp JSON).
+# An existing translation stays when the new Excel has no text for that language.
+# Ministry text replaces it. If the Polish question or A/B/C changed (case,
+# spacing, and dash/quote shape ignored), the old translation is dropped.
+# Category files list question ids only. Type, correct answer, points and media
+# are stored once in questions.json. Question and answer text, including Polish,
+# is stored in translations_{pl,en,de,uk}.json.
 #
 # powershell -ExecutionPolicy Bypass -File scripts/parse-excel.ps1
 # powershell -ExecutionPolicy Bypass -File scripts/parse-excel.ps1 -OutDir src\data
@@ -25,7 +31,8 @@ param(
     [string]$MediaDir,
     [switch]$DropMissingMedia,
     [switch]$SkipTranslateGaps,
-    [string]$GeminiApiKey
+    [string]$GeminiApiKey,
+    [switch]$LibraryOnly
 )
 
 Set-StrictMode -Version Latest
@@ -245,8 +252,106 @@ function Read-XlsxSheetRows ([string]$xlsxPath) {
     }
 }
 
+function Get-NormalizedPolishText ([string]$text) {
+    if ([string]::IsNullOrEmpty($text)) { return '' }
+    $s = $text.Replace([char]0x00A0, ' ').Replace([char]0x202F, ' ').Replace([char]0x2009, ' ')
+    $s = $s.ToLowerInvariant()
+    $s = [regex]::Replace($s, '[\u2010\u2011\u2012\u2013\u2014\u2015\u2212]', '-')
+    $s = [regex]::Replace($s, '[\u201E\u201C\u201D\u00AB\u00BB]', '"')
+    $s = [regex]::Replace($s, '[\u2018\u2019]', "'")
+    $s = [regex]::Replace($s, '\s+', ' ')
+    return $s.Trim()
+}
+
+function Get-QuestionFieldValue ($question, [string]$name) {
+    $prop = $question.PSObject.Properties[$name]
+    if (-not $prop -or $null -eq $prop.Value) { return '' }
+    return [string]$prop.Value
+}
+
+function New-StoredQuestionFact ($question) {
+    $fact = [ordered]@{
+        type    = [string]$question.type
+        correct = [string]$question.correct
+        points  = [int]$question.points
+    }
+    $media = Get-QuestionFieldValue $question 'media'
+    if ($media) {
+        $fact['media'] = $media
+        $fact['mediaType'] = Get-QuestionFieldValue $question 'mediaType'
+    }
+    return $fact
+}
+
+function New-StoredPolishText ($question) {
+    $text = [ordered]@{
+        q   = Get-QuestionFieldValue $question 'q'
+        src = 'excel'
+    }
+    $a = Get-QuestionFieldValue $question 'a'
+    $b = Get-QuestionFieldValue $question 'b'
+    $c = Get-QuestionFieldValue $question 'c'
+    if ($a -or $b -or $c) {
+        $text['a'] = $a
+        $text['b'] = $b
+        $text['c'] = $c
+    }
+    return $text
+}
+
+function Import-OldPolishKeys ([string]$dir) {
+    $keys = @{}
+    $plPath = Join-Path $dir 'translations_pl.json'
+    if (Test-Path -LiteralPath $plPath) {
+        $raw = [IO.File]::ReadAllText($plPath)
+        if (-not [string]::IsNullOrWhiteSpace($raw)) {
+            $map = $raw | ConvertFrom-Json
+            foreach ($p in $map.PSObject.Properties) {
+                $keys[$p.Name] = Get-PolishQuestionKey $p.Value
+            }
+        }
+        return $keys
+    }
+    return $keys
+}
+
+function Get-PolishQuestionKey ($question) {
+    $parts = New-Object System.Collections.Generic.List[string]
+    [void]$parts.Add((Get-NormalizedPolishText (Get-QuestionFieldValue $question 'q')))
+    foreach ($field in @('a', 'b', 'c')) {
+        $val = Get-QuestionFieldValue $question $field
+        if ($val) { [void]$parts.Add((Get-NormalizedPolishText $val)) }
+    }
+    return ($parts -join "`n")
+}
+
+function Get-ChangedPolishIds ($oldKeys, $questions) {
+    $changed = New-Object 'System.Collections.Generic.HashSet[string]'
+    $seen = New-Object 'System.Collections.Generic.HashSet[string]'
+    foreach ($q in $questions) {
+        $id = [string]$q.id
+        if (-not $id -or $seen.Contains($id)) { continue }
+        [void]$seen.Add($id)
+        if (-not $oldKeys.ContainsKey($id)) { continue }
+        if ($oldKeys[$id] -ne (Get-PolishQuestionKey $q)) {
+            [void]$changed.Add($id)
+        }
+    }
+    return $changed
+}
+
+if ($LibraryOnly) { return }
+
+Copy-LegacyAppGovCacheIfNeeded
 if (-not (Test-Path -LiteralPath $Excel)) {
-    throw "Excel not found: $Excel. Download the catalogue from gov.pl (or Install_Prawko.windows.ps1 -SyncGov -SyncScope Questions)."
+    throw @"
+Excel not found: $Excel
+The question bank in git is already in src\data. To refresh that checkout from the ministry, download the Excel into the cache (no local server required):
+  powershell -ExecutionPolicy Bypass -File scripts\download-gov.ps1 -ExcelOnly
+then parse into this checkout:
+  powershell -ExecutionPolicy Bypass -File scripts\parse-excel.ps1
+-SyncGov parses into the local server data folder and does not write this checkout.
+"@
 }
 
 $mediaLookup = $null
@@ -305,7 +410,7 @@ $translations = @{
     uk = [ordered]@{}
 }
 
-function Merge-ExistingQuestionTranslations ($map, [string]$path, $uniqueIds) {
+function Merge-ExistingQuestionTranslations ($map, [string]$path, $uniqueIds, $changedIds) {
     if (-not (Test-Path -LiteralPath $path)) { return }
     $raw = [IO.File]::ReadAllText($path)
     if ([string]::IsNullOrWhiteSpace($raw)) { return }
@@ -313,6 +418,7 @@ function Merge-ExistingQuestionTranslations ($map, [string]$path, $uniqueIds) {
     foreach ($p in $existing.PSObject.Properties) {
         $id = [string]$p.Name
         if (-not $uniqueIds.Contains($id)) { continue }
+        if ($changedIds -and $changedIds.Contains($id)) { continue }
         if ($map.Contains($id)) { continue }
         $tr = [ordered]@{}
         foreach ($field in @('q', 'a', 'b', 'c')) {
@@ -416,20 +522,38 @@ if (-not (Test-Path -LiteralPath $OutDir)) {
     New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
 }
 
+$oldPolish = Import-OldPolishKeys $OutDir
+$pendingQuestions = New-Object System.Collections.Generic.List[object]
+foreach ($cat in $Categories) {
+    foreach ($q in $catQuestions[$cat]) {
+        [void]$pendingQuestions.Add($q)
+    }
+}
+$changedPolish = Get-ChangedPolishIds $oldPolish $pendingQuestions
+if ($changedPolish.Count -gt 0) {
+    Write-Host "Polish text changed for $($changedPolish.Count) questions; old translations of those ids will be filled again." -ForegroundColor Yellow
+}
+
 $utf8 = New-Object System.Text.UTF8Encoding $false
 $metaCategories = @()
 $total = 0
 $uniqueIds = New-Object 'System.Collections.Generic.HashSet[string]'
+$questionFacts = [ordered]@{}
+$polishTexts = [ordered]@{}
 foreach ($cat in $Categories) {
     $questions = $catQuestions[$cat].ToArray()
+    $ids = New-Object System.Collections.Generic.List[object]
     foreach ($q in $questions) {
-        if ($null -ne $q.id -and [string]$q.id -ne '') {
-            [void]$uniqueIds.Add([string]$q.id)
-        }
+        $ids.Add($q.id)
+        $qid = [string]$q.id
+        if (-not $qid -or $questionFacts.Contains($qid)) { continue }
+        [void]$uniqueIds.Add($qid)
+        $questionFacts[$qid] = New-StoredQuestionFact $q
+        $polishTexts[$qid] = New-StoredPolishText $q
     }
     $basic = @($questions | Where-Object { $_.type -eq "basic" }).Count
     $specialist = @($questions | Where-Object { $_.type -eq "specialist" }).Count
-    $payload = [ordered]@{ category = $cat; questions = $questions }
+    $payload = [ordered]@{ category = $cat; questionIds = $ids }
     [IO.File]::WriteAllText((Join-Path $OutDir "$cat.json"), ((ConvertTo-PrawkoJson $payload) + "`n"), $utf8)
     $metaCategories += [ordered]@{
         id              = $cat
@@ -447,11 +571,15 @@ $meta = [ordered]@{ uniqueQuestionCount = $uniqueIds.Count; categories = $metaCa
 Write-Host "Wrote meta.json ($($uniqueIds.Count) unique, $total category assignments)." -ForegroundColor Green
 
 $script:PrawkoJsonCompact = $true
+[IO.File]::WriteAllText((Join-Path $OutDir "questions.json"), (ConvertTo-PrawkoJson $questionFacts), $utf8)
+Write-Host "Wrote questions.json ($($questionFacts.Count) questions)." -ForegroundColor Green
+[IO.File]::WriteAllText((Join-Path $OutDir "translations_pl.json"), (ConvertTo-PrawkoJson $polishTexts), $utf8)
+Write-Host "Wrote translations_pl.json ($($polishTexts.Count) questions)." -ForegroundColor Green
 foreach ($pair in @(@('en', 'translations_en.json'), @('de', 'translations_de.json'), @('uk', 'translations_uk.json'))) {
     $lang = $pair[0]
     $file = $pair[1]
     $map = $translations[$lang]
-    Merge-ExistingQuestionTranslations $map (Join-Path $OutDir $file) $uniqueIds
+    Merge-ExistingQuestionTranslations $map (Join-Path $OutDir $file) $uniqueIds $changedPolish
     [IO.File]::WriteAllText((Join-Path $OutDir $file), (ConvertTo-PrawkoJson $map), $utf8)
     Write-Host "Wrote $file ($($map.Count) questions)." -ForegroundColor Green
 }

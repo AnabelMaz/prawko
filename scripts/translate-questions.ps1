@@ -52,14 +52,6 @@ function Get-TrLen ($obj) {
     if ($obj -is [System.Collections.IDictionary]) { return @( @($obj.Keys) ).Count }
     return @( $obj ).Count
 }
-$skipJson = @{
-    "meta.json"              = $true
-    "translations_en.json"   = $true
-    "translations_de.json"   = $true
-    "translations_ua.json"   = $true
-    "translations_uk.json"   = $true
-    "translations_pl.json"   = $true
-}
 $googleLang = @{ en = "en"; de = "de"; uk = "uk" }
 $script:TrCyrLangs = @{ uk = $true }
 $geminiLang = @{
@@ -133,16 +125,44 @@ function Get-TranslationPath ([string]$name) {
 }
 
 function Get-UniqueQuestions {
-    $questions = [ordered]@{}
-    Get-ChildItem -LiteralPath $script:TrDataDir -Filter *.json | Sort-Object Name | ForEach-Object {
-        if ($skipJson.ContainsKey($_.Name)) { return }
-        $data = Get-Content -LiteralPath $_.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
-        foreach ($q in @($data.questions)) {
-            $qid = [string]$q.id
-            if ($qid -and -not $questions.Contains($qid)) { $questions[$qid] = $q }
+    $plPath = Join-Path $script:TrDataDir "translations_pl.json"
+    if (Test-Path -LiteralPath $plPath) {
+        $questions = [ordered]@{}
+        $polish = Get-Content -LiteralPath $plPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $facts = $null
+        $factsPath = Join-Path $script:TrDataDir "questions.json"
+        if (Test-Path -LiteralPath $factsPath) {
+            $facts = Get-Content -LiteralPath $factsPath -Raw -Encoding UTF8 | ConvertFrom-Json
         }
+        foreach ($p in $polish.PSObject.Properties) {
+            $qid = [string]$p.Name
+            if (-not $qid) { continue }
+            $text = $p.Value
+            $q = [ordered]@{
+                id = $(if ($qid -match '^\d+$') { [int]$qid } else { $qid })
+                q  = $(if ($text.PSObject.Properties['q'] -and $null -ne $text.q) { [string]$text.q } else { '' })
+            }
+            foreach ($k in @('a', 'b', 'c')) {
+                $prop = $text.PSObject.Properties[$k]
+                if ($prop -and $prop.Value) { $q[$k] = [string]$prop.Value }
+            }
+            if ($facts) {
+                $fp = $facts.PSObject.Properties[$qid]
+                if ($fp) {
+                    $fact = $fp.Value
+                    foreach ($k in @('type', 'correct', 'media', 'mediaType')) {
+                        $fprop = $fact.PSObject.Properties[$k]
+                        if ($fprop -and $fprop.Value) { $q[$k] = $fprop.Value }
+                    }
+                    $pp = $fact.PSObject.Properties['points']
+                    if ($pp -and $null -ne $pp.Value) { $q['points'] = $pp.Value }
+                }
+            }
+            $questions[$qid] = [pscustomobject]$q
+        }
+        return ,$questions
     }
-    return ,$questions
+    throw "Missing translations_pl.json in $($script:TrDataDir)"
 }
 
 function Read-TranslationMap ([string]$name) {

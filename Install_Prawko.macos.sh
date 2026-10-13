@@ -74,7 +74,7 @@ FLAGS (same as Install_Prawko.windows.ps1 on Windows)
                          Omit: .geminienv / GEMINI_API_KEY, else Google Translate only.
   --merge-gov            On a running server: fills gaps from ministry Excel.
   --patch                Overlays code from a local checkout (--dev, next to the script,
-                         ../prawko-contrib). Skips data/ and media/.
+                         ../prawko-contrib). Copies question JSON. Skips media/.
                          On an already running server: overlay only, no sudo,
                          no launchd reinstall.
                          On first install: AnabelMaz ZIP + launchd + overlay.
@@ -572,8 +572,8 @@ overlay_src() {
   local src_app="$1" dest_root="$2" prefix="$3"
   [ -f "$src_app/index.html" ] || die "Missing $src_app/index.html"
   [ -f "$dest_root/src/index.html" ] || die "Server is not installed (missing $dest_root/src/index.html)."
-  say_c "-> Overlaying $src_app -> $dest_root/src (skipping data/ and media/)"
-  rsync -a --exclude data --exclude media "$src_app/" "$dest_root/src/"
+  say_c "-> Overlaying $src_app -> $dest_root/src (question JSON included, skipping media/)"
+  rsync -a --exclude media "$src_app/" "$dest_root/src/"
   if [ -d "$dest_root/src/data" ]; then
     if [ -f "$src_app/data/translations_en.json" ]; then
       cp "$src_app/data/translations_en.json" "$dest_root/src/data/translations_en.json"
@@ -1237,7 +1237,8 @@ publish_gov_install() {
   remove_legacy_server_raw
   stamp_cache "$TARGET_DIR" "prawko-govmedia"
   set_local_media_base "$TARGET_DIR"
-  say_g "Done. Server: JSON + media from gov.pl. --patch will not overwrite data/ or media/."
+  say_g "Done. Server question JSON was parsed from the ministry Excel."
+  say_d "The checkout src/data was not changed. The next --patch copies question JSON from contrib over this server and leaves media/."
   say_d "Excel and ZIPs stay in $GOV_DATA after --uninstall."
 }
 

@@ -693,7 +693,7 @@ test('learn film slot and dock indent stay put with or without media', async ({ 
   await page.click('.learn-order-select [data-value="sequential"]');
 
   const targets = await page.evaluate(async () => {
-    const data = await fetch('data/B.json').then((res) => res.json());
+    const data = await import(new URL('./js/data.js', location.href).href).then((m) => m.fetchCategory('B'));
     const emptyIdx = data.questions.findIndex((q) => !q.media);
     if (emptyIdx < 0) return { emptyPos: 0, otherPos: 0 };
     const kind = data.questions[emptyIdx].type;

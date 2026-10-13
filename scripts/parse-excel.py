@@ -10,6 +10,12 @@ Same rules as scripts/parse-excel.ps1:
   - --drop-missing-media only when asked: then missing raw files clear media
   - fill missing EN/DE/UK via translate-questions.py unless --skip-translate-gaps
     (Gemini from --gemini-api-key, else .geminienv / GEMINI_API_KEY, else Google)
+  - keep an existing translation when the new Excel has no text for that language
+  - ministry text replaces it
+  - if the Polish question or A/B/C changed (case, spacing, and dash/quote
+    shape ignored), drop the old translation so the gap is filled again
+  - category files list question ids only; facts live once in questions.json;
+    question and answer text, including Polish, lives in translations_*.json
 
 Usage:
   python3 scripts/parse-excel.py
@@ -110,7 +116,83 @@ def resolve_media(raw_filename, lookup, drop_missing):
     return media_name, media_type, False
 
 
-def merge_existing_translations(store, path: Path, unique_ids: set[str]) -> None:
+def normalize_polish_text(text) -> str:
+    if not text:
+        return ""
+    s = str(text).replace("\u00a0", " ").replace("\u202f", " ").replace("\u2009", " ")
+    s = s.translate(str.maketrans({
+        "\u2010": "-", "\u2011": "-", "\u2012": "-", "\u2013": "-",
+        "\u2014": "-", "\u2015": "-", "\u2212": "-",
+        "\u201e": '"', "\u201c": '"', "\u201d": '"', "\u00ab": '"', "\u00bb": '"',
+        "\u2018": "'", "\u2019": "'",
+    }))
+    s = s.lower()
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def polish_question_key(question) -> str:
+    if isinstance(question, dict):
+        get = question.get
+    else:
+        get = lambda name: getattr(question, name, None)
+    parts = [normalize_polish_text(get("q"))]
+    for field in ("a", "b", "c"):
+        val = get(field)
+        if val:
+            parts.append(normalize_polish_text(val))
+    return "\n".join(parts)
+
+
+def changed_polish_ids(old_keys: dict, questions) -> set[str]:
+    changed = set()
+    seen = set()
+    for question in questions:
+        qid = str(question.get("id") if isinstance(question, dict) else question.id)
+        if not qid or qid in seen:
+            continue
+        seen.add(qid)
+        if qid in old_keys and old_keys[qid] != polish_question_key(question):
+            changed.add(qid)
+    return changed
+
+
+def question_fact(question: dict) -> dict:
+    fact = {
+        "type": question.get("type"),
+        "correct": question.get("correct"),
+        "points": question.get("points"),
+    }
+    if question.get("media"):
+        fact["media"] = question.get("media")
+        fact["mediaType"] = question.get("mediaType")
+    return fact
+
+
+def polish_record(question: dict) -> dict:
+    text = {"q": question.get("q") or "", "src": "excel"}
+    if question.get("a") or question.get("b") or question.get("c"):
+        text["a"] = question.get("a") or ""
+        text["b"] = question.get("b") or ""
+        text["c"] = question.get("c") or ""
+    return text
+
+
+def load_existing_polish_keys(out_dir: Path) -> dict:
+    keys = {}
+    pl_path = out_dir / "translations_pl.json"
+    if pl_path.is_file():
+        try:
+            data = json.loads(pl_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            data = None
+        if isinstance(data, dict):
+            for qid, question in data.items():
+                if isinstance(question, dict):
+                    keys[str(qid)] = polish_question_key(question)
+    return keys
+
+
+def merge_existing_translations(store, path: Path, unique_ids: set[str], changed_ids=None) -> None:
     if not path.is_file():
         return
     try:
@@ -119,9 +201,10 @@ def merge_existing_translations(store, path: Path, unique_ids: set[str]) -> None
         return
     if not isinstance(existing, dict):
         return
+    changed_ids = changed_ids or set()
     for qid, tr in existing.items():
         qid = str(qid)
-        if qid not in unique_ids or qid in store:
+        if qid not in unique_ids or qid in changed_ids or qid in store:
             continue
         if not isinstance(tr, dict):
             continue
@@ -200,8 +283,17 @@ def main():
         legacy = project_root / "Pytania egzaminacyjne na prawo jazdy 2025"
         media_dir = preferred if preferred.exists() else legacy
 
+    dg.copy_legacy_app_gov_cache()
     if not excel_path.exists():
-        sys.exit(f"Excel file not found: {excel_path}")
+        sys.exit(
+            f"Excel file not found: {excel_path}\n"
+            "The question bank in git is already in src/data. To refresh that checkout from the ministry,\n"
+            "download the Excel into the cache (no local server required):\n"
+            "  python3 scripts/download-gov.py --excel-only\n"
+            "then parse into this checkout:\n"
+            "  python3 scripts/parse-excel.py\n"
+            "--sync-gov parses into the local server data folder and does not write this checkout."
+        )
 
     lookup = media_lookup(media_dir) if args.drop_missing_media else None
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -313,15 +405,31 @@ def main():
     if missing_media:
         print(f"  WARNING: {missing_media} questions lost media names (local file missing)")
 
+    old_polish = load_existing_polish_keys(out_dir)
+    pending = [q for cat in CATEGORIES for q in cat_questions[cat]]
+    changed_ids = changed_polish_ids(old_polish, pending)
+    if changed_ids:
+        print(f"Polish text changed for {len(changed_ids)} questions; old translations of those ids will be filled again.")
+
     meta_categories = []
     total = 0
+    question_facts = {}
+    polish_texts = {}
     print()
     for cat in CATEGORIES:
         questions = cat_questions[cat]
+        ids = []
+        for question in questions:
+            ids.append(question["id"])
+            qid = str(question.get("id") or "")
+            if not qid or qid in question_facts:
+                continue
+            question_facts[qid] = question_fact(question)
+            polish_texts[qid] = polish_record(question)
         basic = sum(1 for q in questions if q["type"] == "basic")
         specialist = sum(1 for q in questions if q["type"] == "specialist")
         with open(out_dir / f"{cat}.json", "w", encoding="utf-8") as f:
-            json.dump({"category": cat, "questions": questions}, f, ensure_ascii=False, indent=2)
+            json.dump({"category": cat, "questionIds": ids}, f, ensure_ascii=False, indent=2)
             f.write("\n")
         meta_categories.append({
             "id": cat,
@@ -343,8 +451,16 @@ def main():
         f.write("\n")
     print(f"Wrote meta.json ({len(unique_ids)} unique, {total} category assignments).")
 
+    for filename, payload in (
+        ("questions.json", question_facts),
+        ("translations_pl.json", polish_texts),
+    ):
+        with open(out_dir / filename, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, separators=(",", ":"))
+        print(f"Wrote {filename} ({len(payload)} questions).")
+
     for lang, filename in (("en", "translations_en.json"), ("de", "translations_de.json"), ("uk", "translations_uk.json")):
-        merge_existing_translations(translations[lang], out_dir / filename, unique_ids)
+        merge_existing_translations(translations[lang], out_dir / filename, unique_ids, changed_ids)
         with open(out_dir / filename, "w", encoding="utf-8") as f:
             json.dump(translations[lang], f, ensure_ascii=False, separators=(",", ":"))
         print(f"Wrote {filename} ({len(translations[lang])} questions).")

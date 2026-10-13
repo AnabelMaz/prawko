@@ -134,18 +134,66 @@ export async function fetchUniqueQuestionCount() {
   return promise;
 }
 
+function fetchJson(url) {
+  const key = `url:${url}`;
+  if (cache.has(key)) return Promise.resolve(cache.get(key));
+  if (inflight.has(key)) return inflight.get(key);
+  const promise = fetch(url)
+    .then((res) => {
+      if (!res.ok) throw new Error(`Failed to load ${url}: ${res.status}`);
+      return res.json();
+    })
+    .then((data) => {
+      cache.set(key, data);
+      return data;
+    })
+    .finally(() => inflight.delete(key));
+  inflight.set(key, promise);
+  return promise;
+}
+
+function assembleQuestion(id, fact, text) {
+  const key = String(id);
+  const q = {
+    id: typeof id === 'number' ? id : (/^\d+$/.test(key) ? Number(key) : id),
+    q: (text && text.q) || '',
+    type: fact && fact.type,
+    correct: fact && fact.correct,
+    points: fact && fact.points,
+    media: fact && fact.media ? fact.media : null,
+    mediaType: fact && fact.mediaType ? fact.mediaType : null,
+  };
+  if (text && (text.a || text.b || text.c)) {
+    q.a = text.a || '';
+    q.b = text.b || '';
+    q.c = text.c || '';
+  }
+  return q;
+}
+
 export async function fetchCategory(cat) {
   const key = `cat_${cat}`;
   if (cache.has(key)) return cache.get(key);
   if (inflight.has(key)) return inflight.get(key);
   const promise = fetch(`data/${encodeURIComponent(cat)}.json`)
-    .then(res => {
+    .then((res) => {
       if (!res.ok) throw new Error(`Failed to load category ${cat}: ${res.status}`);
       return res.json();
     })
-    .then(data => {
-      cache.set(key, data);
-      return data;
+    .then(async (data) => {
+      if (!data || !Array.isArray(data.questionIds)) {
+        throw new Error(`Category ${cat} has no questionIds`);
+      }
+      const [facts, polish] = await Promise.all([
+        fetchJson('data/questions.json'),
+        fetchJson('data/translations_pl.json'),
+      ]);
+      const questions = data.questionIds.map((id) => (
+        assembleQuestion(id, facts[String(id)], polish[String(id)])
+      ));
+      const bank = { category: data.category || cat, questions };
+      cache.set(key, bank);
+      return bank;
     })
     .finally(() => inflight.delete(key));
   inflight.set(key, promise);
