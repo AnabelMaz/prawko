@@ -2401,7 +2401,7 @@ test.describe('Local profiles', () => {
       name: 'stary.json',
       mimeType: 'application/json',
       buffer: Buffer.from(JSON.stringify({
-        v: 1,
+        v: 2,
         profile: { name: 'Stary', createdAt: 1 },
         data: { learn: '{}' },
       })),
