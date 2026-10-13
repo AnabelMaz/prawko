@@ -30,11 +30,6 @@ import re
 import sys
 from pathlib import Path
 
-try:
-    import openpyxl
-except ImportError:
-    sys.exit("openpyxl is required: pip install openpyxl")
-
 CATEGORIES = ["A", "A1", "A2", "AM", "B", "B1", "C", "C1", "D", "D1", "PT", "T"]
 
 EXAM_RULES = {
@@ -299,6 +294,10 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"Loading {excel_path} ...")
+    try:
+        import openpyxl
+    except ImportError:
+        sys.exit("openpyxl is required: pip install openpyxl")
     wb = openpyxl.load_workbook(str(excel_path), read_only=True, data_only=True)
     ws = wb[wb.sheetnames[0]]
     rows = list(ws.iter_rows(values_only=True))
