@@ -2794,7 +2794,8 @@ function Publish-GovInstall {
     Remove-LegacyServerRawMediaDir
     Set-ServerCacheVersion -Root $targetDir -Prefix "prawko-govmedia"
     Set-LocalMediaBase -root $targetDir
-    Write-Host "Done. Server: JSON + media from gov.pl. -Patch will not overwrite data\ or media\." -ForegroundColor Green
+    Write-Host "Done. Server: JSON + media from gov.pl." -ForegroundColor Green
+    Write-Host "contrib\src\data was not changed. The next -Patch copies question JSON from contrib over this server and leaves media\." -ForegroundColor Gray
     Write-Host "Excel and ZIPs stay in $govDir after -Uninstall." -ForegroundColor Gray
 }
 

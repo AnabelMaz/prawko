@@ -1191,8 +1191,8 @@ publish_gov_questions() {
   run_parse_excel "$excel" "$TARGET_DIR/src/data"
   assert_gov_parsed "$TARGET_DIR/src/data" "$excel"
   stamp_cache "$TARGET_DIR" "prawko-govq"
-  say_g "Done. Server reads ministry JSON. --patch will not revert this (it skips data/)."
-  say_d "Originals remain in contrib/src/data. Videos from the CDN."
+  say_g "Done. Server question JSON was parsed from the ministry Excel."
+  say_d "The checkout src/data was not changed. The next --patch copies question JSON from contrib over this server and leaves media/."
 }
 
 publish_gov_install() {

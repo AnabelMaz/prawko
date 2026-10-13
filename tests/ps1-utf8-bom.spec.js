@@ -78,6 +78,10 @@ test('macOS/Linux pipeline scripts are Python, not Node or bash twins', () => {
   expect(macos).toMatch(/--https\|-Https\) HTTPS=1/);
   expect(fs.existsSync(path.join(ROOT, 'src', 'server.js'))).toBe(true);
   expect(windows).toMatch(/question JSON included, skipping media/);
+  expect(windows).toMatch(/The next -Patch copies question JSON from contrib/);
+  expect(windows).not.toMatch(/will not overwrite data/);
+  expect(macos).not.toMatch(/it skips data/);
+  expect(linux).not.toMatch(/it skips data/);
   expect(windows).not.toMatch(/\/XD", "data", "media"/);
   expect(windows).toMatch(/data\\translations_uk\.json/);
   expect(windows).toMatch(/Remove-Item -LiteralPath \$trUaDst -Force/);

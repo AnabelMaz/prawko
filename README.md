@@ -95,7 +95,7 @@ Zwykły użytkownik **nie potrzebuje** drugiego klona gita. `-SyncGov` nie kopiu
 | `-IncludeGovCache` | Przy `-Export`: dołóż `gov-cache` (Excel + ZIP-y; nie snapshot serwera) |
 | `-Import <ścieżka>` | Przywróć z paczki exportu (serwer musi już stać). `-ImportScope Auto\|Code\|Runtime`, `-ImportForce` |
 | `-Dev <folder>` | Tylko Git + klon. **Bez** Node i serwera |
-| `-Patch` | Overlay kodu z lokalnego klona (`-Dev`; `src\`, bez `data\` i `media\`) |
+| `-Patch` | Overlay kodu i JSON pytań z lokalnego klona (`-Dev`; `src\`, pomija `media\`) |
 | `-Https` | HTTPS na **5174**; HTTP 5173 zawsze 302 na ten sam host:ścieżka. Własne CA albo `-HttpsCert`+`-HttpsKey`. Wyłącznik: `httpsRedirect: false` w `local.json` |
 | `-HttpsCert` / `-HttpsKey` | Gotowy PEM (wymusza `-Https`) |
 | `-HttpsPort <n>` | Port TLS (domyślnie 5174) |
@@ -160,7 +160,7 @@ Podgląd własnych zmian na działającym serwerze (po `-Dev`):
 powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -Patch
 ```
 
-`-Patch` nakłada `src` z klona, **bez** `data\` i `media\`.
+`-Patch` nakłada `src` z klona, w tym JSON pytań, i pomija `media\`.
 
 ### Odinstalowanie
 
@@ -371,7 +371,7 @@ Treść pytań w językach obcych pochodzi z Excela MI (`Pytanie [EN]`, `Pytanie
 | Excel + ZIP-y mediów | nie | `C:\ProgramData\prawko\gov-cache` | `/usr/local/prawko/gov-cache` | `/opt/prawko/gov-cache` |
 | JPG / WMV (scratch) | nie | `%TEMP%\prawko\raw` | `$TMPDIR/prawko/raw` | `$TMPDIR/prawko/raw` |
 
-Czysty clone **nie wymaga** `-SyncGov`. JSON jest w `src/data`. Domyślnie (github.io i localhost bez mediów na dysku):
+Czysty clone **nie wymaga** `-SyncGov`. JSON jest w `src/data`. Plik kategorii (`B.json` i reszta) to lista `questionIds`. Fakty (typ, poprawna odpowiedź, punkty, media) są raz w `questions.json`. Treść pytania i odpowiedzi, także po polsku, jest w `translations_{pl,en,de,uk}.json`. Domyślnie (github.io i localhost bez mediów na dysku):
 
 | Co | Skąd | Stała w `src/js/data.js` |
 |---|---|---|
@@ -390,7 +390,7 @@ PJM (tłumaczenia migowe) na gov.pl jest **wylistywane, nie pobierane**.
 |---|---|---|---|---|
 | 1 | [gov.pl — prawo jazdy](https://www.gov.pl/web/infrastruktura/prawo-jazdy) | Excel + ZIP-y JPG/WMV (sytuacyjne) | `C:\ProgramData\prawko\gov-cache` (`baza_pytan.xlsx`, `zip\`) | `download-gov.ps1` albo `-SyncGov` |
 | 2 | te ZIP-y | rozpakowanie w TEMP → WebP/MP4 | `C:\ProgramData\prawko\src\media\img` i `vid` | `convert-media.ps1` |
-| 3 | Excel | JSON pytań (nazwy plików mediów) | `src\data\` (i kopia na serwerze) | `parse-excel.ps1` |
+| 3 | Excel | JSON pytań (nazwy plików mediów) | checkout `src\data\` (`parse-excel` bez `-OutDir`). `-SyncGov` zapisuje serwer i checkoutu nie rusza; następny `-Patch` kopiuje ten JSON na serwer i zostawia `media\` | `parse-excel.ps1` |
 | 4 | `src\media` z kroku 2 | pojedyncze WebP i MP4 | Backblaze B2 `prawko-maz` → `img/` i `vid/` (oglądanie online, `MEDIA_CDN`) | `upload-media.ps1` (`.b2env`; `b2 sync --skipNewer`) |
 | 5 | JSON + te same `img/` `vid/` | zipy kategorii + `manifest.json` | `%LOCALAPPDATA%\prawko\packs` | `build-media-packs.ps1` |
 | 6 | ten folder `packs` | zipy + `manifest.json` | Cloudflare R2 `prawko-packs` (publiczny `PACKS_BASE`, `r2.dev`) | **ręcznie** panel Cloudflare → Objects → Upload (brak skryptu / wranglera) |
@@ -419,7 +419,7 @@ Wymagania poza instalatorem: **FFmpeg** i **cwebp** (`-SyncGov` kładzie przeno�
 | Skrypt | Zadanie |
 |---|---|
 | `scripts/download-gov.ps1` | Excel + ZIP z gov.pl → `C:\ProgramData\prawko\gov-cache` |
-| `scripts/parse-excel.ps1` | Excel → `src/data/*.json` oraz `translations_{en,de,uk}.json`; domyślnie wypełnia braki (`-SkipTranslateGaps` wyłącza; `-GeminiApiKey` opcjonalnie) |
+| `scripts/parse-excel.ps1` | Excel → checkout `src/data`: kategorie jako `questionIds`, fakty w `questions.json`, tekst w `translations_{pl,en,de,uk}.json`. Bez `-OutDir` nie zapisuje serwera. Domyślnie wypełnia braki (`-SkipTranslateGaps` wyłącza; `-GeminiApiKey` opcjonalnie) |
 | `scripts/translate-questions.ps1` | To samo uzupełnianie osobno albo `. -LibraryOnly` + `Fill-MissingQuestionTranslations` (`-GeminiApiKey` albo sam Google) |
 | `scripts/convert-media.ps1` | ZIP → TEMP → JPG→WebP, WMV→MP4 (TEMP kasowane; nie rusza PJM) |
 | `scripts/merge-gov.ps1` | Dopisywanie braków MI (`-MergeGov`); też `. scripts\merge-gov.ps1 -LibraryOnly` |
@@ -475,7 +475,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build-media-packs.ps1
 
 Po pierwszym syncu B2 ustaw `MEDIA_CDN` w `src/js/data.js` na URL wypisany przez `upload-media.ps1`. `PACKS_BASE` to publiczny URL R2 (`r2.dev`), nie B2.
 
-Aktualizacja pytań na stojącym serwerze: `-SyncGov -SyncScope Questions` albo `-SyncGov`. Pełny reinstal „dla pewności” nie jest potrzebny.
+Aktualizacja pytań na stojącym serwerze z contriba: `-Patch` (JSON pytań, bez `media\`). Z Excela ministerstwa na sam serwer: `-SyncGov -SyncScope Questions` albo `-SyncGov` — checkout zostaje, a kolejny `-Patch` nadpisze JSON pytań z contriba. Pełny reinstal nie jest potrzebny.
 
 ---
 
@@ -616,7 +616,7 @@ A normal user does **not** need a second git clone. `-SyncGov` does not duplicat
 | `-IncludeGovCache` | Add `gov-cache` (Excel + ZIPs) to export; not the server snapshot |
 | `-Import <path>` | Restore from export pack (server must already be up). `-ImportScope Auto\|Code\|Runtime`, `-ImportForce` |
 | `-Dev <folder>` | Git clone only — **no** Node, **no** server |
-| `-Patch` | Overlay code from local clone (`-Dev`; `src\`, skip `data\` and `media\`) |
+| `-Patch` | Overlay code and question JSON from the local clone (`-Dev`; `src\`, skips `media\`) |
 | `-Https` | HTTPS on **5174**; HTTP 5173 always 302 to the same host+path. Generated CA or `-HttpsCert`+`-HttpsKey`. Kill-switch: `httpsRedirect: false` in `local.json` |
 | `-HttpsCert` / `-HttpsKey` | Existing PEM (implies `-Https`) |
 | `-HttpsPort <n>` | TLS port (default 5174) |
@@ -663,7 +663,7 @@ Preview your changes on a running server (after `-Dev`):
 powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -Patch
 ```
 
-`-Patch` overlays `src` from the clone and **skips** `data\` and `media\`.
+`-Patch` overlays `src` from the clone, including question JSON, and skips `media\`.
 
 ### Uninstall
 
@@ -872,7 +872,7 @@ Non-Polish question text comes from the ministry Excel (`Pytanie [EN]`, `Pytanie
 | Excel + media ZIPs | no | `C:\ProgramData\prawko\gov-cache` | `/usr/local/prawko/gov-cache` | `/opt/prawko/gov-cache` |
 | JPG / WMV (scratch) | no | `%TEMP%\prawko\raw` | `$TMPDIR/prawko/raw` | `$TMPDIR/prawko/raw` |
 
-A clean clone does **not** need `-SyncGov`. JSON is in `src/data`. Defaults (github.io and localhost without files on disk):
+A clean clone does **not** need `-SyncGov`. JSON is in `src/data`. A category file (`B.json` and the rest) is a `questionIds` list. Facts (type, correct answer, points, media) are stored once in `questions.json`. Question and answer text, including Polish, lives in `translations_{pl,en,de,uk}.json`. Defaults (github.io and localhost without files on disk):
 
 | What | Where | Constant in `src/js/data.js` |
 |---|---|---|
@@ -891,7 +891,7 @@ PJM (sign-language) links on gov.pl are **listed, not downloaded**.
 |---|---|---|---|---|
 | 1 | [gov.pl — driving licence](https://www.gov.pl/web/infrastruktura/prawo-jazdy) | Excel + JPG/WMV ZIPs (situational) | `C:\ProgramData\prawko\gov-cache` (`baza_pytan.xlsx`, `zip\`) | `download-gov.ps1` or `-SyncGov` |
 | 2 | those ZIPs | unpack in TEMP → WebP/MP4 | `C:\ProgramData\prawko\src\media\img` and `vid` | `convert-media.ps1` |
-| 3 | Excel | question JSON (media file names) | `src\data\` (and the server copy) | `parse-excel.ps1` |
+| 3 | Excel | question JSON (media file names) | checkout `src\data\` (`parse-excel` with no `-OutDir`). `-SyncGov` writes the server and leaves the checkout; the next `-Patch` copies that JSON onto the server and leaves `media\` | `parse-excel.ps1` |
 | 4 | `src\media` from step 2 | individual WebP and MP4 | Backblaze B2 `prawko-maz` → `img/` and `vid/` (online play, `MEDIA_CDN`) | `upload-media.ps1` (`.b2env`; `b2 sync --skipNewer`) |
 | 5 | JSON + the same `img/` `vid/` | category zips + `manifest.json` | `%LOCALAPPDATA%\prawko\packs` | `build-media-packs.ps1` |
 | 6 | that `packs` folder | zips + `manifest.json` | Cloudflare R2 `prawko-packs` (public `PACKS_BASE`, `r2.dev`) | **manually** Cloudflare dashboard → Objects → Upload (no script / wrangler) |
@@ -920,7 +920,7 @@ Besides the installer: media conversion needs **FFmpeg** and **cwebp** (`-SyncGo
 | Script | Job |
 |---|---|
 | `scripts/download-gov.ps1` | Excel + ZIPs from gov.pl → `C:\ProgramData\prawko\gov-cache` |
-| `scripts/parse-excel.ps1` | Excel → `src/data/*.json` and `translations_{en,de,uk}.json`; fills gaps by default (`-SkipTranslateGaps` disables; optional `-GeminiApiKey`) |
+| `scripts/parse-excel.ps1` | Excel → checkout `src/data`: categories as `questionIds`, facts in `questions.json`, text in `translations_{pl,en,de,uk}.json`. No `-OutDir` does not write the server. Fills gaps by default (`-SkipTranslateGaps` disables; optional `-GeminiApiKey`) |
 | `scripts/translate-questions.ps1` | Same fill standalone, or `. -LibraryOnly` + `Fill-MissingQuestionTranslations` (`-GeminiApiKey` or Google only) |
 | `scripts/convert-media.ps1` | ZIP → TEMP → JPG→WebP, WMV→MP4 (TEMP deleted; does not touch PJM) |
 | `scripts/merge-gov.ps1` | Append missing ministry rows (`-MergeGov`); also `. scripts\merge-gov.ps1 -LibraryOnly` |
@@ -976,7 +976,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build-media-packs.ps1
 
 After the first B2 sync, set `MEDIA_CDN` in `src/js/data.js` to the URL `upload-media.ps1` prints. `PACKS_BASE` is the public R2 URL (`r2.dev`), not B2.
 
-To refresh questions on a running server: `-SyncGov -SyncScope Questions` or `-SyncGov`. A full reinstall is not needed.
+To refresh a running server from contrib: `-Patch` (question JSON, `media\` stays). From the ministry Excel onto the server only: `-SyncGov -SyncScope Questions` or `-SyncGov` — the checkout stays, and the next `-Patch` copies question JSON from contrib over the server. A full reinstall is not needed.
 
 ---
 
