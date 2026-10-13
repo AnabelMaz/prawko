@@ -46,7 +46,7 @@ function runPython() {
     'tr.write_text(json.dumps({"1": {"q": "old keep", "src": "gemini"}, "3": {"q": "old drop", "src": "gemini"}, "9": {"q": "ministry", "src": "gemini"}}, ensure_ascii=False), encoding="utf-8")',
     'store = {"9": {"q": "from excel", "src": "excel"}}',
     'mod.merge_existing_translations(store, tr, {"1", "3", "9"}, {"3"})',
-    'print(json.dumps({"same": keys, "kept": sorted(store)}))',
+    'print(json.dumps({"same": keys, "kept": sorted(store), "changed": sorted(changed)}))',
   ].join('\n');
   const raw = execFileSync(pythonBin(), ['-c', script, pyPath, jsonPath], {
     encoding: 'utf8',
@@ -84,18 +84,31 @@ function runPowerShell() {
   return JSON.parse(raw.trim());
 }
 
-test('Polish wording match ignores case, spacing, dashes and quotes', () => {
-  const py = runPython();
-  const ps = runPowerShell();
+function assertSame(label, same) {
   CASES.forEach((c, i) => {
-    expect(py.same[i], `python ${c.name}`).toBe(c.same);
-    expect(ps.same[i], `powershell ${c.name}`).toBe(c.same);
+    expect(same[i], `${label} ${c.name}`).toBe(c.same);
   });
-  expect(py.kept).toEqual(['1', '9']);
-  const changed = new Set((ps.changed || []).map(String));
+}
+
+function assertChanged(ids) {
+  const changed = new Set((ids || []).map(String));
   expect(changed.has('3')).toBe(true);
   expect(changed.has('4')).toBe(true);
   expect(changed.has('5')).toBe(true);
   expect(changed.has('1')).toBe(false);
   expect(changed.has('2')).toBe(false);
+}
+
+test('Python Polish wording match ignores case, spacing, dashes and quotes', () => {
+  const py = runPython();
+  assertSame('python', py.same);
+  expect(py.kept).toEqual(['1', '9']);
+  assertChanged(py.changed);
+});
+
+test('PowerShell Polish wording match ignores case, spacing, dashes and quotes', () => {
+  test.skip(process.platform !== 'win32', 'Windows PowerShell 5.1');
+  const ps = runPowerShell();
+  assertSame('powershell', ps.same);
+  assertChanged(ps.changed);
 });
