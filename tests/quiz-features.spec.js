@@ -1595,6 +1595,116 @@ test.describe('Learn catalog jump', () => {
     expect(unique[0] || before.font).toBe(before.font);
   });
 
+  test('random draws undated questions first, then date bands oldest to newest', async ({ page }) => {
+    const answerDaysAgo = (days) => {
+      const d = new Date();
+      d.setHours(12, 0, 0, 0);
+      d.setDate(d.getDate() - days);
+      return d.getTime();
+    };
+    const hard = (days) => ({
+      answer: '!',
+      streak: 0,
+      misses: 2,
+      ...(days == null ? {} : { answeredAt: answerDaysAgo(days) }),
+    });
+    await page.addInitScript((learn) => {
+      localStorage.setItem('prawko_p_p1_learn', JSON.stringify({ B: learn }));
+      localStorage.setItem('prawko_p_p1_learn_queue_mode', JSON.stringify({
+        B: { filter: 'hard', order: 'random' },
+      }));
+    }, {
+      99: hard(null),
+      475: hard(40),
+      477: hard(20),
+      110: hard(10),
+      478: hard(6),
+      100: hard(3),
+      352: hard(2),
+      109: hard(1),
+      469: hard(0),
+    });
+    await startLearnMode(page);
+
+    const groups = [
+      ['99'],
+      ['475'],
+      ['477'],
+      ['110'],
+      ['478'],
+      ['100'],
+      ['352'],
+      ['109', '469'],
+    ];
+    const walkIds = async () => {
+      const ids = [];
+      for (let guard = 0; guard < 20; guard++) {
+        ids.push(await page.locator('.question-card').getAttribute('data-question-id'));
+        const next = page.locator('.btn-next');
+        if (await next.isDisabled()) return ids;
+        await next.click();
+      }
+      throw new Error('learn list did not end');
+    };
+    const backToStart = async () => {
+      for (let guard = 0; guard < 20; guard++) {
+        const prev = page.locator('.btn-prev');
+        if (await prev.isDisabled()) return;
+        await prev.click();
+      }
+      throw new Error('learn list did not rewind');
+    };
+    const expectGroups = (ids, bands) => {
+      expect(ids).toHaveLength(bands.reduce((n, group) => n + group.length, 0));
+      let at = 0;
+      for (const group of bands) {
+        expect(ids.slice(at, at + group.length).sort()).toEqual([...group].sort());
+        at += group.length;
+      }
+    };
+
+    const randomIds = await walkIds();
+    expectGroups(randomIds, groups);
+    await backToStart();
+    await expect(page.locator('.question-card')).toHaveAttribute('data-question-id', '99');
+
+    await setLearnQueue(page, 'order', 'sequential');
+    await expect(page.locator('.question-card')).toHaveAttribute('data-question-id', '99');
+    await page.click('.btn-next');
+    await expect(page.locator('.question-card')).toHaveAttribute('data-question-id', '100');
+    await page.click('.btn-prev');
+    await setLearnQueue(page, 'order', 'random');
+    expect(await walkIds()).toEqual(randomIds);
+
+    await backToStart();
+    await setLearnQueue(page, 'filter', 'all');
+    await setLearnQueue(page, 'filter', 'hard');
+    await expect(page.locator('.question-card')).toHaveAttribute('data-question-id', '99');
+    expect(await walkIds()).toEqual(randomIds);
+
+    await backToStart();
+    await page.locator('.answer-btn').first().click();
+    await page.click('.btn-next');
+    await expect(page.locator('.question-card')).toHaveAttribute('data-question-id', randomIds[1]);
+
+    await page.click('.quiz-back', { force: true });
+    await page.waitForSelector('#categories.active');
+    await page.click('.mode-btn[data-mode="learn"]');
+    await page.click('.category-grid .category-card[data-category="B"]');
+    await page.waitForSelector('#quiz.active');
+    await waitForUiHold(page);
+    const again = await walkIds();
+    expectGroups(again, [
+      ['475'],
+      ['477'],
+      ['110'],
+      ['478'],
+      ['100'],
+      ['352'],
+      ['109', '469', '99'],
+    ]);
+  });
+
   test('random walks a list shuffled once; toggling order keeps the question and its new index', async ({ page }) => {
     await page.addInitScript(() => {
       localStorage.setItem('prawko_p_p1_learn_queue_mode', JSON.stringify({

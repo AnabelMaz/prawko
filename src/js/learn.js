@@ -1,6 +1,9 @@
 // learn.js — Learning mode (no timer, immediate feedback).
 // Sequential and random are two lists of the current filter.
-// Random is shuffled once: on enter if already selected, or the first time it is chosen.
+// Random is built once per visit (on enter if already selected, or the first time it is chosen):
+// questions with no answer date first, then answered questions from the oldest date band
+// to the newest. Each band is shuffled on its own; the whole band finishes before the next.
+// A filter only keeps questions from that one list. Answering does not rebuild it.
 // Switching order keeps the same question. The counter is always the catalog
 // number of that question, so next/prev on random jumps 2022 → 1500, not 2023.
 
@@ -10,6 +13,7 @@ import {
   getLearnKnownCount,
   getLearnAnswerForQuestion,
   getLearnQuestionStatus,
+  getLearnDrawBands,
   isLearnQuestionHard,
 } from './stats.js';
 import { getLang, t } from './i18n.js';
@@ -94,13 +98,32 @@ function showQueueToast(filter, order) {
   showToast(`${filterLabel(filter)} · ${orderLabel}`);
 }
 
-function shuffleList(list) {
-  const arr = [...list];
+const DRAW_BANDS = 8;
+
+function shuffleInPlace(arr) {
   for (let i = arr.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
+    const tmp = arr[i];
+    arr[i] = arr[j];
+    arr[j] = tmp;
   }
-  return arr;
+}
+
+function shuffleByAnswerDate(list) {
+  const bands = getLearnDrawBands(state.category);
+  const buckets = Array.from({ length: DRAW_BANDS }, () => []);
+  for (let i = 0; i < list.length; i++) {
+    const q = list[i];
+    buckets[bands.get(String(q.id)) || 0].push(q);
+  }
+  const out = new Array(list.length);
+  let n = 0;
+  for (let b = 0; b < DRAW_BANDS; b++) {
+    const bucket = buckets[b];
+    shuffleInPlace(bucket);
+    for (let i = 0; i < bucket.length; i++) out[n++] = bucket[i];
+  }
+  return out;
 }
 
 function questionMatchesFilter(q, filter, category) {
@@ -139,7 +162,7 @@ function refreshSeqList() {
 
 function ensureRandomList() {
   if (!state.shuffledAll) {
-    state.shuffledAll = shuffleList(state.baseQuestions);
+    state.shuffledAll = shuffleByAnswerDate(state.baseQuestions);
   }
   state.randomList = filterQuestions(state.shuffledAll, state.filter);
 }
