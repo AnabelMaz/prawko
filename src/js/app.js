@@ -193,10 +193,11 @@ function applyCategoryUiTranslations() {
 }
 
 function syncSessionChrome(screenId) {
-  const hide = screenId === 'quiz';
+  const hide = screenId !== 'home';
   document.body.classList.toggle('session-chrome-hidden', hide);
   const controls = document.querySelector('.top-controls');
   if (controls) controls.hidden = hide;
+  if (hide) setProfilePanelOpen(false);
 }
 
 function handleRoute() {

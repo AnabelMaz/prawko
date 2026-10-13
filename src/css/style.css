@@ -625,7 +625,7 @@ body.session-chrome-hidden .top-controls {
 .profile-panel {
   display: none;
   position: absolute;
-  top: calc(100% + 8px);
+  top: 0;
   right: 0;
   width: min(280px, calc(var(--ui-design-width) - 24px));
   padding: 12px;
@@ -642,6 +642,14 @@ body.session-chrome-hidden .top-controls {
 
 .profile-panel:not([hidden]) {
   display: block;
+}
+
+.top-controls:has(#profile-panel:not([hidden])) {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .profile-panel-head {

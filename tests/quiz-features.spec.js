@@ -1703,6 +1703,10 @@ test.describe('Local profiles', () => {
     await toggle.click();
     const panel = page.locator('#profile-panel');
     await expect(panel).toBeVisible();
+    const toggleBox = await toggle.boundingBox();
+    const panelBox = await panel.boundingBox();
+    expect(Math.abs(panelBox.y - toggleBox.y)).toBeLessThan(2);
+    expect(Math.abs((panelBox.x + panelBox.width) - (toggleBox.x + toggleBox.width))).toBeLessThan(2);
     await expect(page.locator('.profile-name-input')).toHaveValue('Ja');
     await expect(page.locator('.profile-list-toggle')).toBeVisible();
     await expect(page.locator('.profile-list-toggle')).toHaveAttribute('aria-expanded', 'false');
@@ -1746,6 +1750,12 @@ test.describe('Local profiles', () => {
     await page.click('.profile-panel-close');
     await expect(panel).toBeHidden();
     await expect(page.locator('.profile-toggle-name')).toHaveText('Ja');
+    await expect(toggle).toBeVisible();
+    await page.click('[data-navigate="categories"]');
+    await page.waitForSelector('#categories.active');
+    await expect(page.locator('.top-controls')).toBeHidden();
+    await page.locator('#categories .btn-back').click();
+    await page.waitForSelector('#home.active');
     await expect(toggle).toBeVisible();
   });
 
