@@ -6,7 +6,7 @@ import { startLearn, setupLearnListeners, cleanupLearn, refreshLearnQuestion, lo
 import { showScreen, renderCategories, applyLanguage, renderHistory, renderLearnProgress, renderResults, showConfirmModal, refreshOfflineCoverage } from './ui.js';
 import { setLang, getLang, loadQuestionTranslations, nextLang, LANG_LABELS, t, readStoredLang } from './i18n.js';
 import { downloadCategoryMedia, getDownloadedCategories, reconcileDownloadedCategories, offlineCoverageHue, getInProgressOfflineCategory, getActiveDownloadProgress } from './offline.js';
-import { getProfileSummary, loadHistory, loadLastResult, clearHistory, clearLearnProgress } from './stats.js';
+import { getProfileSummary, loadHistory, loadLastResult, clearHistory, clearLearnProgress, packLearnForExport, unpackLearnFromImport, packExamHistoryForExport, unpackExamHistoryFromImport } from './stats.js';
 import { setupUiFitScale, refitUiScale, revealUiScale, layoutCategoryGrid, applyUiFitScale } from './scale.js';
 import {
   DEFAULT_PROFILE_NAME,
@@ -591,8 +591,53 @@ function profileFileSlug(name) {
   return slug || 'profil';
 }
 
-function downloadProfileSnapshot() {
+async function expandProfileSnapshot(raw) {
+  if (!raw || raw.v !== 2 || !raw.data || typeof raw.data !== 'object' || Array.isArray(raw.data)) {
+    return null;
+  }
+  const data = { ...raw.data };
+  if (Object.prototype.hasOwnProperty.call(data, 'learn')) {
+    if (typeof data.learn !== 'string') return null;
+    const expanded = await unpackLearnFromImport(data.learn);
+    if (expanded == null) return null;
+    if (expanded === '{}') delete data.learn;
+    else data.learn = expanded;
+  }
+  if (Object.prototype.hasOwnProperty.call(data, 'stats')) {
+    if (typeof data.stats !== 'string') return null;
+    const expanded = unpackExamHistoryFromImport(data.stats);
+    if (expanded == null) return null;
+    if (expanded === '[]') delete data.stats;
+    else data.stats = expanded;
+  }
+  return { ...raw, data };
+}
+
+async function downloadProfileSnapshot() {
   const snapshot = snapshotActiveProfile();
+  try {
+    if (typeof snapshot.data.learn === 'string') {
+      const packed = await packLearnForExport(snapshot.data.learn);
+      if (packed == null) {
+        window.alert(t('profileExportBad'));
+        return;
+      }
+      if (packed === '{}') delete snapshot.data.learn;
+      else snapshot.data.learn = packed;
+    }
+    if (typeof snapshot.data.stats === 'string') {
+      const packed = packExamHistoryForExport(snapshot.data.stats);
+      if (packed == null) {
+        window.alert(t('profileExportBad'));
+        return;
+      }
+      if (packed === '') delete snapshot.data.stats;
+      else snapshot.data.stats = packed;
+    }
+  } catch {
+    window.alert(t('profileExportBad'));
+    return;
+  }
   const blob = new Blob([JSON.stringify(snapshot)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -619,6 +664,11 @@ async function importProfileFile(file) {
   try {
     parsed = JSON.parse(await file.text());
   } catch {
+    window.alert(t('profileImportBad'));
+    return;
+  }
+  parsed = await expandProfileSnapshot(parsed);
+  if (!parsed) {
     window.alert(t('profileImportBad'));
     return;
   }

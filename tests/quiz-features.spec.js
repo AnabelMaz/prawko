@@ -746,8 +746,8 @@ test.describe('Learn queue filter', () => {
     await page.addInitScript(() => {
       localStorage.setItem('prawko_p_p1_learn', JSON.stringify({
         B: {
-          99: { answer: 'N', streak: 0, dueAt: 1, misses: 2 },
-          100: { answer: 'T', streak: 2, dueAt: 1, misses: 5 },
+          99: { answer: 'N', streak: 0, misses: 2 },
+          100: { answer: 'T', streak: 2, misses: 5 },
         },
       }));
       localStorage.setItem('prawko_p_p1_learn_queue_mode', JSON.stringify({
@@ -825,10 +825,10 @@ test.describe('Learn progress summary', () => {
   test('top chips count unique question ids across categories', async ({ page }) => {
     await page.addInitScript(() => {
       localStorage.setItem('prawko_p_p1_learn', JSON.stringify({
-        B: { 1: { answer: 'T', streak: 2, dueAt: 1, misses: 0 } },
+        B: { 1: { answer: 'T', streak: 2, misses: 0 } },
         C: {
-          1: { answer: 'N', streak: 0, dueAt: 1, misses: 2 },
-          2: { answer: 'N', streak: 0, dueAt: 1, misses: 0 },
+          1: { answer: 'N', streak: 0, misses: 2 },
+          2: { answer: 'N', streak: 0, misses: 0 },
         },
       }));
     });
@@ -1969,12 +1969,113 @@ test.describe('Local profiles', () => {
   });
 
   test('profile arrows export and import learn progress', async ({ page }) => {
-    const learn = JSON.stringify({ B: { q1: { answer: 'T', streak: 2, misses: 0 } } });
+    const answerDaysAgo = (days) => {
+      const d = new Date();
+      d.setHours(12, 0, 0, 0);
+      d.setDate(d.getDate() - days);
+      return d.getTime();
+    };
+    const daysAgo = (ms) => {
+      const now = new Date();
+      const then = new Date(ms);
+      const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+      const thenDay = Date.UTC(then.getFullYear(), then.getMonth(), then.getDate());
+      return Math.round((today - thenDay) / 86400000);
+    };
+    const learn = JSON.stringify({
+      B: {
+        99: { answer: 'T', streak: 2, misses: 0, answeredAt: answerDaysAgo(0) },
+        100: { answer: 'T', streak: 1, misses: 0, answeredAt: answerDaysAgo(3) },
+        109: { answer: 'T', streak: 0, misses: 1, answeredAt: answerDaysAgo(1) },
+        110: { answer: 'T', streak: 0, misses: 2, answeredAt: answerDaysAgo(10) },
+        352: { answer: 'N', streak: 1, misses: 2, answeredAt: answerDaysAgo(2) },
+        469: { answer: 'T', streak: 1, misses: 1, answeredAt: answerDaysAgo(0) },
+        475: { answer: 'N', streak: 4, misses: 3, answeredAt: answerDaysAgo(40) },
+      },
+    });
+    const restored = {
+      B: {
+        99: { answer: 'T', streak: 2, misses: 0 },
+        100: { answer: 'T', streak: 1, misses: 0 },
+        109: { answer: '!', streak: 0, misses: 1 },
+        110: { answer: '!', streak: 0, misses: 2 },
+        352: { answer: 'N', streak: 1, misses: 2 },
+        469: { answer: 'T', streak: 1, misses: 1 },
+        475: { answer: 'N', streak: 2, misses: 1 },
+      },
+    };
+    const restoredDays = { 99: 0, 100: 3, 109: 1, 110: 10, 352: 2, 469: 0, 475: 31 };
+    const expectLearn = (raw) => {
+      const parsed = JSON.parse(raw);
+      const status = {};
+      const days = {};
+      for (const [id, entry] of Object.entries(parsed.B)) {
+        status[id] = { answer: entry.answer, streak: entry.streak, misses: entry.misses };
+        days[id] = daysAgo(entry.answeredAt);
+      }
+      expect(status).toEqual(restored.B);
+      expect(days).toEqual(restoredDays);
+    };
+    const exams = [
+      {
+        date: '2026-08-31T10:15:45.123Z',
+        category: 'B',
+        score: 70,
+        maxPoints: 74,
+        passed: true,
+        basicScore: 44,
+        specialistScore: 26,
+      },
+      {
+        date: '2026-09-01T08:00:00.000Z',
+        category: 'PT',
+        score: 20,
+        maxPoints: 74,
+        passed: false,
+        basicScore: 10,
+        specialistScore: 10,
+      },
+      {
+        date: '2026-07-01T00:00:30.000Z',
+        category: 'A',
+        score: 68,
+        maxPoints: 74,
+        passed: true,
+      },
+    ];
+    const examsRestored = [
+      {
+        date: '2026-08-31T10:15:00.000Z',
+        category: 'B',
+        score: 70,
+        maxPoints: 74,
+        passed: true,
+        basicScore: 44,
+        specialistScore: 26,
+      },
+      {
+        date: '2026-09-01T08:00:00.000Z',
+        category: 'PT',
+        score: 20,
+        maxPoints: 74,
+        passed: false,
+        basicScore: 10,
+        specialistScore: 10,
+      },
+      {
+        date: '2026-07-01T00:00:00.000Z',
+        category: 'A',
+        score: 68,
+        maxPoints: 74,
+        passed: true,
+      },
+    ];
     await page.goto('/');
     await page.waitForSelector('#home.active');
-    await page.evaluate((payload) => {
-      localStorage.setItem('prawko_p_p1_learn', payload);
-    }, learn);
+    await page.evaluate(({ learnPayload, statsPayload }) => {
+      localStorage.setItem('prawko_p_p1_learn', learnPayload);
+      localStorage.setItem('prawko_p_p1_stats', statsPayload);
+    }, { learnPayload: learn, statsPayload: JSON.stringify(exams) });
     await page.click('.profile-toggle');
     const exp = page.locator('.profile-action-export');
     const imp = page.locator('.profile-action-import');
@@ -2006,9 +2107,14 @@ test.describe('Local profiles', () => {
     const stream = await download.createReadStream();
     for await (const chunk of stream) chunks.push(chunk);
     const file = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-    expect(file.v).toBe(1);
+    expect(file.v).toBe(2);
     expect(file.profile.name).toBe('Ja');
-    expect(file.data.learn).toBe(learn);
+    const packed = JSON.parse(file.data.learn);
+    expect(Object.keys(packed)).toEqual(['B']);
+    expect(packed.B).toHaveLength(2848);
+    expect(file.data.learn).not.toBe(learn);
+    expect(file.data.stats).toHaveLength(28);
+    expect(file.data.stats).not.toContain('basicScore');
     const chrome = await page.evaluate(() => ({
       theme: document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light',
       lang: document.documentElement.lang,
@@ -2018,7 +2124,10 @@ test.describe('Local profiles', () => {
     expect(file.data.lang).toBe(chrome.lang);
     expect(file.data.exam_skin).toBe(chrome.skin);
 
-    await page.evaluate(() => localStorage.removeItem('prawko_p_p1_learn'));
+    await page.evaluate(() => {
+      localStorage.removeItem('prawko_p_p1_learn');
+      localStorage.removeItem('prawko_p_p1_stats');
+    });
     const snapshot = {
       name: 'prawko-ja.json',
       mimeType: 'application/json',
@@ -2037,12 +2146,18 @@ test.describe('Local profiles', () => {
     expect(contentBox.x + contentBox.width - (dismissBox.x + dismissBox.width)).toBeLessThan(16);
     expect(dismissBox.y - contentBox.y).toBeLessThan(16);
     expect(await page.evaluate(() => localStorage.getItem('prawko_p_p1_learn'))).toBeNull();
+    expect(await page.evaluate(() => localStorage.getItem('prawko_p_p1_stats'))).toBeNull();
     await modal.locator('.btn-confirm-end').click();
     await expect(page.locator('#profile-panel')).toBeVisible();
     await expect(page.locator('.profile-toggle-name')).toHaveText('Ja');
-    await expect(page.locator('.profile-stat-learn')).toContainText('1 umiem');
-    const stored = await page.evaluate(() => localStorage.getItem('prawko_p_p1_learn'));
-    expect(stored).toBe(learn);
+    await expect(page.locator('.profile-stat-learn')).toContainText('2 umiem');
+    await expect(page.locator('.profile-stat-exams')).toHaveText('Egzaminy: 3 (2 zdane)');
+    const stored = await page.evaluate(() => ({
+      learn: localStorage.getItem('prawko_p_p1_learn'),
+      stats: localStorage.getItem('prawko_p_p1_stats'),
+    }));
+    expectLearn(stored.learn);
+    expect(JSON.parse(stored.stats)).toEqual(examsRestored);
     const names = await page.evaluate(() => {
       const raw = JSON.parse(localStorage.getItem('prawko_profiles'));
       return raw.profiles.map((p) => p.name);
@@ -2060,11 +2175,15 @@ test.describe('Local profiles', () => {
         names: raw.profiles.map((p) => p.name),
         original: localStorage.getItem('prawko_p_p1_learn'),
         copy: copy ? localStorage.getItem(`prawko_p_${copy.id}_learn`) : null,
+        originalStats: localStorage.getItem('prawko_p_p1_stats'),
+        copyStats: copy ? localStorage.getItem(`prawko_p_${copy.id}_stats`) : null,
       };
     });
     expect(afterNew.names).toEqual(['Ja', 'Ja (2)']);
-    expect(afterNew.original).toBe(learn);
-    expect(afterNew.copy).toBe(learn);
+    expectLearn(afterNew.original);
+    expectLearn(afterNew.copy);
+    expect(JSON.parse(afterNew.originalStats)).toEqual(examsRestored);
+    expect(JSON.parse(afterNew.copyStats)).toEqual(examsRestored);
 
     await page.locator('.profile-import-file').setInputFiles(snapshot);
     await expect(modal.locator('.modal-dismiss')).toBeVisible();
@@ -2086,7 +2205,31 @@ test.describe('Local profiles', () => {
     const dialog = await dialogPromise;
     expect(dialog.message()).toContain('Nie da się');
     await dialog.accept();
-    expect(await page.evaluate(() => localStorage.getItem('prawko_p_p1_learn'))).toBe(learn);
+    const afterBad = await page.evaluate(() => ({
+      learn: localStorage.getItem('prawko_p_p1_learn'),
+      stats: localStorage.getItem('prawko_p_p1_stats'),
+    }));
+    expectLearn(afterBad.learn);
+    expect(JSON.parse(afterBad.stats)).toEqual(examsRestored);
+
+    const oldFilePromise = page.waitForEvent('dialog');
+    await page.locator('.profile-import-file').setInputFiles({
+      name: 'prawko-ja.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(JSON.stringify({
+        v: 1,
+        profile: { name: 'Stary', createdAt: 1 },
+        data: { learn },
+      })),
+    });
+    const oldFile = await oldFilePromise;
+    expect(oldFile.message()).toContain('Nie da się');
+    await oldFile.accept();
+    const afterOld = await page.evaluate(() => {
+      const raw = JSON.parse(localStorage.getItem('prawko_profiles'));
+      return raw.profiles.map((p) => p.name);
+    });
+    expect(afterOld).toEqual(['Ja', 'Ja (2)']);
   });
 
   test('theme language and skin follow the profile', async ({ page }) => {

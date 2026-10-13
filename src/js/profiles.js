@@ -299,7 +299,7 @@ export function snapshotActiveProfile() {
     if (typeof value === 'string') data[short] = value;
   }
   return {
-    v: 1,
+    v: 2,
     profile: {
       name: profile?.name || DEFAULT_PROFILE_NAME,
       createdAt: profile?.createdAt || Date.now(),
@@ -309,7 +309,7 @@ export function snapshotActiveProfile() {
 }
 
 function snapshotData(raw) {
-  if (!raw || raw.v !== 1 || !raw.profile || typeof raw.profile !== 'object') return null;
+  if (!raw || raw.v !== 2 || !raw.profile || typeof raw.profile !== 'object') return null;
   if (!raw.data || typeof raw.data !== 'object' || Array.isArray(raw.data)) return null;
   const name = String(raw.profile.name || '').trim().slice(0, NAME_MAX);
   if (!name) return null;
