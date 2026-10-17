@@ -230,6 +230,38 @@ test.describe('Video autoplay', () => {
     });
     expect(earlyVisible).toEqual([]);
   });
+
+  test('a video answered before this visit plays from the start', async ({ page }) => {
+    await page.goto('/');
+    const target = await page.evaluate(async () => {
+      const [cat, facts] = await Promise.all([
+        fetch('data/B.json').then((res) => res.json()),
+        fetch('data/questions.json').then((res) => res.json()),
+      ]);
+      const index = cat.questionIds.findIndex((id) => facts[String(id)]?.mediaType === 'video');
+      const id = cat.questionIds[index];
+      return { id, correct: facts[String(id)].correct, pos: index + 1 };
+    });
+    expect(target.pos).toBeGreaterThan(0);
+    await page.addInitScript((q) => {
+      localStorage.setItem('prawko_p_p1_learn', JSON.stringify({
+        B: { [q.id]: { answer: q.correct, streak: 1, misses: 0 } },
+      }));
+    }, target);
+    await stubLearnVideoFiles(page);
+    await startLearnMode(page, {
+      localJson: { mediaBase: 'cdn', learnQuestionJump: true },
+    });
+    await setLearnQueue(page, 'filter', 'all');
+    await setLearnQueue(page, 'order', 'sequential');
+    await page.locator('.learn-qnum-input').fill(String(target.pos));
+    await page.locator('.learn-qnum-input').press('Enter');
+    const video = page.locator('#quiz .media-area video');
+    await expect(video).toHaveCount(1);
+    await expect(video).toHaveJSProperty('autoplay', true);
+    await expect(page.locator('#quiz .media-area')).not.toHaveClass(/learn-video-hold/);
+    await expect(page.locator('#quiz .learn-media-mark')).toHaveCount(0);
+  });
 });
 
 test.describe('Learn media is only the current question', () => {

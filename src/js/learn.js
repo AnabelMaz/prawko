@@ -11,7 +11,6 @@ import { renderQuestion, highlightAnswer, markSelectedAnswer, showLearnMediaMark
 import {
   saveLearnAnswer,
   getLearnKnownCount,
-  getLearnAnswerForQuestion,
   getLearnQuestionStatus,
   getLearnDrawBands,
   LEARN_DRAW_BAND_COUNT,
@@ -575,11 +574,8 @@ function applyLearnAnswerFeedback(q, answer) {
   highlightAnswer(answersDiv, answer, q.correct);
 }
 
-function hasGivenLearnAnswer(q) {
-  if (!state || !q) return false;
-  if (state.sessionAnswers.has(q.id)) return true;
-  const saved = getLearnAnswerForQuestion(state.category, q.id);
-  return typeof saved === 'string' && saved !== '';
+function answeredThisVisit(q) {
+  return Boolean(state && q && state.sessionAnswers.has(q.id));
 }
 
 function learnRenderOptions(q) {
@@ -589,7 +585,7 @@ function learnRenderOptions(q) {
     learnMediaMark: sessionAnswer !== undefined
       ? { isCorrect: sessionAnswer === q.correct }
       : null,
-    holdVideoEnd: q.mediaType === 'video' && hasGivenLearnAnswer(q),
+    holdVideoEnd: q.mediaType === 'video' && answeredThisVisit(q),
   };
 }
 
