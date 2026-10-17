@@ -2,7 +2,7 @@
 
 This file is a short map of the repo for agents. Humans use `README.md`. Question-translation prompt: `scripts/translate-questions.skill.md` (scripts fill `{lang}`). Runtime: `scripts/translate-questions.ps1` / `.py`.
 
-Day-to-day product is the local service at http://localhost:5173 (`C:\ProgramData\prawko` on Windows, `/usr/local/prawko` on macOS, `/opt/prawko` on Linux). The human tests there. After any `src/` change on this machine, run `Install_Prawko.windows.ps1 -Patch` in the same turn (overlay contrib code and question JSON onto ProgramData; skips `media\`; no wipe, no SyncGov). Optional HTTPS is a separate port (5174); HTTP 5173 then 302-redirects every path unless `local.json` has `httpsRedirect: false`. GitHub Pages (`src/` after Playwright) is an extra preview, not the primary install.
+Day-to-day product is the local service at http://localhost:5173 (`C:\ProgramData\prawko` on Windows, `/usr/local/prawko` on macOS, `/opt/prawko` on Linux). The human tests there. After any `src/` change on this machine, run `Install_Prawko.windows.ps1 -Patch` in the same turn (overlay contrib code and question JSON onto ProgramData; skips `media\`; no wipe, no SyncGov). An export pack stores question JSON in `snapshot/data` and omits `contrib/src/data`; `-Patch` / `--patch` from that pack copies `snapshot/data` and leaves the server `media` directory in place. Optional HTTPS is a separate port (5174); HTTP 5173 then 302-redirects every path unless `local.json` has `httpsRedirect: false`. GitHub Pages (`src/` after Playwright) is an extra preview, not the primary install.
 
 ## Project Structure
 - `src/` — PWA (vanilla JS). Served locally; also published to GitHub Pages on push to `main`

@@ -90,12 +90,12 @@ Zwykły użytkownik **nie potrzebuje** drugiego klona gita. `-SyncGov` nie kopiu
 | `-SkipTranslateGaps` | Przy `-SyncGov` Questions/Full: nie uzupełniaj pustych EN/DE/UK. Domyślnie **uzupełnia** (Gemini gdy jest klucz, inaczej Google Translate) |
 | `-GeminiApiKey <klucz>` | Przy `-SyncGov` Questions/Full: Gemini na ten run (nadpisuje `.geminienv`). Bez parametru: `.geminienv` jak `.b2env`. Przy kluczu tylko Gemini (dzienny 429 → kolejny Flash). Bez klucza: Google |
 | `-MergeGov` | Na stojącym serwerze: dopisuje z Excela MI tylko braki |
-| `-Export <ścieżka>` | Paczka przenośna: kod + **domyślnie** snapshot serwera (`data`, `media`, `local.json`, `manifest.json`) |
+| `-Export <ścieżka>` | Paczka przenośna: kod + **domyślnie** snapshot serwera (`snapshot\data`, `snapshot\media`, `local.json`, `manifest.json`). Drugiej kopii pytań w `prawko-contrib\src\data` nie ma |
 | `-ExcludeData` / `-ExcludeMedia` / `-ExcludeLocalJson` | Przy `-Export`: wyklucz z paczki (domyślnie wszystko wchodzi) |
 | `-IncludeGovCache` | Przy `-Export`: dołóż `gov-cache` (Excel + ZIP-y; nie snapshot serwera) |
-| `-Import <ścieżka>` | Przywróć z paczki exportu (serwer musi już stać). `-ImportScope Auto\|Code\|Runtime`, `-ImportForce` |
+| `-Import <ścieżka>` | Przywróć z paczki (serwer musi już stać). Kod wgrywa `snapshot\data`. `-ImportForce` nadpisuje media i dane, których kod jeszcze nie wgrał |
 | `-Dev <folder>` | Tylko Git + klon. **Bez** Node i serwera |
-| `-Patch` | Overlay kodu i JSON pytań z lokalnego klona (`-Dev`; `src\`, pomija `media\`) |
+| `-Patch` | Overlay kodu. Z klona: JSON z `src\data`. Z paczki: JSON z `snapshot\data`. `media\` na serwerze zostaje |
 | `-Https` | HTTPS na **5174**; HTTP 5173 zawsze 302 na ten sam host:ścieżka. Własne CA albo `-HttpsCert`+`-HttpsKey`. Wyłącznik: `httpsRedirect: false` w `local.json` |
 | `-HttpsCert` / `-HttpsKey` | Gotowy PEM (wymusza `-Https`) |
 | `-HttpsPort <n>` | Port TLS (domyślnie 5174) |
@@ -132,7 +132,7 @@ powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -Export D:
 
 Tylko kod (mniejsza paczka): dodaj `-ExcludeData -ExcludeMedia -ExcludeLocalJson`.
 
-Struktura paczki: `prawko\` (launcher), `prawko-contrib\`, `snapshot\`, `manifest.json`; opcjonalnie `gov-cache\`.
+Struktura paczki: `prawko\` (launcher), `prawko-contrib\`, `snapshot\`, `manifest.json`; opcjonalnie `gov-cache\`. Pytania i media są w `snapshot\`. W `prawko-contrib` nie ma drugiej kopii `src\data` ani `src\media`; zaległy katalog z poprzedniej paczki jest kasowany.
 
 **Import** — na nowym PC najpierw instalator **bez przełączników**, potem:
 
@@ -140,7 +140,7 @@ Struktura paczki: `prawko\` (launcher), `prawko-contrib\`, `snapshot\`, `manifes
 powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -Import D:\backup\prawko-pack
 ```
 
-`-ImportForce` nadpisuje istniejące `data`/`media` na serwerze. Bez gov.pl, jeśli paczka ma snapshot.
+Sam `-Patch` z tej paczki wgrywa `snapshot\data` i nie rusza `media\` na serwerze. `-ImportForce` nadpisuje media oraz dane, których kod jeszcze nie wgrał. Bez gov.pl, jeśli paczka ma snapshot.
 
 ### Instalacja dla dewelopera
 
@@ -160,7 +160,7 @@ Podgląd własnych zmian na działającym serwerze (po `-Dev`):
 powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -Patch
 ```
 
-`-Patch` nakłada `src` z klona, w tym JSON pytań, i pomija `media\`.
+`-Patch` z klona nakłada `src`, w tym JSON pytań, i pomija `media\`. Z paczki exportu JSON pytań bierze z `snapshot\data`, nie ze starego `prawko-contrib\src\data`.
 
 ### Odinstalowanie
 
@@ -475,7 +475,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build-media-packs.ps1
 
 Po pierwszym syncu B2 ustaw `MEDIA_CDN` w `src/js/data.js` na URL wypisany przez `upload-media.ps1`. `PACKS_BASE` to publiczny URL R2 (`r2.dev`), nie B2.
 
-Aktualizacja pytań na stojącym serwerze z contriba: `-Patch` (JSON pytań, bez `media\`). Z Excela ministerstwa na sam serwer: `-SyncGov -SyncScope Questions` albo `-SyncGov` — checkout zostaje, a kolejny `-Patch` nadpisze JSON pytań z contriba. Pełny reinstal nie jest potrzebny.
+Aktualizacja pytań na stojącym serwerze z contriba: `-Patch` (JSON pytań z klona, bez `media\`). Z paczki exportu ten sam `-Patch` bierze JSON z `snapshot\data`. Z Excela ministerstwa na sam serwer: `-SyncGov -SyncScope Questions` albo `-SyncGov` — checkout zostaje, a kolejny `-Patch` z klona nadpisze JSON pytań z contriba. Pełny reinstal nie jest potrzebny.
 
 ---
 
@@ -611,12 +611,12 @@ A normal user does **not** need a second git clone. `-SyncGov` does not duplicat
 | `-SkipTranslateGaps` | With `-SyncGov` Questions/Full: do not fill empty EN/DE/UK. **Fills** by default (Gemini when a key is present, else Google Translate) |
 | `-GeminiApiKey <key>` | With `-SyncGov` Questions/Full: Gemini for this run (overrides `.geminienv`). Without the switch: `.geminienv` like `.b2env`. With a key: Gemini only (daily 429 → next Flash). No key: Google |
 | `-MergeGov` | On a running server: append ministry Excel rows that are missing |
-| `-Export <path>` | Portable pack: code + **default** server snapshot (`data`, `media`, `local.json`, `manifest.json`) |
+| `-Export <path>` | Portable pack: code + **default** server snapshot (`snapshot\data`, `snapshot\media`, `local.json`, `manifest.json`). Question JSON is not copied again into `prawko-contrib\src\data` |
 | `-ExcludeData` / `-ExcludeMedia` / `-ExcludeLocalJson` | Slim down `-Export` (all included by default) |
 | `-IncludeGovCache` | Add `gov-cache` (Excel + ZIPs) to export; not the server snapshot |
-| `-Import <path>` | Restore from export pack (server must already be up). `-ImportScope Auto\|Code\|Runtime`, `-ImportForce` |
+| `-Import <path>` | Restore from an export pack (server must already be up). The code overlay installs `snapshot\data`. `-ImportForce` overwrites media and any data the code has not already installed |
 | `-Dev <folder>` | Git clone only — **no** Node, **no** server |
-| `-Patch` | Overlay code and question JSON from the local clone (`-Dev`; `src\`, skips `media\`) |
+| `-Patch` | Overlay code. From a clone: JSON in `src\data`. From a pack: JSON in `snapshot\data`. Server `media\` stays |
 | `-Https` | HTTPS on **5174**; HTTP 5173 always 302 to the same host+path. Generated CA or `-HttpsCert`+`-HttpsKey`. Kill-switch: `httpsRedirect: false` in `local.json` |
 | `-HttpsCert` / `-HttpsKey` | Existing PEM (implies `-Https`) |
 | `-HttpsPort <n>` | TLS port (default 5174) |
@@ -645,6 +645,8 @@ powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -Import D:
 
 Code-only pack: add `-ExcludeData -ExcludeMedia -ExcludeLocalJson`. On a new PC: install **with no switches** first, then `-Import`.
 
+Questions and media live in `snapshot\`. `prawko-contrib` does not keep a second `src\data` or `src\media`; a leftover catalogue from an older pack is deleted. `-Patch` from that pack installs `snapshot\data` and does not touch server `media\`. `-ImportForce` overwrites media and any data the code has not already installed.
+
 ### Developer install
 
 Code only, no localhost and no Node:
@@ -663,7 +665,7 @@ Preview your changes on a running server (after `-Dev`):
 powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1 -Patch
 ```
 
-`-Patch` overlays `src` from the clone, including question JSON, and skips `media\`.
+`-Patch` from a clone overlays `src`, including question JSON, and skips `media\`. From an export pack the question JSON comes from `snapshot\data`, not from an old `prawko-contrib\src\data`.
 
 ### Uninstall
 
@@ -976,7 +978,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build-media-packs.ps1
 
 After the first B2 sync, set `MEDIA_CDN` in `src/js/data.js` to the URL `upload-media.ps1` prints. `PACKS_BASE` is the public R2 URL (`r2.dev`), not B2.
 
-To refresh a running server from contrib: `-Patch` (question JSON, `media\` stays). From the ministry Excel onto the server only: `-SyncGov -SyncScope Questions` or `-SyncGov` — the checkout stays, and the next `-Patch` copies question JSON from contrib over the server. A full reinstall is not needed.
+To refresh a running server from contrib: `-Patch` (question JSON from the clone, `media\` stays). From an export pack the same `-Patch` takes JSON from `snapshot\data`. From the ministry Excel onto the server only: `-SyncGov -SyncScope Questions` or `-SyncGov` — the checkout stays, and the next `-Patch` from the clone copies question JSON from contrib over the server. A full reinstall is not needed.
 
 ---
 
