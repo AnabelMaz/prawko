@@ -1728,6 +1728,47 @@ test.describe('Learn catalog jump', () => {
     ]);
   });
 
+  test('a saved answer with no answeredAt stays behind questions that were never answered', async ({ page }) => {
+    await page.goto('/');
+    const rows = await page.evaluate(async () => {
+      const [cat, facts] = await Promise.all([
+        fetch('data/B.json').then((res) => res.json()),
+        fetch('data/questions.json').then((res) => res.json()),
+      ]);
+      return cat.questionIds.map((id) => ({ id, correct: facts[String(id)].correct }));
+    });
+    await page.addInitScript((list) => {
+      const now = Date.now();
+      const B = {};
+      for (const row of list) {
+        const id = String(row.id);
+        if (id === '99') continue;
+        if (id === '100') {
+          B[id] = { answer: row.correct, streak: 1, misses: 0 };
+          continue;
+        }
+        if (id === '109') {
+          B[id] = { answer: row.correct, streak: 1, misses: 0, answeredAt: now };
+          continue;
+        }
+        B[id] = { answer: row.correct, streak: 2, misses: 0, answeredAt: now - 40 * 24 * 60 * 60 * 1000 };
+      }
+      localStorage.setItem('prawko_p_p1_learn', JSON.stringify({ B }));
+      localStorage.setItem('prawko_p_p1_learn_queue_mode', JSON.stringify({
+        B: { filter: 'unknown', order: 'random' },
+      }));
+    }, rows);
+    await startLearnMode(page);
+    const ids = [];
+    for (let guard = 0; guard < 5; guard++) {
+      ids.push(await page.locator('.question-card').getAttribute('data-question-id'));
+      const next = page.locator('.btn-next');
+      if (await next.isDisabled()) break;
+      await next.click();
+    }
+    expect(ids).toEqual(['99', '100', '109']);
+  });
+
   test('random walks a list shuffled once; toggling order keeps the question and its new index', async ({ page }) => {
     await page.addInitScript(() => {
       localStorage.setItem('prawko_p_p1_learn_queue_mode', JSON.stringify({

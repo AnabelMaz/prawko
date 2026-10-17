@@ -400,16 +400,25 @@ function localDayIndex(ms) {
   return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / DAY_MS);
 }
 
-// Draw order is independent of the learn filter. Band 0 (not stored) is no answer date.
-// Then oldest first: >30, 16–30, 9–15, 5–8, 3–4, exactly 2, today and yesterday.
+// Draw order is independent of the learn filter.
+// 0 (not stored) no saved answer. 1 saved answer, no answeredAt.
+// Then oldest answeredAt first: >30, 16–30, 9–15, 5–8, 3–4, exactly 2, today and yesterday.
+export const LEARN_DRAW_BAND_COUNT = 9;
+
 function drawBand(days) {
-  if (days > 30) return 1;
-  if (days >= 16) return 2;
-  if (days >= 9) return 3;
-  if (days >= 5) return 4;
-  if (days >= 3) return 5;
-  if (days >= 2) return 6;
-  return 7;
+  if (days > 30) return 2;
+  if (days >= 16) return 3;
+  if (days >= 9) return 4;
+  if (days >= 5) return 5;
+  if (days >= 3) return 6;
+  if (days >= 2) return 7;
+  return 8;
+}
+
+function savedAnswerText(raw) {
+  if (typeof raw === 'string') return raw;
+  if (raw && typeof raw === 'object' && typeof raw.answer === 'string') return raw.answer;
+  return '';
 }
 
 export function getLearnDrawBands(category, now = Date.now()) {
@@ -420,10 +429,13 @@ export function getLearnDrawBands(category, now = Date.now()) {
   for (const id of Object.keys(catData)) {
     const raw = catData[id];
     const stamp = raw && typeof raw === 'object' ? raw.answeredAt : null;
-    if (!Number.isFinite(stamp)) continue;
-    let days = today - localDayIndex(stamp);
-    if (days < 0) days = 0;
-    map.set(id, drawBand(days));
+    if (Number.isFinite(stamp)) {
+      let days = today - localDayIndex(stamp);
+      if (days < 0) days = 0;
+      map.set(id, drawBand(days));
+      continue;
+    }
+    if (savedAnswerText(raw) !== '') map.set(id, 1);
   }
   return map;
 }

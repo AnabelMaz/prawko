@@ -1,9 +1,9 @@
 // learn.js — Learning mode (no timer, immediate feedback).
 // Sequential and random are two lists of the current filter.
 // Random is built once per visit (on enter if already selected, or the first time it is chosen):
-// questions with no answer date first, then answered questions from the oldest date band
-// to the newest. Each band is shuffled on its own; the whole band finishes before the next.
-// A filter only keeps questions from that one list. Answering does not rebuild it.
+// no saved answer first, then a saved answer with no answeredAt, then answeredAt from the
+// oldest date band to the newest. Each band is shuffled on its own; the whole band finishes
+// before the next. A filter only keeps questions from that one list. Answering does not rebuild it.
 // Switching order keeps the same question. The counter is always the catalog
 // number of that question, so next/prev on random jumps 2022 → 1500, not 2023.
 
@@ -14,6 +14,7 @@ import {
   getLearnAnswerForQuestion,
   getLearnQuestionStatus,
   getLearnDrawBands,
+  LEARN_DRAW_BAND_COUNT,
   isLearnQuestionHard,
 } from './stats.js';
 import { getLang, t } from './i18n.js';
@@ -98,7 +99,7 @@ function showQueueToast(filter, order) {
   showToast(`${filterLabel(filter)} · ${orderLabel}`);
 }
 
-const DRAW_BANDS = 8;
+const DRAW_BANDS = LEARN_DRAW_BAND_COUNT;
 
 function shuffleInPlace(arr) {
   for (let i = arr.length - 1; i > 0; i--) {
