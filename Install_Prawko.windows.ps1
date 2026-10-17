@@ -112,6 +112,10 @@ SWITCHES
 
   -Patch            Overlays code and question JSON from the local checkout (-Dev,
                     next to the script, ..\prawko-contrib, ..\contrib). Skips media\.
+                    An export pack stores that JSON in snapshot\data and leaves
+                    contrib\src\data out. -Patch copies snapshot\data onto the server.
+                    If neither JSON source exists, -Patch stops instead of leaving
+                    new code on the server's older catalogue.
                     Without contrib it overlays nothing — the server still has AnabelMaz
                     from install. On an already running server: overlay only,
                     no admin, no git checkout, no service reinstall.
@@ -126,7 +130,9 @@ SWITCHES
 
   -Import <path>    Restore from a pack. -ImportScope Auto (default), Code, or Runtime.
                     Runtime = snapshot only (server must exist). Code = overlay from
-                    pack contrib. -ImportForce overwrites existing data/media.
+                    pack contrib, including snapshot\data when contrib\src\data
+                    was omitted. -ImportForce overwrites existing media, and data
+                    when the code did not already bring snapshot\data.
                     Does not call gov.pl when the pack has a snapshot.
 
   -Dev <path>       Git clone only, for work (code, commit, push). Folder empty
@@ -1084,6 +1090,67 @@ function Set-ServerCacheVersion {
     Write-Host "Service worker: $Prefix-$stamp" -ForegroundColor Cyan
 }
 
+function Test-QuestionDataDir ([string]$DataDir) {
+    if ([string]::IsNullOrWhiteSpace($DataDir)) { return $false }
+    return Test-Path -LiteralPath (Join-Path $DataDir "meta.json")
+}
+
+function Get-PackSnapshotDataDir ([string]$ContribRoot) {
+    if ([string]::IsNullOrWhiteSpace($ContribRoot)) { return $null }
+    $packRoot = Split-Path ([IO.Path]::GetFullPath($ContribRoot)) -Parent
+    $data = Join-Path $packRoot "snapshot\data"
+    if (Test-QuestionDataDir $data) { return [IO.Path]::GetFullPath($data) }
+    return $null
+}
+
+function Remove-LegacyQuestionUaName ([string]$DataDir) {
+    if ([string]::IsNullOrWhiteSpace($DataDir) -or -not (Test-Path -LiteralPath $DataDir)) { return }
+    $trUkDst = Join-Path $DataDir "translations_uk.json"
+    $trUaDst = Join-Path $DataDir "translations_ua.json"
+    if ((Test-Path -LiteralPath $trUaDst) -and -not (Test-Path -LiteralPath $trUkDst)) {
+        Move-Item -LiteralPath $trUaDst -Destination $trUkDst -Force
+    }
+    if (Test-Path -LiteralPath $trUaDst) {
+        Remove-Item -LiteralPath $trUaDst -Force
+    }
+}
+
+function Copy-QuestionDataDir {
+    param(
+        [Parameter(Mandatory = $true)][string]$SourceData,
+        [Parameter(Mandatory = $true)][string]$DestRoot
+    )
+    $dstData = Join-Path $DestRoot "src\data"
+    New-Item -ItemType Directory -Path $dstData -Force | Out-Null
+    Write-Host "-> Question JSON: $SourceData -> $dstData" -ForegroundColor Cyan
+    Invoke-SafeRobocopy -Activity "Question JSON" -Source $SourceData -Destination $dstData -ArgumentList @(
+        "/E", "/R:2", "/W:1", "/NFL", "/NDL", "/NJH", "/NJS", "/nc", "/ns", "/np"
+    )
+    Remove-LegacyQuestionUaName $dstData
+}
+
+# Export packs omit contrib\src\data and keep one copy in snapshot\data.
+# Code from that pack must bring the snapshot, or the server keeps an older catalogue.
+function Restore-QuestionJsonForCode {
+    param(
+        [Parameter(Mandatory = $true)][string]$ContribRoot,
+        [Parameter(Mandatory = $true)][string]$DestRoot
+    )
+    $script:questionJsonFromSnapshot = $false
+    # A pack keeps the catalogue in snapshot\data. Leftover contrib\src\data from an
+    # older export is the previous shape and must not win.
+    $snap = Get-PackSnapshotDataDir $ContribRoot
+    if ($snap) {
+        Write-Host "-> Question JSON comes from snapshot\data." -ForegroundColor Yellow
+        Copy-QuestionDataDir -SourceData $snap -DestRoot $DestRoot
+        $script:questionJsonFromSnapshot = $true
+        return
+    }
+    $contribData = Join-Path $ContribRoot "src\data"
+    if (Test-QuestionDataDir $contribData) { return }
+    throw "This code has no question JSON (no $($ContribRoot)\src\data\meta.json and no snapshot\data next to the pack). Stopping so new code is not left on the server's older catalogue."
+}
+
 function Publish-AppSrcOverlay {
     param(
         [Parameter(Mandatory = $true)][string]$SourceSrc,
@@ -1110,15 +1177,10 @@ function Publish-AppSrcOverlay {
         }
         $trUkSrc = Join-Path $srcApp "data\translations_uk.json"
         $trUkDst = Join-Path $trDstDir "translations_uk.json"
-        $trUaDst = Join-Path $trDstDir "translations_ua.json"
         if (Test-Path -LiteralPath $trUkSrc) {
             Copy-Item -LiteralPath $trUkSrc -Destination $trUkDst -Force
-        } elseif ((Test-Path -LiteralPath $trUaDst) -and -not (Test-Path -LiteralPath $trUkDst)) {
-            Move-Item -LiteralPath $trUaDst -Destination $trUkDst -Force
         }
-        if (Test-Path -LiteralPath $trUaDst) {
-            Remove-Item -LiteralPath $trUaDst -Force
-        }
+        Remove-LegacyQuestionUaName $trDstDir
     }
     Set-ServerCacheVersion -Root $DestRoot -Prefix $CachePrefix
     Restore-LocalMediaBaseIfNeeded -Root $DestRoot
@@ -1136,6 +1198,7 @@ function Apply-PrawkoAppFixes ($root) {
         throw "Patch source does not contain src\index.html."
     }
     Publish-AppSrcOverlay -SourceSrc $patchSrc -DestRoot $root -CachePrefix "prawko-patch"
+    Restore-QuestionJsonForCode -ContribRoot $localContrib -DestRoot $root
     Write-Host "-> Overlaid code from local contrib." -ForegroundColor Green
 }
 
@@ -1392,6 +1455,20 @@ exit `$LASTEXITCODE
         if (-not (Test-Path -LiteralPath $idx)) {
             throw "After export, missing $idx"
         }
+        if ($skipContribData) {
+            $staleData = Join-Path $destContrib "src\data"
+            if (Test-Path -LiteralPath $staleData) {
+                Write-Host "-> Removing stale contrib src\data. This export keeps question JSON in snapshot\data." -ForegroundColor Yellow
+                Remove-Item -LiteralPath $staleData -Recurse -Force
+            }
+        }
+        if ($skipContribMedia) {
+            $staleMedia = Join-Path $destContrib "src\media"
+            if (Test-Path -LiteralPath $staleMedia) {
+                Write-Host "-> Removing stale contrib src\media. This export keeps media in snapshot\media." -ForegroundColor Yellow
+                Remove-Item -LiteralPath $staleMedia -Recurse -Force
+            }
+        }
         Write-Host "-> Contrib: $destContrib" -ForegroundColor Green
     }
     $locations.code = "contrib"
@@ -1444,6 +1521,7 @@ function Import-PrawkoPack {
         }
         Write-Host "-> Overlay code from pack contrib" -ForegroundColor Cyan
         Publish-AppSrcOverlay -SourceSrc (Join-Path $packContrib "src") -DestRoot $targetDir -CachePrefix "prawko-import"
+        Restore-QuestionJsonForCode -ContribRoot $packContrib -DestRoot $targetDir
     }
 
     if ($doRuntime) {
@@ -1472,8 +1550,10 @@ function Import-PrawkoPack {
         } else {
             if ($hasData) {
                 $dstData = Join-Path $targetDir "src\data"
-                if ((Test-DirHasFiles $dstData) -and -not $Force) {
+                if ((Test-DirHasFiles $dstData) -and -not $Force -and -not $script:questionJsonFromSnapshot) {
                     Write-Host "-> Server data exists; use -ImportForce to overwrite." -ForegroundColor DarkYellow
+                } elseif ($script:questionJsonFromSnapshot) {
+                    Write-Host "-> Question JSON already restored from snapshot\data with the code." -ForegroundColor Green
                 } else {
                     New-Item -ItemType Directory -Path $dstData -Force | Out-Null
                     Write-Host "-> Restore data: $dataSrc -> $dstData" -ForegroundColor Cyan

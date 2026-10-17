@@ -57,6 +57,9 @@ test('macOS/Linux pipeline scripts are Python, not Node or bash twins', () => {
     expect(text).toMatch(/run_pipeline download-gov\.py/);
     expect(text).toMatch(/merge-gov\.py/);
     expect(text).toMatch(/python3 "\$path"/);
+    expect(text).toMatch(/restore_question_json_for_code/);
+    expect(text).toMatch(/Question JSON comes from snapshot\/data/);
+    expect(text).toMatch(/Removing stale contrib src\/data/);
   }
   expect(linux).not.toMatch(/node -p /);
   expect(windows).not.toMatch(/python3 /);
@@ -79,6 +82,10 @@ test('macOS/Linux pipeline scripts are Python, not Node or bash twins', () => {
   expect(fs.existsSync(path.join(ROOT, 'src', 'server.js'))).toBe(true);
   expect(windows).toMatch(/question JSON included, skipping media/);
   expect(windows).toMatch(/The next -Patch copies question JSON from contrib/);
+  expect(windows).toMatch(/function Restore-QuestionJsonForCode/);
+  expect(windows).toMatch(/Question JSON comes from snapshot\\data/);
+  expect(windows).toMatch(/Removing stale contrib src\\data/);
+  expect(windows).toMatch(/new code is not left on the server's older catalogue/);
   expect(windows).not.toMatch(/will not overwrite data/);
   expect(macos).not.toMatch(/it skips data/);
   expect(linux).not.toMatch(/it skips data/);

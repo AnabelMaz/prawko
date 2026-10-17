@@ -75,6 +75,10 @@ FLAGS (same as Install_Prawko.windows.ps1 on Windows)
   --merge-gov            On a running server: fills gaps from ministry Excel.
   --patch                Overlays code from a local checkout (--dev, next to the script,
                          ../prawko-contrib). Copies question JSON. Skips media/.
+                         An export pack stores that JSON in snapshot/data and leaves
+                         contrib/src/data out. --patch copies snapshot/data onto the server.
+                         If neither JSON source exists, --patch stops instead of leaving
+                         new code on the server's older catalogue.
                          On an already running server: overlay only, no sudo,
                          no launchd reinstall.
                          On first install: AnabelMaz ZIP + launchd + overlay.
@@ -83,7 +87,9 @@ FLAGS (same as Install_Prawko.windows.ps1 on Windows)
                          or src/media when in snapshot). Opt out: --exclude-data,
                          --exclude-media, --exclude-local-json. Optional: --include-gov-cache.
   --import <path>        Restore from a pack. --import-scope auto|code|runtime.
-                         --import-force overwrites existing data/media.
+                         Code overlay includes snapshot/data when contrib/src/data was omitted.
+                         --import-force overwrites existing media, and data when the code
+                         did not already bring snapshot/data.
   --dev <path>           Git clone only (code, commit, push). Not ${TARGET_DIR}.
                          Does not install Node or launchd — even if the server is not running.
                          Git is used only here. Localhost: run the script with no flags first.
@@ -568,6 +574,30 @@ copy_gov_json_to_server() {
   return 0
 }
 
+restore_question_json_for_code() {
+  local contrib="$1" dest_root="$2" snap dest_data
+  QUESTION_JSON_FROM_SNAPSHOT=0
+  # A pack keeps the catalogue in snapshot/data. Leftover contrib/src/data from an
+  # older export is the previous shape and must not win.
+  snap="$(cd "$contrib/.." && pwd)/snapshot/data"
+  if [ -f "$snap/meta.json" ]; then
+    say_y "-> Question JSON comes from snapshot/data."
+    dest_data="$dest_root/src/data"
+    mkdir -p "$dest_data"
+    rsync -a "$snap/" "$dest_data/"
+    if [ -f "$dest_data/translations_ua.json" ] && [ ! -f "$dest_data/translations_uk.json" ]; then
+      mv "$dest_data/translations_ua.json" "$dest_data/translations_uk.json"
+    fi
+    rm -f "$dest_data/translations_ua.json"
+    QUESTION_JSON_FROM_SNAPSHOT=1
+    return 0
+  fi
+  if [ -f "$contrib/src/data/meta.json" ]; then
+    return 0
+  fi
+  die "This code has no question JSON (no $contrib/src/data/meta.json and no snapshot/data next to the pack). Stopping so new code is not left on the server's older catalogue."
+}
+
 overlay_src() {
   local src_app="$1" dest_root="$2" prefix="$3"
   [ -f "$src_app/index.html" ] || die "Missing $src_app/index.html"
@@ -598,6 +628,7 @@ apply_patch() {
   fi
   say_y "-> Overlaying code from local contrib: $contrib"
   overlay_src "$contrib/src" "$TARGET_DIR" "prawko-patch"
+  restore_question_json_for_code "$contrib" "$TARGET_DIR"
   say_g "-> Overlayed code from local contrib."
 }
 
@@ -1081,6 +1112,14 @@ STUB
     rsync_progress "${_rsync_ex[@]}" "$contrib/" "$dest_contrib/"
     unset _rsync_ex
     [ -f "$dest_contrib/src/index.html" ] || die "After export, missing $dest_contrib/src/index.html"
+    if [ "$has_data" -eq 1 ] && [ -d "$dest_contrib/src/data" ]; then
+      say_y "-> Removing stale contrib src/data. This export keeps question JSON in snapshot/data."
+      rm -rf "$dest_contrib/src/data"
+    fi
+    if [ "$has_media" -eq 1 ] && [ -d "$dest_contrib/src/media" ]; then
+      say_y "-> Removing stale contrib src/media. This export keeps media in snapshot/media."
+      rm -rf "$dest_contrib/src/media"
+    fi
     say_g "-> Contrib: $dest_contrib"
   fi
   write_export_manifest "$dest_root/manifest.json" "$has_data" "$has_media" "$has_local" "$has_gov" \
@@ -1113,12 +1152,15 @@ import_pack() {
     server_installed || die "--import needs a running server. First run with no flags, then --import."
     say_c "-> Overlay code from pack contrib"
     overlay_src "$pack_contrib/src" "$TARGET_DIR" "prawko-import"
+    restore_question_json_for_code "$pack_contrib" "$TARGET_DIR"
   fi
   if [ "$do_runtime" -eq 1 ]; then
     server_installed || die "--import needs a running server. First run with no flags, then --import."
     if [ -f "$snapshot/data/meta.json" ]; then
-      if [ "$IMPORT_FORCE" -eq 0 ] && [ -f "$TARGET_DIR/src/data/meta.json" ]; then
+      if [ "$IMPORT_FORCE" -eq 0 ] && [ -f "$TARGET_DIR/src/data/meta.json" ] && [ "${QUESTION_JSON_FROM_SNAPSHOT:-0}" -eq 0 ]; then
         say_y "-> Server data exists; use --import-force to overwrite."
+      elif [ "${QUESTION_JSON_FROM_SNAPSHOT:-0}" -eq 1 ]; then
+        say_g "-> Question JSON already restored from snapshot/data with the code."
       else
         mkdir -p "$TARGET_DIR/src/data"
         say_c "-> Restore data"
