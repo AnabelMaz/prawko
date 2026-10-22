@@ -10,7 +10,6 @@
 import { renderQuestion, highlightAnswer, markSelectedAnswer, showLearnMediaMark } from './ui.js';
 import {
   saveLearnAnswer,
-  getLearnKnownCount,
   getLearnQuestionStatus,
   getLearnDrawBands,
   LEARN_DRAW_BAND_COUNT,
@@ -376,6 +375,7 @@ export function startLearn(categoryData) {
     answered: false,
     correctCount: 0,
     incorrectCount: 0,
+    knownCount: 0,
     filter,
     order,
     sessionAnswers: new Map(),
@@ -454,7 +454,6 @@ export function startLearn(categoryData) {
 function updateLearnStats() {
   const el = document.querySelector('.learn-stats');
   if (!el || !state) return;
-  const knownCount = getLearnKnownCount(state.category, state.baseQuestions);
   const filterOptions = [
     ['unknown', t('learnFilterUnknown')],
     ['hard', t('learnFilterHard')],
@@ -493,8 +492,8 @@ function updateLearnStats() {
     el.append(filterSelect, orderSelect, summary);
   }
 
-  known.textContent = `\u{1F9E0} ${knownCount}`;
-  known.setAttribute('aria-label', t('learnStatsKnown').replace('{n}', String(knownCount)));
+  known.textContent = `\u{1F9E0} ${state.knownCount}`;
+  known.setAttribute('aria-label', t('learnStatsKnown').replace('{n}', String(state.knownCount)));
   correct.textContent = `\u2713 ${state.correctCount}`;
   incorrect.textContent = `\u2717 ${state.incorrectCount}`;
   filterSelect.querySelector('.learn-queue-select').setAttribute('aria-label', t('learnFilterLabel'));
@@ -623,6 +622,7 @@ function handleLearnAnswer(answer) {
   state.answered = true;
   state.givenAnswer = answer;
   const isCorrect = answer === q.correct;
+  const wasKnown = getLearnQuestionStatus(state.category, q) === 'known';
   applyLearnAnswerFeedback(q, answer);
   showLearnMediaMark(isCorrect);
   saveLearnAnswer(state.category, q.id, answer, isCorrect);
@@ -630,6 +630,9 @@ function handleLearnAnswer(answer) {
 
   if (isCorrect) {
     state.correctCount++;
+    if (!wasKnown && getLearnQuestionStatus(state.category, q) === 'known') {
+      state.knownCount++;
+    }
   } else {
     state.incorrectCount++;
   }

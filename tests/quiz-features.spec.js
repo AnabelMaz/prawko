@@ -707,7 +707,9 @@ test.describe('Learn queue filter', () => {
     await expect(order.locator('[role="option"]')).toHaveCount(2);
     await expect(filter).toHaveAttribute('data-value', 'unknown');
     await expect(order).toHaveAttribute('data-value', 'random');
-    await expect(page.locator('.learn-stats-known')).toBeVisible();
+    await expect(page.locator('.learn-stats-known')).toHaveText(/0$/);
+    await expect(page.locator('.learn-stats-correct')).toHaveText(/0$/);
+    await expect(page.locator('.learn-stats-incorrect')).toHaveText(/0$/);
     const headerOrder = await page.evaluate(() => {
       const qnum = document.querySelector('.learn-qnum')?.getBoundingClientRect();
       const filter = document.querySelector('.learn-filter-select')?.getBoundingClientRect();
@@ -716,6 +718,32 @@ test.describe('Learn queue filter', () => {
       return qnum.right <= filter.left + 1 && filter.right <= summary.left + 1;
     });
     expect(headerOrder).toBe(true);
+  });
+
+  test('learn header counts memorized questions from this session only', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('prawko_p_p1_learn', JSON.stringify({
+        B: {
+          99: { answer: 'T', streak: 1, misses: 0 },
+          100: { answer: 'T', streak: 2, misses: 0 },
+        },
+      }));
+      localStorage.setItem('prawko_p_p1_learn_queue_mode', JSON.stringify({
+        B: { filter: 'all', order: 'sequential' },
+      }));
+    });
+    await startLearnMode(page);
+    await expect(page.locator('.learn-stats-known')).toHaveText(/0$/);
+    await expect(page.locator('.learn-stats-correct')).toHaveText(/0$/);
+    await expect(page.locator('.learn-stats-incorrect')).toHaveText(/0$/);
+    await page.locator('.answer-btn[data-answer="T"]').click();
+    await expect(page.locator('.learn-stats-known')).toHaveText(/1$/);
+    await expect(page.locator('.learn-stats-correct')).toHaveText(/1$/);
+    await page.click('.btn-next');
+    await page.locator('.answer-btn[data-answer="T"]').click();
+    await expect(page.locator('.learn-stats-known')).toHaveText(/1$/);
+    await expect(page.locator('.learn-stats-correct')).toHaveText(/2$/);
+    await expect(page.locator('.learn-stats-incorrect')).toHaveText(/0$/);
   });
 
   test('saved new or wrong queue prefs fall back to to-learn', async ({ page }) => {
