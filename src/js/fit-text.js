@@ -213,6 +213,28 @@ function textFits(text, box, px) {
   return lines * px * (box.ratio || 1.25) <= box.height + 0.75;
 }
 
+function layoutClipped(el) {
+  return !!el && el.clientHeight >= 4 && el.scrollHeight > el.clientHeight + 1;
+}
+
+/** Canvas and the live face can disagree by a fraction of a pixel.
+ *  Step down only while this slot is clipping, at most 1px, then stop. */
+function tightenToLayout(el, px) {
+  if (!el || px == null) return px;
+  let size = px;
+  const floor = Math.max(MIN_PX, Math.round((px - 1) * 4) / 4);
+  el.style.fontSize = `${size}px`;
+  if (el.clientHeight < 4) return size;
+  for (let i = 0; i < 8 && size > floor; i++) {
+    if (!layoutClipped(el)) return size;
+    const next = Math.round((size - PRECISION) * 4) / 4;
+    size = Math.max(floor, next);
+    el.style.fontSize = `${size}px`;
+    if (size === floor) break;
+  }
+  return size;
+}
+
 function largestFit(text, box) {
   const raw = String(text ?? '').trim();
   if (!raw) return MAX_PX;
@@ -246,7 +268,7 @@ function fitQuestion(dock) {
   if (!el) return true;
   const px = largestFit(el.textContent, questionBox(el));
   if (px == null) return false;
-  applyDockFont(dock, 'q', px);
+  applyDockFont(dock, 'q', tightenToLayout(el, px));
   return true;
 }
 
@@ -256,6 +278,12 @@ function fitAnswers(dock) {
   const shared = sharedAbcPx(dock, texts.map((el) => el.textContent), texts[0]);
   if (shared == null) return false;
   applyDockFont(dock, 'a', shared);
+  let fitted = shared;
+  for (const el of texts) {
+    const next = tightenToLayout(el, fitted);
+    if (next < fitted) fitted = next;
+  }
+  applyDockFont(dock, 'a', fitted);
   return true;
 }
 
@@ -284,6 +312,7 @@ export function prepareDockFit(dock, q) {
   p.textContent = q.q || '';
   if (px != null) p.style.fontSize = `${px}px`;
   old.replaceWith(p);
+  if (px != null) p.style.fontSize = `${tightenToLayout(p, px)}px`;
   if (asAbc) {
     const shared = sharedAbcPx(dock, [q.a, q.b, q.c], p);
     if (shared == null || px == null) return;
@@ -330,7 +359,9 @@ export function fitQuizDockText() {
     return;
   }
   const key = currentFitKey(dock);
-  if (key && key === lastFitKey) {
+  const clipped = layoutClipped(dock.querySelector('.question-text'))
+    || [...dock.querySelectorAll('.abc-answers .answer-text')].some(layoutClipped);
+  if (key && key === lastFitKey && !clipped) {
     layoutTries = 0;
     return;
   }

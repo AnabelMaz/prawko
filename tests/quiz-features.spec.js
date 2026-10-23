@@ -1362,6 +1362,43 @@ test.describe('Learn catalog jump', () => {
     }, beforeNav)).toBe(true);
   });
 
+  test('panel portrait fits a full-width basic question without shrinking a whole line', async ({ page }) => {
+    await page.setViewportSize({ width: 393, height: 852 });
+    await page.addInitScript(() => {
+      try { localStorage.setItem('prawko_exam_skin', 'panel'); } catch {}
+    });
+    await startLearnMode(page, { localJson: { learnQuestionJump: true } });
+    await expect.poll(() => page.locator('html').getAttribute('data-exam-skin')).toBe('panel');
+    await expect.poll(() => page.locator('html').getAttribute('data-ui-orient')).toBe('portrait');
+    await setLearnQueue(page, 'filter', 'all');
+    await setLearnQueue(page, 'order', 'sequential');
+    await page.locator('.learn-qnum-input').fill('2038');
+    await page.locator('.learn-qnum-input').press('Enter');
+    await expect(page.locator('.question-card')).toHaveAttribute('data-question-id', '13553');
+    const fit = await page.evaluate(() => {
+      const q = document.querySelector('.question-text');
+      const cs = getComputedStyle(q);
+      const range = document.createRange();
+      range.selectNodeContents(q);
+      const scale = Number(getComputedStyle(document.documentElement).getPropertyValue('--ui-scale')) || 1;
+      const textH = range.getBoundingClientRect().height / scale;
+      const padY = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+      const lineH = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.25;
+      const last = [...range.getClientRects()].at(-1);
+      const box = q.getBoundingClientRect();
+      return {
+        font: parseFloat(cs.fontSize),
+        room: q.clientHeight - padY - textH,
+        lineH,
+        lastInside: last ? last.bottom <= box.bottom + 1 : false,
+      };
+    });
+    expect(fit.lastInside).toBe(true);
+    expect(fit.font).toBeGreaterThan(26);
+    expect(fit.font).toBeLessThanOrEqual(32);
+    expect(fit.room).toBeGreaterThan(0);
+  });
+
   test('panel question is fitted on the first learn frame', async ({ page }) => {
     await page.setViewportSize({ width: 874, height: 580 });
     await page.route('**/data/B.json*', async (route) => {
