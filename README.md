@@ -404,7 +404,7 @@ Na **zainstalowanym serwerze** przeglądarka pobiera opcjonalny `src/local.json`
 
 Obejrzane zdjęcie lub film ląduje w Cache Storage tej przeglądarki (następny/poprzedni z `blob:`). Wyjątek: **ta sama maszyna** z `mediaBase: "media"` — pliki już są na dysku, nie kopiujemy ich. Nie zależy to od LAN/WAN. github.io, inny serwer z mediami lub bez (`cdn`), oraz localhost z `mediaBase: "cdn"` — wszystkie cachują po obejrzeniu. localhost z `media` i pustym `src/media` to 404, nie cichy CDN.
 
-W paczce MI brakuje pliku `!RS_Parking zastrzeżony.webp`. Parser **nie wycina** przez to pytania — nazwa z Excela zostaje, żeby zadziałał CDN albo późniejsze uzupełnienie.
+W paczce MI brakuje dwóch plików: `!RS_Parking zastrzeżony.webp` oraz `5-9.2021.wmv` (w aplikacji `5-9.2021.mp4`, pytanie 13074). Excel podaje obie nazwy, w ZIP-ach z mediami ich nie ma. Jest tylko `5-9.2021 bis.wmv` do sąsiedniego pytania. Parser **nie wycina** przez to pytań — nazwa z Excela zostaje, żeby zadziałał CDN albo późniejsze uzupełnienie.
 
 Push na `main` odpala testy Playwright i wgrywa `src/` na GitHub Pages: [anabelmaz.github.io/prawko](https://anabelmaz.github.io/prawko/). Codzienna aplikacja to usługa na [http://localhost:5173](http://localhost:5173).
 
@@ -907,7 +907,7 @@ On an **installed server** the browser fetches optional `src/local.json` (gitign
 
 A viewed photo or film is stored in that browser’s Cache Storage (next/prev from `blob:`). Exception: **this computer** with `mediaBase: "media"` — the files are already on disk, so they are not copied. LAN vs WAN does not matter. github.io, another server with or without media (`cdn`), and localhost with `mediaBase: "cdn"` all cache on view. localhost with `media` and empty `src/media` is a 404, not a silent CDN fallback.
 
-The ministry pack is missing `!RS_Parking zastrzeżony.webp`. The parser does **not** drop that question — the Excel file name stays so the CDN or a later file can fill it.
+The ministry pack is missing two files: `!RS_Parking zastrzeżony.webp` and `5-9.2021.wmv` (the app looks up `5-9.2021.mp4`, question 13074). Excel names both, and the media ZIPs do not contain them. Only `5-9.2021 bis.wmv` is there, for the neighbouring question. The parser does **not** drop those questions — the Excel file name stays so the CDN or a later file can fill it.
 
 A push to `main` runs Playwright and publishes `src/` to GitHub Pages: [anabelmaz.github.io/prawko](https://anabelmaz.github.io/prawko/). Day-to-day use is the service at [http://localhost:5173](http://localhost:5173).
 
