@@ -5,9 +5,9 @@
 # Does not convert PJM. Requires the installed server for default output.
 #
 # After MP4s exist, measures a black run glued to the start or the end by
-# reading only the first and last 1.5s. Each measured file is written to
-# src/data/media-trim.json immediately. A later run skips a file whose size
-# and mtime are unchanged. Playback ignores a file that has no "in" or "out".
+# reading only the first and last 1.5s. Results are written into questions.json
+# as mediaIn/mediaOut (no src/data/media-trim.json). Skip-cache lives in
+# gov-cache/media-trim-cache.json. Playback ignores a file with no in/out.
 # An existing WebP/MP4 is not encoded again.
 #
 # powershell -ExecutionPolicy Bypass -File scripts/convert-media.ps1
@@ -218,7 +218,7 @@ function Get-TrimEdges ($times, [double]$duration, [double]$frameDur) {
     return @{ in = $inn; out = $out }
 }
 
-function Save-MediaTrimFile ([string]$path, $map) {
+function Save-MediaTrimCache ([string]$path, $map) {
     $dir = Split-Path -Parent $path
     if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
     $json = ([ordered]@{ version = 1; files = $map } | ConvertTo-Json -Depth 6)
@@ -228,7 +228,60 @@ function Save-MediaTrimFile ([string]$path, $map) {
     Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
 }
 
-function Update-BlackEdgeTrim ([string]$vidDir, [string]$ffmpegExe, [string]$repo) {
+function Update-QuestionsMediaTrim ([string]$questionsPath, $trimByMedia) {
+    if (-not (Test-Path -LiteralPath $questionsPath)) {
+        Write-Host "-> No questions.json at $questionsPath — skip mediaIn/mediaOut patch (run parse-excel first)." -ForegroundColor DarkYellow
+        return
+    }
+    try {
+        $doc = [IO.File]::ReadAllText($questionsPath) | ConvertFrom-Json
+    } catch {
+        Write-Host "-> Could not read $questionsPath — skip trim patch." -ForegroundColor DarkYellow
+        return
+    }
+    if (-not $doc -or $doc -isnot [System.Management.Automation.PSCustomObject]) {
+        Write-Host "-> Unexpected questions.json shape — skip trim patch." -ForegroundColor DarkYellow
+        return
+    }
+    $changed = 0
+    foreach ($prop in $doc.PSObject.Properties) {
+        $fact = $prop.Value
+        if (-not $fact) { continue }
+        $media = [string]$fact.media
+        if (-not $media -or -not $trimByMedia.ContainsKey($media)) { continue }
+        $row = $trimByMedia[$media]
+        $inProp = $row.PSObject.Properties['in']
+        $outProp = $row.PSObject.Properties['out']
+        $newIn = $null
+        $newOut = $null
+        if ($inProp -and [double]$inProp.Value -gt 0.04) { $newIn = [math]::Round([double]$inProp.Value, 3) }
+        if ($outProp -and [double]$outProp.Value -gt 0.04) { $newOut = [math]::Round([double]$outProp.Value, 3) }
+        $hadIn = $fact.PSObject.Properties['mediaIn']
+        $hadOut = $fact.PSObject.Properties['mediaOut']
+        if ($null -ne $newIn) {
+            if (-not $hadIn) { $fact | Add-Member -NotePropertyName mediaIn -NotePropertyValue $newIn -Force; $changed++ }
+            elseif ([double]$fact.mediaIn -ne $newIn) { $fact.mediaIn = $newIn; $changed++ }
+        } elseif ($hadIn) {
+            $fact.PSObject.Properties.Remove('mediaIn')
+            $changed++
+        }
+        if ($null -ne $newOut) {
+            if (-not $hadOut) { $fact | Add-Member -NotePropertyName mediaOut -NotePropertyValue $newOut -Force; $changed++ }
+            elseif ([double]$fact.mediaOut -ne $newOut) { $fact.mediaOut = $newOut; $changed++ }
+        } elseif ($hadOut) {
+            $fact.PSObject.Properties.Remove('mediaOut')
+            $changed++
+        }
+    }
+    $json = ($doc | ConvertTo-Json -Depth 12)
+    $tmp = "$questionsPath.tmp"
+    [IO.File]::WriteAllText($tmp, $json + "`n", (New-Object System.Text.UTF8Encoding $false))
+    [IO.File]::Copy($tmp, $questionsPath, $true)
+    Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
+    Write-Host "-> Patched mediaIn/mediaOut in $questionsPath ($changed field updates)" -ForegroundColor Green
+}
+
+function Update-BlackEdgeTrim ([string]$vidDir, [string]$ffmpegExe, [string]$repo, [string]$server) {
     $ffprobe = Join-Path (Split-Path -Parent $ffmpegExe) "ffprobe.exe"
     if (-not (Test-Path -LiteralPath $ffprobe)) {
         $cmd = Get-Command ffprobe -ErrorAction SilentlyContinue
@@ -238,11 +291,11 @@ function Update-BlackEdgeTrim ([string]$vidDir, [string]$ffmpegExe, [string]$rep
         Write-Host "ffprobe missing; black-edge trim skipped." -ForegroundColor DarkYellow
         return
     }
-    $dest = Join-Path $repo "src\data\media-trim.json"
+    $cacheDest = Join-Path (Get-GovDataDir) "media-trim-cache.json"
     $previous = @{}
-    if (Test-Path -LiteralPath $dest) {
+    if (Test-Path -LiteralPath $cacheDest) {
         try {
-            $doc = [IO.File]::ReadAllText($dest) | ConvertFrom-Json
+            $doc = [IO.File]::ReadAllText($cacheDest) | ConvertFrom-Json
             if ($doc.files) {
                 foreach ($p in $doc.files.PSObject.Properties) { $previous[$p.Name] = $p.Value }
             }
@@ -296,10 +349,25 @@ function Update-BlackEdgeTrim ([string]$vidDir, [string]$ffmpegExe, [string]$rep
             Write-Host "   trim $($vid.Name) $($note -join ' ')" -ForegroundColor Green
         }
         $files[$vid.Name] = $entry
-        if ($measured % 20 -eq 0) { Save-MediaTrimFile $dest $files }
+        if ($measured % 20 -eq 0) { Save-MediaTrimCache $cacheDest $files }
     }
-    Save-MediaTrimFile $dest $files
-    Write-Host "-> Black-edge trim: measured $measured, with a cut $trimmed, timeouts $timedOut, wrote $dest" -ForegroundColor Green
+    Save-MediaTrimCache $cacheDest $files
+    Write-Host "-> Black-edge trim: measured $measured, with a cut $trimmed, timeouts $timedOut; cache $cacheDest" -ForegroundColor Green
+
+    $trimByMedia = @{}
+    foreach ($name in $files.Keys) { $trimByMedia[$name] = $files[$name] }
+    $targets = @(
+        (Join-Path $server "src\data\questions.json"),
+        (Join-Path $repo "src\data\questions.json")
+    ) | Select-Object -Unique
+    foreach ($qPath in $targets) {
+        Update-QuestionsMediaTrim $qPath $trimByMedia
+    }
+    $legacy = Join-Path $repo "src\data\media-trim.json"
+    if (Test-Path -LiteralPath $legacy) {
+        Remove-Item -LiteralPath $legacy -Force -ErrorAction SilentlyContinue
+        Write-Host "-> Removed leftover $legacy" -ForegroundColor DarkGray
+    }
 }
 
 try {
@@ -354,7 +422,7 @@ foreach ($ready in @(Get-ChildItem -Path $SourceDir -File -ErrorAction SilentlyC
 $webpCount = @(Get-ChildItem $ImgOut -Filter *.webp -ErrorAction SilentlyContinue).Count
 $mp4Count = @(Get-ChildItem $VidOut -Filter *.mp4 -ErrorAction SilentlyContinue).Count
 Write-Host "-> App media ready: $webpCount WebP, $mp4Count MP4" -ForegroundColor Green
-Update-BlackEdgeTrim $VidOut $ffmpeg $repoRoot
+Update-BlackEdgeTrim $VidOut $ffmpeg $repoRoot $serverRoot
 } finally {
     if ($script:cleanRawTemp) { Remove-GovRawTempDir }
 }

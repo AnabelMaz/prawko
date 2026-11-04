@@ -19,7 +19,7 @@
 # Category files list question ids only. Type, correct answer, points and media
 # are stored once in questions.json. Question and answer text, including Polish,
 # is stored in translations_{pl,en,de,uk}.json.
-# media-trim.json (from convert-media) may add mediaIn / mediaOut on a video.
+# mediaIn / mediaOut on videos are applied later by convert-media into questions.json.
 # A question without those fields plays from the start of the file to its real end.
 #
 # powershell -ExecutionPolicy Bypass -File scripts/parse-excel.ps1
@@ -271,24 +271,6 @@ function Get-QuestionFieldValue ($question, [string]$name) {
     return [string]$prop.Value
 }
 
-function Import-MediaTrimMap ([string]$outDir, [string]$repo) {
-    $map = @{}
-    foreach ($path in @(
-        (Join-Path $outDir 'media-trim.json'),
-        (Join-Path $repo 'src\data\media-trim.json')
-    )) {
-        if (-not (Test-Path -LiteralPath $path)) { continue }
-        try {
-            $doc = [IO.File]::ReadAllText($path) | ConvertFrom-Json
-        } catch { continue }
-        $files = $doc.files
-        if (-not $files) { continue }
-        foreach ($p in $files.PSObject.Properties) { $map[$p.Name] = $p.Value }
-        break
-    }
-    return $map
-}
-
 function New-StoredQuestionFact ($question) {
     $fact = [ordered]@{
         type    = [string]$question.type
@@ -299,14 +281,6 @@ function New-StoredQuestionFact ($question) {
     if ($media) {
         $fact['media'] = $media
         $fact['mediaType'] = Get-QuestionFieldValue $question 'mediaType'
-        $row = $null
-        if ($script:mediaTrim -and $script:mediaTrim.ContainsKey($media)) { $row = $script:mediaTrim[$media] }
-        if ($row) {
-            $inProp = $row.PSObject.Properties['in']
-            $outProp = $row.PSObject.Properties['out']
-            if ($inProp -and [double]$inProp.Value -gt 0.04) { $fact['mediaIn'] = [math]::Round([double]$inProp.Value, 3) }
-            if ($outProp -and [double]$outProp.Value -gt 0.04) { $fact['mediaOut'] = [math]::Round([double]$outProp.Value, 3) }
-        }
     }
     return $fact
 }
@@ -551,7 +525,6 @@ if (-not (Test-Path -LiteralPath $OutDir)) {
 }
 
 $oldPolish = Import-OldPolishKeys $OutDir
-$script:mediaTrim = Import-MediaTrimMap $OutDir $repoRoot
 $pendingQuestions = New-Object System.Collections.Generic.List[object]
 foreach ($cat in $Categories) {
     foreach ($q in $catQuestions[$cat]) {

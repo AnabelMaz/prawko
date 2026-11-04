@@ -3,7 +3,7 @@
 
 Same job as scripts/convert-media.ps1. Unpacks gov-cache ZIPs into TEMP, converts, then deletes the unpack tree. Does not convert PJM.
 
-After MP4s exist, measures a black run glued to the start or the end by reading only the first and last 1.5s. Each measured file is written to src/data/media-trim.json immediately. A later run skips a file whose size and mtime are unchanged. Playback ignores a file that has no "in" or "out". An existing WebP/MP4 is not encoded again.
+After MP4s exist, measures a black run glued to the start or the end by reading only the first and last 1.5s. Results go into questions.json as mediaIn/mediaOut (no src/data/media-trim.json). Skip-cache: gov-cache/media-trim-cache.json. Playback ignores a file with no in/out. An existing WebP/MP4 is not encoded again.
 
   python3 scripts/convert-media.py
   python3 scripts/convert-media.py --source DIR --img-out DIR --vid-out DIR --ffmpeg PATH
@@ -228,7 +228,51 @@ def _load_trim_index(path: Path) -> dict:
     return files if isinstance(files, dict) else {}
 
 
-def _write_black_edge_trim(vid_out: Path, ffmpeg: str, repo_root: Path) -> None:
+def _patch_questions_media_trim(questions_path: Path, trim_by_media: dict) -> None:
+    if not questions_path.is_file():
+        say(f"-> No questions.json at {questions_path} — skip mediaIn/mediaOut patch (run parse-excel first).", "y")
+        return
+    try:
+        doc = json.loads(questions_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        say(f"-> Could not read {questions_path} — skip trim patch.", "y")
+        return
+    if not isinstance(doc, dict):
+        say(f"-> Unexpected questions.json shape — skip trim patch.", "y")
+        return
+    changed = 0
+    for fact in doc.values():
+        if not isinstance(fact, dict):
+            continue
+        media = fact.get("media")
+        if not media or media not in trim_by_media:
+            continue
+        row = trim_by_media[media]
+        if not isinstance(row, dict):
+            continue
+        inn = row.get("in")
+        out = row.get("out")
+        new_in = round(float(inn), 3) if isinstance(inn, (int, float)) and not isinstance(inn, bool) and float(inn) > 0.04 else None
+        new_out = round(float(out), 3) if isinstance(out, (int, float)) and not isinstance(out, bool) and float(out) > 0.04 else None
+        if new_in is not None:
+            if fact.get("mediaIn") != new_in:
+                fact["mediaIn"] = new_in
+                changed += 1
+        elif "mediaIn" in fact:
+            del fact["mediaIn"]
+            changed += 1
+        if new_out is not None:
+            if fact.get("mediaOut") != new_out:
+                fact["mediaOut"] = new_out
+                changed += 1
+        elif "mediaOut" in fact:
+            del fact["mediaOut"]
+            changed += 1
+    questions_path.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    say(f"-> Patched mediaIn/mediaOut in {questions_path} ({changed} field updates)", "g")
+
+
+def _write_black_edge_trim(vid_out: Path, ffmpeg: str, repo_root: Path, server: Path, dg) -> None:
     ffprobe = str(Path(ffmpeg).with_name("ffprobe"))
     if not Path(ffprobe).is_file():
         found = shutil.which("ffprobe")
@@ -236,8 +280,8 @@ def _write_black_edge_trim(vid_out: Path, ffmpeg: str, repo_root: Path) -> None:
             say("ffprobe missing; black-edge trim skipped.", "y")
             return
         ffprobe = found
-    dest = repo_root / "src" / "data" / "media-trim.json"
-    previous = _load_trim_index(dest)
+    cache_dest = Path(dg.gov_data_dir()) / "media-trim-cache.json"
+    previous = _load_trim_index(cache_dest)
     videos = sorted(
         p for p in vid_out.iterdir()
         if p.is_file() and p.suffix.lower() == ".mp4" and not is_pjm_name(p)
@@ -289,12 +333,21 @@ def _write_black_edge_trim(vid_out: Path, ffmpeg: str, repo_root: Path) -> None:
             say(f"   trim {vid.name} {' '.join(bits)}", "g")
         files[vid.name] = entry
         if measured % 20 == 0:
-            _save_trim(dest, files)
-    _save_trim(dest, files)
+            _save_trim(cache_dest, files)
+    _save_trim(cache_dest, files)
     say(
-        f"-> Black-edge trim: measured {measured}, with a cut {trimmed}, timeouts {timed_out}, wrote {dest}",
+        f"-> Black-edge trim: measured {measured}, with a cut {trimmed}, timeouts {timed_out}; cache {cache_dest}",
         "g",
     )
+    for q_path in dict.fromkeys([
+        server / "src" / "data" / "questions.json",
+        repo_root / "src" / "data" / "questions.json",
+    ]):
+        _patch_questions_media_trim(q_path, files)
+    legacy = repo_root / "src" / "data" / "media-trim.json"
+    if legacy.is_file():
+        legacy.unlink(missing_ok=True)
+        say(f"-> Removed leftover {legacy}", "d")
 
 
 def main() -> None:
@@ -343,13 +396,13 @@ def main() -> None:
         say(f"Source (situational): {source}", "d")
         say(f"Output: {img_out}  /  {vid_out}", "d")
         say("Temp unpack is deleted after convert. PJM is not converted.", "d")
-        _convert_media(source, img_out, vid_out, ffmpeg, Path(__file__).resolve().parents[1])
+        _convert_media(source, img_out, vid_out, ffmpeg, Path(__file__).resolve().parents[1], server, dg)
     finally:
         if clean_raw:
             dg.remove_gov_raw_temp()
 
 
-def _convert_media(source: Path, img_out: Path, vid_out: Path, ffmpeg: str, repo_root: Path) -> None:
+def _convert_media(source: Path, img_out: Path, vid_out: Path, ffmpeg: str, repo_root: Path, server: Path, dg) -> None:
     img_out.mkdir(parents=True, exist_ok=True)
     vid_out.mkdir(parents=True, exist_ok=True)
 
@@ -423,7 +476,7 @@ def _convert_media(source: Path, img_out: Path, vid_out: Path, ffmpeg: str, repo
     webp_n = len([p for p in img_out.iterdir() if p.is_file() and p.suffix.lower() == ".webp"])
     mp4_n = len([p for p in vid_out.iterdir() if p.is_file() and p.suffix.lower() == ".mp4"])
     say(f"-> App media ready: {webp_n} WebP, {mp4_n} MP4", "g")
-    _write_black_edge_trim(vid_out, ffmpeg, repo_root)
+    _write_black_edge_trim(vid_out, ffmpeg, repo_root, server, dg)
 
 
 if __name__ == "__main__":

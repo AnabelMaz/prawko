@@ -2854,11 +2854,7 @@ function Publish-GovInstall {
         $rawForConvert = Expand-GovMediaZipsToTemp
     }
 
-    Write-Host "`n=== Converting situational media (JPG→WebP, WMV→MP4) ===" -ForegroundColor Cyan
-    $convertArgs = @("-FfmpegExe", $ffmpegExe, "-ImgOut", $imgOut, "-VidOut", $vidOut)
-    if ($rawForConvert) { $convertArgs += @("-SourceDir", $rawForConvert) }
-    Invoke-PrawkoScript "convert-media.ps1" $convertArgs
-
+    # Parse first so convert can patch mediaIn/mediaOut into questions.json.
     Write-Host "`n=== JSON from Excel → server src\data ===" -ForegroundColor Cyan
     $parseArgs = @("-Excel", $excelPath, "-OutDir", $serverData)
     if ($DropMissingMedia) {
@@ -2869,6 +2865,11 @@ function Publish-GovInstall {
     if (([string]$GeminiApiKey).Trim()) { $parseArgs += @("-GeminiApiKey", $GeminiApiKey) }
     Invoke-PrawkoScript "parse-excel.ps1" $parseArgs
     Assert-GovDataParsed -govDir $serverData -excelPath $excelPath
+
+    Write-Host "`n=== Converting situational media (JPG→WebP, WMV→MP4) + black-edge trim → questions.json ===" -ForegroundColor Cyan
+    $convertArgs = @("-FfmpegExe", $ffmpegExe, "-ImgOut", $imgOut, "-VidOut", $vidOut)
+    if ($rawForConvert) { $convertArgs += @("-SourceDir", $rawForConvert) }
+    Invoke-PrawkoScript "convert-media.ps1" $convertArgs
     if ($rawForConvert) { Remove-GovRawTempDir }
 
     Remove-LegacyServerRawMediaDir

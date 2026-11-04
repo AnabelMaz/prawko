@@ -1263,18 +1263,21 @@ publish_gov_install() {
   ls "$GOV_DATA/zip"/*.zip >/dev/null 2>&1 || die "No ministry ZIPs in $GOV_DATA/zip. Run --sync-gov --sync-scope full, or --import a pack with --include-gov-cache."
   img_out="$TARGET_DIR/src/media/img"
   vid_out="$TARGET_DIR/src/media/vid"
-  say_c "=== Converting situational media (JPG→WebP, WMV→MP4) ==="
   ffmpeg="$(command -v ffmpeg)"
+  raw_for_convert=""
   if [ "$DROP_MISSING_MEDIA" -eq 1 ]; then
-    run_pipeline convert-media.py --img-out "$img_out" --vid-out "$vid_out" --ffmpeg "$ffmpeg" --keep-raw
-  else
-    run_pipeline convert-media.py --img-out "$img_out" --vid-out "$vid_out" --ffmpeg "$ffmpeg"
+    raw_for_convert="$(as_user python3 -c "import importlib.util; from pathlib import Path; p=Path(r'''$(resolve_pipeline download-gov.py)'''); s=importlib.util.spec_from_file_location('dg', p); m=importlib.util.module_from_spec(s); s.loader.exec_module(m); print(m.expand_gov_media_zips_to_temp())")"
   fi
+  # Parse first so convert can patch mediaIn/mediaOut into questions.json.
   say_c "=== JSON from Excel → $TARGET_DIR/src/data ==="
   run_parse_excel "$excel" "$TARGET_DIR/src/data"
   assert_gov_parsed "$TARGET_DIR/src/data" "$excel"
-  if [ "$DROP_MISSING_MEDIA" -eq 1 ]; then
+  say_c "=== Converting situational media (JPG→WebP, WMV→MP4) + black-edge trim → questions.json ==="
+  if [ -n "$raw_for_convert" ]; then
+    run_pipeline convert-media.py --source "$raw_for_convert" --img-out "$img_out" --vid-out "$vid_out" --ffmpeg "$ffmpeg" --keep-raw
     rm -rf "$(gov_raw_temp_dir)"
+  else
+    run_pipeline convert-media.py --img-out "$img_out" --vid-out "$vid_out" --ffmpeg "$ffmpeg"
   fi
   remove_legacy_server_raw
   stamp_cache "$TARGET_DIR" "prawko-govmedia"

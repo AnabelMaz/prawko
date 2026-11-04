@@ -16,7 +16,7 @@ Same rules as scripts/parse-excel.ps1:
     shape ignored), drop the old translation so the gap is filled again
   - category files list question ids only; facts live once in questions.json;
     question and answer text, including Polish, lives in translations_*.json
-  - media-trim.json (from convert-media) may add mediaIn / mediaOut on a video.
+  - mediaIn / mediaOut on videos are applied later by convert-media into questions.json.
     A question without those fields plays from the start of the file to its real end.
 
 Usage:
@@ -153,21 +153,7 @@ def changed_polish_ids(old_keys: dict, questions) -> set[str]:
     return changed
 
 
-def load_media_trim(out_dir: Path, repo_root: Path) -> dict:
-    for path in (out_dir / "media-trim.json", repo_root / "src" / "data" / "media-trim.json"):
-        if not path.is_file():
-            continue
-        try:
-            doc = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        files = doc.get("files") if isinstance(doc, dict) else None
-        if isinstance(files, dict):
-            return files
-    return {}
-
-
-def question_fact(question: dict, trim: dict | None = None) -> dict:
+def question_fact(question: dict) -> dict:
     fact = {
         "type": question.get("type"),
         "correct": question.get("correct"),
@@ -176,14 +162,6 @@ def question_fact(question: dict, trim: dict | None = None) -> dict:
     if question.get("media"):
         fact["media"] = question.get("media")
         fact["mediaType"] = question.get("mediaType")
-        row = (trim or {}).get(fact["media"])
-        if isinstance(row, dict):
-            inn = row.get("in")
-            out = row.get("out")
-            if isinstance(inn, (int, float)) and not isinstance(inn, bool) and float(inn) > 0.04:
-                fact["mediaIn"] = round(float(inn), 3)
-            if isinstance(out, (int, float)) and not isinstance(out, bool) and float(out) > 0.04:
-                fact["mediaOut"] = round(float(out), 3)
     return fact
 
 
@@ -434,7 +412,6 @@ def main():
     if changed_ids:
         print(f"Polish text changed for {len(changed_ids)} questions; old translations of those ids will be filled again.")
 
-    trim = load_media_trim(out_dir, Path(__file__).resolve().parents[1])
     meta_categories = []
     total = 0
     question_facts = {}
@@ -448,7 +425,7 @@ def main():
             qid = str(question.get("id") or "")
             if not qid or qid in question_facts:
                 continue
-            question_facts[qid] = question_fact(question, trim)
+            question_facts[qid] = question_fact(question)
             polish_texts[qid] = polish_record(question)
         basic = sum(1 for q in questions if q["type"] == "basic")
         specialist = sum(1 for q in questions if q["type"] == "specialist")
