@@ -8,13 +8,14 @@ import './category-pack.js';
 
 const { packCategoryGrid } = globalThis.PrawkoCategoryPack;
 
-export const UI_DESIGN_WIDTH = 1280;
-export const UI_LANDSCAPE_HEIGHT = 800;
-export const UI_PORTRAIT_WIDTH = 720;
-export const UI_PORTRAIT_HEIGHT = 1280;
-export const UI_MAX_SCALE = 1;
-export const UI_MIN_SCALE = 0.01;
-export const UI_BOTTOM_INSET_RATIO = 0.05;
+// Keep in sync with scale-boot.js (runs before modules).
+const UI_DESIGN_WIDTH = 1280;
+const UI_LANDSCAPE_HEIGHT = 800;
+const UI_PORTRAIT_WIDTH = 720;
+const UI_PORTRAIT_HEIGHT = 1280;
+const UI_MAX_SCALE = 1;
+const UI_MIN_SCALE = 0.01;
+const UI_BOTTOM_INSET_RATIO = 0.05;
 const UI_SCALE_EPS = 0.01;
 /** Home↔categories stay hidden until used transform matches the pin. */
 const PIN_SETTLE_MATCH_FRAMES = 2;

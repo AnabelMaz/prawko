@@ -8,7 +8,7 @@ const LEGACY_KEYS = [
   'prawko_recent_categories',
 ];
 export const PROFILE_LIMIT = 8;
-export const DEFAULT_PROFILE_ID = 'p1';
+const DEFAULT_PROFILE_ID = 'p1';
 export const DEFAULT_PROFILE_NAME = 'Ja';
 const NAME_MAX = 20;
 const ME_ALIASES = ['ja', 'me'];
@@ -38,7 +38,7 @@ export function formatProfileName(stored, translate) {
   return stored;
 }
 
-export function uniqueProfileName(desired, existingNames) {
+function uniqueProfileName(desired, existingNames) {
   const requested = String(desired || '').trim().slice(0, NAME_MAX) || 'Profil';
   const { base } = parseCopyIndex(requested);
   const key = normalizeBase(base);
@@ -205,7 +205,7 @@ export function listProfiles() {
   return loadRegistry().profiles;
 }
 
-export function profileStorageKey(legacyKey) {
+function profileStorageKey(legacyKey) {
   return profileStorageKeyFor(getActiveProfileId(), legacyKey);
 }
 

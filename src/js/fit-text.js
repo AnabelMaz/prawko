@@ -345,7 +345,7 @@ function retryFit() {
   });
 }
 
-export function fitQuizDockText() {
+function fitQuizDockText() {
   const dock = quizDock();
   if (!dock || !isPanelFit()) {
     if (dock) clearInlineSizes(dock);

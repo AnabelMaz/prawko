@@ -15,7 +15,6 @@ test.describe('Learn data cache', () => {
       const learning = stats.getLearnQuestionStatus('B', q);
       stats.saveLearnAnswer('B', 42, 'T', true);
       const known = stats.getLearnQuestionStatus('B', q);
-      const count = stats.getLearnKnownCount('B', [q, q2]);
       stats.saveLearnAnswer('B', 43, 'T', false);
       stats.saveLearnAnswer('B', 43, 'T', false);
       const hard = stats.isLearnQuestionHard('B', q2);
@@ -28,11 +27,10 @@ test.describe('Learn data cache', () => {
       stats.clearLearnProgress();
       const cleared = stats.getLearnQuestionStatus('B', q);
       if (created) profiles.deleteProfile(created);
-      return { learning, known, count, hard, breakdown, chips, switched, back, cleared };
+      return { learning, known, hard, breakdown, chips, switched, back, cleared };
     });
     expect(result.learning).toBe('learning');
     expect(result.known).toBe('known');
-    expect(result.count).toBe(1);
     expect(result.hard).toBe(true);
     expect(result.breakdown.known).toBe(1);
     expect(result.breakdown.hard).toBe(1);

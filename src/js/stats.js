@@ -10,10 +10,10 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const LAST_RESULT_KEY = 'prawko_last_result';
 
 /** Two correct answers in a row — a miss resets the streak. */
-export const LEARN_KNOWN_STREAK = 2;
+const LEARN_KNOWN_STREAK = 2;
 
 /** Lifetime wrong answers in learn before a question counts as hard. */
-export const LEARN_HARD_MISSES = 2;
+const LEARN_HARD_MISSES = 2;
 
 export function saveLastResult(result) {
   try {
@@ -89,16 +89,6 @@ export function getCategoryStats(category) {
     maxPoints,
     lastPassed: history[history.length - 1].passed === true,
   };
-}
-
-export function getLearnKnownCount(category, questions) {
-  if (!Array.isArray(questions) || !questions.length) return 0;
-  const data = loadLearnData();
-  let n = 0;
-  for (const q of questions) {
-    if (statusFromEntry(entryFromData(data, category, q.id), q) === 'known') n += 1;
-  }
-  return n;
 }
 
 function normalizeLearnEntry(raw) {
@@ -318,10 +308,6 @@ export function getLearnProgress(category) {
   if (!catData) return 0;
   if (Array.isArray(catData)) return catData.length;
   return Object.keys(catData).length;
-}
-
-export function getLearnAnswerForQuestion(category, questionId) {
-  return learnEntry(category, questionId).answer;
 }
 
 export function getLearnQuestionStatus(category, question, answerOverride) {
