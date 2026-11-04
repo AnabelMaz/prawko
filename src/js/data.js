@@ -8,7 +8,7 @@ const inflight = new Map();
 // A 404 or a failed read means the file is absent and media stays on B2.
 // The first screen does not wait that out: see `firstScreenLocalConfig`.
 export const MEDIA_CDN = 'https://f003.backblazeb2.com/file/prawko-maz';
-export const PACKS_CDN = 'https://pub-e8e3a36b9ab44034913636d87ee3f0ee.r2.dev';
+const PACKS_CDN = 'https://pub-e8e3a36b9ab44034913636d87ee3f0ee.r2.dev';
 
 export let MEDIA_BASE = '';
 export let PACKS_BASE = PACKS_CDN;
@@ -79,7 +79,7 @@ export function firstScreenLocalConfig() {
   ]);
 }
 
-export function isRemoteMediaBase(base = MEDIA_BASE) {
+function isRemoteMediaBase(base = MEDIA_BASE) {
   return /^https?:\/\//i.test(String(base || ''));
 }
 
@@ -214,8 +214,42 @@ function fetchCategoryFile(cat) {
   return promise;
 }
 
-export function loadQuestionFacts() {
+function loadQuestionFacts() {
   return fetchJson('data/questions.json');
+}
+
+let questionBankWarmPromise = null;
+let questionBankWarmDone = false;
+
+/** True after warmQuestionBank finished (success or failure). */
+export function isQuestionBankWarm() {
+  return questionBankWarmDone;
+}
+
+/**
+ * Prefetch questions.json + translations_pl.json into the same memory cache
+ * fetchCategory uses. Call early so category entry does not wait on a cold link.
+ */
+export function warmQuestionBank() {
+  if (questionBankWarmPromise) return questionBankWarmPromise;
+  questionBankWarmPromise = Promise.all([
+    loadQuestionFacts(),
+    fetchJson('data/translations_pl.json'),
+  ])
+    .then(() => {
+      questionBankWarmDone = true;
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('question-bank-ready'));
+      }
+    })
+    .catch((err) => {
+      // Unlock category cards even on failure; launchSession still handles errors.
+      questionBankWarmDone = true;
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('question-bank-ready', { detail: { error: err } }));
+      }
+    });
+  return questionBankWarmPromise;
 }
 
 /** Media names for one category. Question text is not required, so this does

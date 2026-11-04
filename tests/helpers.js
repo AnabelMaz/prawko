@@ -8,6 +8,13 @@ async function waitForUiSwap(page) {
   await waitForUiHold(page);
 }
 
+async function waitForQuestionBank(page) {
+  await page.waitForFunction(async () => {
+    const { isQuestionBankWarm } = await import(new URL('./js/data.js', location.href).href);
+    return isQuestionBankWarm() && !document.querySelector('.category-card.bank-pending');
+  }, null, { timeout: 60000 });
+}
+
 async function goToCategories(page) {
   await page.waitForFunction(() => !document.documentElement.hasAttribute('data-ui-pending'));
   await page.waitForSelector('#home.active');
@@ -17,6 +24,7 @@ async function goToCategories(page) {
     try {
       await page.waitForSelector('#categories.active', { timeout: 8000 });
       await waitForUiSwap(page);
+      await waitForQuestionBank(page);
       return;
     } catch (err) {
       if (attempt === 2) throw err;
@@ -76,6 +84,7 @@ async function waitForExamMediaAlign(page) {
 
 module.exports = {
   goToCategories,
+  waitForQuestionBank,
   enablePracticeExam,
   recentCategoryIds,
   clickControl,

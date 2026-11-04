@@ -1,9 +1,9 @@
 // app.js — Router, initialization, and event wiring
 
-import { fetchMeta, fetchCategory, fetchUniqueQuestionCount, loadLocalConfig, firstScreenLocalConfig } from './data.js';
+import { fetchMeta, fetchCategory, fetchUniqueQuestionCount, loadLocalConfig, firstScreenLocalConfig, warmQuestionBank, isQuestionBankWarm } from './data.js';
 import { startExam, setupExamListeners, cleanupExam, getLastExamCategory, refreshExamQuestion } from './exam.js';
 import { startLearn, setupLearnListeners, cleanupLearn, refreshLearnQuestion, loadLearnLocalFlags } from './learn.js';
-import { showScreen, renderCategories, applyLanguage, renderHistory, renderLearnProgress, renderResults, showConfirmModal, refreshOfflineCoverage, formatOfflineRunningLabel } from './ui.js';
+import { showScreen, renderCategories, applyLanguage, renderHistory, renderLearnProgress, renderResults, showConfirmModal, refreshOfflineCoverage, formatOfflineRunningLabel, setCategoryCardsBankPending } from './ui.js';
 import { setLang, getLang, loadQuestionTranslations, nextLang, LANG_LABELS, t, readStoredLang } from './i18n.js';
 import { downloadCategoryMedia, getDownloadedCategories, reconcileDownloadedCategories, offlineCoverageHue, getInProgressOfflineCategory, getActiveDownloadProgress, getActiveDownloadCategory, stopDownload } from './offline.js';
 import { getProfileSummary, loadHistory, loadLastResult, clearHistory, clearLearnProgress, packLearnForExport, unpackLearnFromImport, packExamHistoryForExport, unpackExamHistoryFromImport } from './stats.js';
@@ -237,10 +237,25 @@ function handleRoute() {
   }
 
   if (hash === 'categories' && meta) {
-    renderCategories(meta, getDownloadedCategories());
+    const offlineSet = getDownloadedCategories();
+    renderCategories(meta, offlineSet);
     syncCategoryCardVisibility();
     renderRecentCategories();
     applyCategorySearch();
+    if (typeof navigator === 'undefined' || navigator.onLine !== false) {
+      reconcileDownloadedCategories()
+        .then(async (verifiedSet) => {
+          if (!meta) return;
+          renderCategories(meta, verifiedSet);
+          await refreshOfflineCoverage(meta, verifiedSet);
+          syncCategoryCardVisibility();
+          renderRecentCategories();
+          applyCategorySearch();
+        })
+        .catch(() => {});
+    } else {
+      refreshOfflineCoverage(meta, offlineSet).catch(() => {});
+    }
   }
   if (hash === 'history') renderHistory();
   if (hash === 'learn-progress') renderLearnProgress(meta);
@@ -286,9 +301,22 @@ async function launchSession(categoryId) {
 }
 
 function handleCategorySelect(categoryId) {
+  if (!isQuestionBankWarm()) return;
   addRecentCategory(categoryId);
   pendingCategory = categoryId;
   navigate('quiz');
+}
+
+async function warmQuestionBankForUi(lang = getLang()) {
+  setCategoryCardsBankPending(true);
+  try {
+    await Promise.all([
+      warmQuestionBank(),
+      loadQuestionTranslations(lang),
+    ]);
+  } finally {
+    setCategoryCardsBankPending(false);
+  }
 }
 
 async function startOfflineDownload(dlBtn) {
@@ -733,7 +761,7 @@ async function applyActiveProfileChrome() {
     fillProfilePanel();
     syncCategoriesProgressLink();
     applyCategoryUiTranslations();
-    await loadQuestionTranslations(lang);
+    await warmQuestionBankForUi(lang);
   }
   const themeBtn = document.querySelector('.theme-btn');
   applyTheme(getInitialTheme(), themeBtn?.querySelector('.theme-icon'), themeBtn);
@@ -1027,19 +1055,24 @@ async function init() {
     renderCategories(meta, getDownloadedCategories());
     syncCategoryCardVisibility();
     renderRecentCategories();
+    // Prefetch question facts + PL (+ current lang) before category entry.
+    void warmQuestionBankForUi(getLang());
     void localP.then(() => {
       if (!meta) return;
       renderCategories(meta, getDownloadedCategories());
       syncCategoryCardVisibility();
       renderRecentCategories();
+      if (!isQuestionBankWarm()) setCategoryCardsBankPending(true);
     });
     reconcileDownloadedCategories()
-      .then((verifiedSet) => {
+      .then(async (verifiedSet) => {
         if (meta) {
           renderCategories(meta, verifiedSet);
+          await refreshOfflineCoverage(meta, verifiedSet);
           syncCategoryCardVisibility();
           renderRecentCategories();
           applyCategorySearch();
+          if (!isQuestionBankWarm()) setCategoryCardsBankPending(true);
         }
         resumeOfflineDownloadIfNeeded();
       })
@@ -1088,6 +1121,7 @@ async function init() {
     if (!categoryId) return;
     if (card.closest('.category-grid') && card.hidden) return;
     if (card.classList.contains('category-unavailable') || card.getAttribute('aria-disabled') === 'true') return;
+    if (card.dataset.bankPending === '1' || !isQuestionBankWarm()) return;
     handleCategorySelect(categoryId);
   });
 
@@ -1134,7 +1168,6 @@ async function init() {
     updateLanguageButtons(savedLang);
     paintHomeTagline();
     fillProfilePanel();
-    await loadQuestionTranslations(savedLang);
   }
   document.querySelector('.lang-cycle')?.addEventListener('click', async () => {
     const lang = nextLang(getLang());
@@ -1153,8 +1186,7 @@ async function init() {
     renderRecentCategories();
     applyCategoryUiTranslations();
     applyCategorySearch();
-    if (lang !== 'pl') await loadQuestionTranslations(lang);
-    else await loadQuestionTranslations('pl');
+    await warmQuestionBankForUi(lang);
     if (document.getElementById('quiz').classList.contains('active')) {
       refreshLearnQuestion();
       refreshExamQuestion();
@@ -1238,6 +1270,17 @@ async function init() {
     sw.addEventListener('message', (event) => {
       if (event.data?.type === 'APP_UPDATED' || event.data?.type === 'DATA_UPDATED') {
         showUpdateBanner();
+        if (event.data?.type === 'DATA_UPDATED' && meta) {
+          reconcileDownloadedCategories()
+            .then(async (verifiedSet) => {
+              renderCategories(meta, verifiedSet);
+              await refreshOfflineCoverage(meta, verifiedSet);
+              syncCategoryCardVisibility();
+              renderRecentCategories();
+              applyCategorySearch();
+            })
+            .catch(() => {});
+        }
       }
     });
     // First visit: page already has current files; clients.claim() must not reload.
