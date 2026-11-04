@@ -189,15 +189,11 @@ function assembleQuestion(id, fact, text) {
   return q;
 }
 
-// Category files are id lists. The query skips a service-worker data cache
-// that still holds the previous full-question files under the same name.
-const CATEGORY_FILE_REV = '2';
-
 function fetchCategoryFile(cat) {
   const key = `catfile_${cat}`;
   if (cache.has(key)) return Promise.resolve(cache.get(key));
   if (inflight.has(key)) return inflight.get(key);
-  const promise = fetch(`data/${encodeURIComponent(cat)}.json?v=${CATEGORY_FILE_REV}`)
+  const promise = fetch(`data/${encodeURIComponent(cat)}.json`)
     .then((res) => {
       if (!res.ok) throw new Error(`Failed to load category ${cat}: ${res.status}`);
       return res.json();

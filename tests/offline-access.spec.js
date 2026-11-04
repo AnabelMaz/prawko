@@ -303,6 +303,125 @@ test.describe('Category media access', () => {
     expect(result.hue100).toBe(120);
   });
 
+  test('coverage matches media and CDN needed URLs via basename', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    const result = await page.evaluate(async () => {
+      const { coverageFromUrls } = await import(new URL('./js/offline.js', location.href).href);
+      const cached = new Set(['/img/shared.webp', 'clip.mp4']);
+      return {
+        fromMedia: coverageFromUrls(['media/img/shared.webp', 'media/vid/clip.mp4'], cached),
+        fromCdn: coverageFromUrls([
+          'https://cdn.example.test/prawko/img/shared.webp',
+          'https://cdn.example.test/prawko/vid/clip.mp4',
+        ], cached),
+        mixed: coverageFromUrls(
+          ['media/img/shared.webp', 'https://cdn.example.test/prawko/img/missing.webp'],
+          cached
+        ),
+      };
+    });
+    expect(result.fromMedia).toMatchObject({ have: 2, total: 2, pct: 100 });
+    expect(result.fromCdn).toMatchObject({ have: 2, total: 2, pct: 100 });
+    expect(result.mixed).toMatchObject({ have: 1, total: 2, pct: 50 });
+  });
+
+  test('sw.js serves local.json network-first and caches only 200', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'sw.js'), 'utf8');
+    expect(src).toMatch(/endsWith\('\/local\.json'\)/);
+    expect(src).toMatch(/safeCachePut\(cache, event\.request, response\.clone\(\)\)/);
+    expect(src).toMatch(/cache\.delete\(event\.request\)/);
+    expect(src).not.toMatch(/endsWith\('\/local\.json'\)\) return;/);
+  });
+
+  test('sw.js splits shell vs data precache without duplication', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'sw.js'), 'utf8');
+    const shellBlock = src.slice(src.indexOf('const APP_SHELL'), src.indexOf('const DATA_PRECACHE'));
+    const dataBlock = src.slice(src.indexOf('const DATA_PRECACHE'), src.indexOf('function videoAssemblyKey'));
+    expect(shellBlock).toMatch(/media-feed\.js/);
+    expect(shellBlock).toMatch(/icon-512\.png/);
+    expect(shellBlock).not.toMatch(/data\/B\.json/);
+    expect(shellBlock).not.toMatch(/questions\.json/);
+    expect(dataBlock).toMatch(/data\/B\.json/);
+    expect(dataBlock).toMatch(/data\/meta\.json/);
+    expect(dataBlock).toMatch(/questions\.json/);
+    expect(src).toMatch(/precacheUrls\(DATA_CACHE, DATA_PRECACHE\)/);
+    expect(src).toMatch(/pathname\.includes\('\/data\/'\)/);
+    expect(fs.existsSync(path.join(__dirname, '..', 'src', 'data', 'media-trim.json'))).toBe(false);
+  });
+
+  test('category JSON fetch has no cache-bust query', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'js', 'data.js'), 'utf8');
+    expect(src).not.toMatch(/CATEGORY_FILE_REV/);
+    expect(src).toMatch(/fetch\(`data\/\$\{encodeURIComponent\(cat\)\}\.json`\)/);
+  });
+
+  test('in-progress flag alone paints percent not Przerwij', async ({ page }) => {
+    await stubRemoteMedia(page);
+    await openCategories(page);
+    await page.evaluate(async () => {
+      localStorage.setItem('prawko_offline_in_progress', JSON.stringify({ categoryId: 'B' }));
+      const { applyOfflineCoverageToButtons } = await import(new URL('./js/ui.js', location.href).href);
+      applyOfflineCoverageToButtons({
+        B: { have: 52, total: 100, pct: 52 },
+        C: { have: 10, total: 100, pct: 10 },
+      }, new Set());
+    });
+    const b = page.locator('.category-grid .category-card[data-category="B"] .offline-btn');
+    const c = page.locator('.category-grid .category-card[data-category="C"] .offline-btn');
+    await expect(b).toHaveClass(/partial/);
+    await expect(b).not.toHaveClass(/downloading/);
+    await expect(b).toContainText(/52% offline/);
+    await expect(b).not.toContainText(/Przerwij|Stop|Stoppen|Зупинити/);
+    await expect(c).toHaveClass(/download-locked/);
+  });
+
+  test('offline in-progress keeps the flag; online resumes a live job', async ({ page }) => {
+    await stubRemoteMedia(page);
+    await page.route('**/media/**', async (route) => {
+      await new Promise(() => {});
+    });
+    await page.route('https://cdn.example.test/**', async (route) => {
+      await new Promise(() => {});
+    });
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    await page.evaluate(() => {
+      localStorage.setItem('prawko_offline_in_progress', JSON.stringify({ categoryId: 'B' }));
+      Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false });
+      window.dispatchEvent(new Event('offline'));
+    });
+    await page.locator('#home [data-navigate="categories"]').first().click();
+    await page.waitForSelector('#categories.active');
+    await page.evaluate(async () => {
+      const { applyOfflineCoverageToButtons } = await import(new URL('./js/ui.js', location.href).href);
+      applyOfflineCoverageToButtons({ B: { have: 40, total: 100, pct: 40 } }, new Set());
+    });
+    const b = page.locator('.category-grid .category-card[data-category="B"] .offline-btn');
+    await expect(b).not.toHaveClass(/downloading/);
+    await expect(b).toContainText(/40% offline/);
+    const stillPending = await page.evaluate(() => localStorage.getItem('prawko_offline_in_progress'));
+    expect(stillPending).toContain('"B"');
+
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => true });
+      window.dispatchEvent(new Event('online'));
+    });
+    await expect(b).toHaveClass(/downloading/, { timeout: 10000 });
+    await expect(b).toContainText(/Przerwij|Stop|Stoppen|Зупинити/);
+    const active = await page.evaluate(async () => {
+      const { getActiveDownloadCategory } = await import(new URL('./js/offline.js', location.href).href);
+      return getActiveDownloadCategory();
+    });
+    expect(active).toBe('B');
+  });
+
   test('offline status waits for question facts, not translations', async ({ page }) => {
     await stubRemoteMedia(page);
     let releaseFacts;

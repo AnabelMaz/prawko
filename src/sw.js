@@ -1,11 +1,12 @@
 importScripts('./js/range-assemble.js');
 
-const CACHE_VERSION = 'prawko-v141';
+const CACHE_VERSION = 'prawko-v143';
 const APP_SHELL_CACHE = CACHE_VERSION + '-shell';
 const DATA_CACHE = CACHE_VERSION + '-data';
 const MEDIA_CACHE = CACHE_VERSION + '-media';
 const OFFLINE_MEDIA_CACHE = 'prawko-offline-media-v1';
 
+// Code / UI only — no data/*.json (those go in DATA_PRECACHE).
 const APP_SHELL = [
   './',
   './index.html',
@@ -20,19 +21,17 @@ const APP_SHELL = [
   './js/profiles.js',
   './js/i18n.js',
   './js/offline.js',
+  './js/media-feed.js',
   './js/range-assemble.js',
   './js/category-pack.js',
   './js/zip.js',
   './js/scale.js',
   './js/scale-boot.js',
   './js/fit-text.js',
-  './data/meta.json',
-  './data/questions.json',
-  './data/translations_pl.json',
-  './data/translations_en.json',
-  './data/translations_de.json',
-  './data/translations_uk.json',
   './manifest.json',
+  './icons/icon.svg',
+  './icons/icon-192.png',
+  './icons/icon-512.png',
   './icons/cursor-black.png',
   './icons/cursor-white.png',
   './icons/cursor-pointer-black.png',
@@ -47,6 +46,28 @@ const APP_SHELL = [
   './fonts/dm-sans-latin-ext-wght-normal.woff2'
 ];
 
+// Question bank JSON — only in DATA_CACHE (no overlap with APP_SHELL).
+const DATA_PRECACHE = [
+  './data/meta.json',
+  './data/questions.json',
+  './data/translations_pl.json',
+  './data/translations_en.json',
+  './data/translations_de.json',
+  './data/translations_uk.json',
+  './data/A.json',
+  './data/A1.json',
+  './data/A2.json',
+  './data/AM.json',
+  './data/B.json',
+  './data/B1.json',
+  './data/C.json',
+  './data/C1.json',
+  './data/D.json',
+  './data/D1.json',
+  './data/PT.json',
+  './data/T.json'
+];
+
 function videoAssemblyKey(href) {
   try {
     const u = new URL(href);
@@ -58,10 +79,28 @@ function videoAssemblyKey(href) {
   }
 }
 
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(APP_SHELL_CACHE).then((cache) => cache.addAll(APP_SHELL))
+/** Fetch each URL into cache; one 404 must not abort the whole install. */
+async function precacheUrls(cacheName, urls) {
+  const cache = await caches.open(cacheName);
+  const results = await Promise.allSettled(
+    urls.map(async (url) => {
+      const res = await fetch(url, { cache: 'no-cache' });
+      if (!res.ok) throw new Error(`${url} → ${res.status}`);
+      await cache.put(url, res);
+    })
   );
+  for (let i = 0; i < results.length; i++) {
+    if (results[i].status === 'rejected') {
+      console.warn('[prawko sw] precache failed:', urls[i], results[i].reason);
+    }
+  }
+}
+
+self.addEventListener('install', (event) => {
+  event.waitUntil((async () => {
+    await precacheUrls(APP_SHELL_CACHE, APP_SHELL);
+    await precacheUrls(DATA_CACHE, DATA_PRECACHE);
+  })());
 });
 
 let offlineMediaUrls = new Set();
@@ -255,7 +294,28 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
   if (url.pathname.endsWith('/sw.js')) return;
-  if (url.pathname.endsWith('/local.json')) return;
+  // Optional self-host settings. Network-first; cache only 200 so offline
+  // keeps mediaBase/etc. A 404 drops any stale entry (defaults again).
+  if (url.pathname.endsWith('/local.json')) {
+    event.respondWith(
+      caches.open(DATA_CACHE).then(async (cache) => {
+        try {
+          const response = await fetch(event.request);
+          if (response.ok) {
+            await safeCachePut(cache, event.request, response.clone());
+            return response;
+          }
+          await cache.delete(event.request);
+          return response;
+        } catch {
+          const cached = await cache.match(event.request);
+          if (cached) return cached;
+          throw new TypeError('Failed to fetch local.json');
+        }
+      })
+    );
+    return;
+  }
   // CDN and /media/: cache hit for the player; miss returns the network
   // response and keeps a copy (covers the no-CORS element fallback).
   // Loopback disk files are not intercepted.
@@ -264,29 +324,28 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Category JSON & translation files — stale-while-revalidate
-  if (url.pathname.match(/\/data\/(?!meta\.json).+\.json$/)) {
+  // All data/*.json (incl. meta) — stale-while-revalidate; only in DATA_CACHE.
+  if (url.pathname.includes('/data/') && url.pathname.endsWith('.json')) {
     event.respondWith(
-      caches.open(DATA_CACHE).then((cache) =>
-        cache.match(event.request).then((cached) => {
-          const fetched = fetch(event.request).then(async (response) => {
-            if (response.ok) {
-              if (cached) {
-                const [oldText, newText] = await Promise.all([
-                  cached.clone().text(),
-                  response.clone().text()
-                ]);
-                if (oldText !== newText) {
-                  notifyClients({ type: 'DATA_UPDATED' });
-                }
+      caches.open(DATA_CACHE).then(async (cache) => {
+        const cached = await cache.match(event.request);
+        const fetched = fetch(event.request).then(async (response) => {
+          if (response.ok) {
+            if (cached) {
+              const [oldText, newText] = await Promise.all([
+                cached.clone().text(),
+                response.clone().text()
+              ]);
+              if (oldText !== newText) {
+                notifyClients({ type: 'DATA_UPDATED' });
               }
-              safeCachePut(cache, event.request, response.clone());
             }
-            return response;
-          }).catch(() => cached);
-          return cached || fetched;
-        })
-      )
+            safeCachePut(cache, event.request, response.clone());
+          }
+          return response;
+        }).catch(() => cached);
+        return cached || fetched;
+      })
     );
     return;
   }
