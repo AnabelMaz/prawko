@@ -122,8 +122,10 @@ test.describe('Category media access', () => {
     expect(src).toMatch(/if \(!MEDIA_BASE\) MEDIA_BASE = MEDIA_CDN/);
     expect(src).toMatch(/export let OFFLINE_DOWNLOAD = 'packs'/);
     expect(src).toMatch(/fetch\(new URL\('local\.json'/);
-    expect(src).toMatch(/LOCAL_JSON_WAIT_MS/);
-    expect(src).toMatch(/signal: ctrl\.signal/);
+    expect(src).toMatch(/LOCAL_JSON_WAIT_MS = 1000/);
+    expect(src).toMatch(/firstScreenLocalConfig/);
+    expect(src).toMatch(/LOCAL_JSON_HANG_MS/);
+    expect(src).not.toMatch(/abort\(\), LOCAL_JSON_WAIT_MS/);
   });
 
   test('a missing local.json does not switch to same-origin media', async ({ page }) => {
@@ -149,6 +151,28 @@ test.describe('Category media access', () => {
     await expect(page.locator('html')).toHaveAttribute('data-local-media', 'false');
   });
 
+  test('a slow local.json still selects same-origin media', async ({ page }) => {
+    await page.route('**/local.json', async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ mediaBase: 'media' }),
+      });
+    });
+    const started = Date.now();
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    expect(Date.now() - started).toBeLessThan(2500);
+    await expect(page.locator('html')).toHaveAttribute('data-local-media', 'true');
+    const img = await page.evaluate(async () => {
+      const { getMediaUrls } = await import(new URL('./js/data.js', location.href).href);
+      return getMediaUrls('foo.webp', 'image').join(' ');
+    });
+    expect(img).not.toMatch(/backblazeb2/);
+    expect(img).toMatch(/media\/img\//);
+  });
+
   test('a hanging local.json does not block the first screen', async ({ page }) => {
     let pending;
     await page.route('**/local.json', (route) => {
@@ -159,7 +183,7 @@ test.describe('Category media access', () => {
     await expect(page.locator('#home.active')).toBeVisible();
     await expect(page.locator('#home-spinner')).toHaveClass(/hidden/);
     await expect(page.locator('html')).toHaveAttribute('data-local-media', 'false');
-    expect(Date.now() - started).toBeLessThan(5000);
+    expect(Date.now() - started).toBeLessThan(3000);
     if (pending) {
       try {
         await pending.fulfill({ status: 404, body: '' });
@@ -257,6 +281,34 @@ test.describe('Category media access', () => {
     expect(result.hue100).toBe(120);
   });
 
+  test('offline status waits for question facts, not translations', async ({ page }) => {
+    await stubRemoteMedia(page);
+    let releaseFacts;
+    const factsHeld = new Promise((resolve) => { releaseFacts = resolve; });
+    let translationsDone = false;
+    await page.route('**/data/questions.json', async (route) => {
+      await factsHeld;
+      await route.continue();
+    });
+    await page.route('**/data/translations_pl.json', async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 20000));
+      translationsDone = true;
+      await route.continue();
+    });
+    await page.goto('/');
+    await goToCategories(page);
+    const btn = page.locator('.category-grid .category-card[data-category="B"] .offline-btn');
+    await expect(btn).toHaveClass(/coverage-pending/);
+    await expect(btn).toHaveAttribute('aria-busy', 'true');
+    await expect(btn).not.toContainText(/Pobierz|Save offline|% offline/);
+    await btn.click();
+    await expect(btn).not.toHaveClass(/downloading/);
+    releaseFacts();
+    await expect(btn).not.toHaveClass(/coverage-pending/, { timeout: 15000 });
+    await expect(btn).toContainText(/Pobierz offline|Save offline/);
+    expect(translationsDone).toBe(false);
+  });
+
   test('file-mode coverage counts shared question media, not zip packs', async ({ page }) => {
     await stubRemoteMedia(page);
     await page.goto('/');
@@ -324,6 +376,28 @@ test.describe('Category media access', () => {
     await expect(c).not.toHaveClass(/partial/);
   });
 
+  test('coverage under 1% shows 0% offline once anything is stored', async ({ page }) => {
+    await stubRemoteMedia(page);
+    await openCategories(page);
+
+    await page.evaluate(async () => {
+      const { applyOfflineCoverageToButtons } = await import(new URL('./js/ui.js', location.href).href);
+      applyOfflineCoverageToButtons({
+        B: { have: 2, total: 5000, pct: 0 },
+        C: { have: 0, total: 100, pct: 0 },
+      }, new Set());
+    });
+
+    const b = page.locator('.category-grid .category-card[data-category="B"] .offline-btn');
+    const c = page.locator('.category-grid .category-card[data-category="C"] .offline-btn');
+    await expect(b).toHaveClass(/partial/);
+    await expect(b).toHaveAttribute('data-offline-pct', '0');
+    await expect(b).toContainText(/0% offline/);
+    expect(await b.evaluate((el) => el.style.getPropertyValue('--offline-hue'))).toBe('0');
+    await expect(c).not.toHaveClass(/partial/);
+    await expect(c).toContainText(/Pobierz offline|Save offline/);
+  });
+
   test('downloading keeps the coverage hue on the progress fill', async ({ page }) => {
     await stubRemoteMedia(page);
     await openCategories(page);
@@ -374,6 +448,92 @@ test.describe('Category media access', () => {
     expect(result.total).toBeGreaterThan(0);
     expect(result.fetches).toBe(0);
     expect(result.success).toBe(true);
+  });
+
+  test('same-origin media resumes a partial image or video with a one-chunk rewind', async ({ page }) => {
+    await page.route('**/local.json', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ mediaBase: 'media', offlineDownload: 'files' }),
+      });
+    });
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    const target = await page.evaluate(async () => {
+      const { fetchCategory, getMediaUrls } = await import(new URL('./js/data.js', location.href).href);
+      const bank = await fetchCategory('PT');
+      const q = (bank.questions || []).find((item) => item.media);
+      const url = getMediaUrls(q.media, q.mediaType)[0];
+      return { media: q.media, mediaType: q.mediaType || 'image', url: new URL(url, location.href).href };
+    });
+    const payload = Buffer.alloc(300 * 1024, 0x61);
+    const rewind = 256 * 1024;
+    const first = rewind + 32 * 1024;
+    const ranges = [];
+    const type = target.mediaType === 'video' ? 'video/mp4' : 'image/webp';
+    await page.route(target.url, async (route) => {
+      const range = route.request().headers().range || '';
+      ranges.push(range);
+      if (!range) {
+        await route.fulfill({
+          status: 200,
+          contentType: type,
+          headers: { 'Content-Length': String(payload.length), 'Accept-Ranges': 'bytes' },
+          body: payload.subarray(0, first),
+        });
+        return;
+      }
+      const start = Number((/bytes=(\d+)-/i.exec(range) || [])[1]);
+      await route.fulfill({
+        status: 206,
+        contentType: type,
+        headers: {
+          'Content-Range': `bytes ${start}-${payload.length - 1}/${payload.length}`,
+          'Content-Length': String(payload.length - start),
+          'Accept-Ranges': 'bytes',
+        },
+        body: payload.subarray(start),
+      });
+    });
+    const result = await page.evaluate(async ({ media, url }) => {
+      const { fetchCategory, getMediaUrls } = await import(new URL('./js/data.js', location.href).href);
+      const { downloadCategoryMediaFromFiles } = await import(new URL('./js/offline.js', location.href).href);
+      const bank = await fetchCategory('PT');
+      const cache = await caches.open('prawko-offline-media-v1');
+      const seen = new Set();
+      for (const q of bank.questions || []) {
+        if (!q.media || seen.has(q.media) || q.media === media) continue;
+        seen.add(q.media);
+        for (const item of getMediaUrls(q.media, q.mediaType)) {
+          const abs = new URL(item, location.href).href;
+          await cache.put(
+            new Request(abs),
+            new Response(new Uint8Array([9]), {
+              status: 200,
+              headers: { 'Content-Type': 'application/octet-stream' },
+            }),
+          );
+        }
+      }
+      const downloaded = await downloadCategoryMediaFromFiles('PT');
+      const hit = await cache.match(url);
+      const bytes = hit ? new Uint8Array(await hit.arrayBuffer()) : new Uint8Array();
+      return {
+        success: downloaded.success,
+        status: hit?.status || 0,
+        size: bytes.length,
+        first: bytes[0] || 0,
+        last: bytes.length ? bytes[bytes.length - 1] : 0,
+      };
+    }, target);
+    expect(result.success).toBe(true);
+    expect(result.status).toBe(200);
+    expect(result.size).toBe(payload.length);
+    expect(result.first).toBe(0x61);
+    expect(result.last).toBe(0x61);
+    expect(ranges[0] || '').toBe('');
+    expect(ranges.some((header) => header === `bytes=${first - rewind}-`)).toBe(true);
   });
 
   test('IndexedDB stores media when Cache Storage is missing', async ({ page }) => {
@@ -612,7 +772,7 @@ const TINY_MP4 = Buffer.from(
 );
 
 test.describe('Opportunistic viewed media cache', () => {
-  test('viewing a CDN image paints and caches with one GET', async ({ page }) => {
+  test('a CDN image is painted from the file URL and the page does not fetch it', async ({ page }) => {
     const imageHits = [];
     await page.route('**/local.json', async (route) => {
       await route.fulfill({
@@ -653,13 +813,17 @@ test.describe('Opportunistic viewed media cache', () => {
         correct: 'T',
       }, document.querySelector('.question-card'));
     });
-    await expect(page.locator('#quiz .media-area img')).toHaveAttribute('src', /^blob:/);
-    expect(imageHits).toEqual(['']);
-    await expect.poll(async () => page.evaluate(async () => {
+    const img = page.locator('#quiz .media-area img');
+    await expect(img).toHaveAttribute('src', /\/img\/one-get\.webp$/);
+    await expect.poll(() => imageHits.length).toBe(1);
+    expect(imageHits[0]).toBe('');
+    await expect(page.locator('#quiz .media-area')).not.toHaveClass(/loading/);
+    const stored = await page.evaluate(async () => {
       const { getStoredMediaBlob } = await import(new URL('./js/offline.js', location.href).href);
       const blob = await getStoredMediaBlob('one-get.webp', 'image');
       return blob ? blob.size : 0;
-    }), { timeout: 5000 }).toBe(TINY_PNG.length);
+    });
+    expect(stored).toBe(0);
   });
 
   test('a viewed CDN image is stored once as a complete file', async ({ page }) => {
@@ -720,7 +884,8 @@ test.describe('Opportunistic viewed media cache', () => {
     expect(result.url).toBe('https://f003.backblazeb2.com/file/prawko-maz/img/viewed-once.webp');
     expect(result.play).toBe(true);
     await expect(page.locator('#quiz .media-area img')).toHaveAttribute('src', /^blob:/);
-    expect(imageHits).toEqual(['']);
+    expect(imageHits.length).toBeGreaterThan(0);
+    expect(imageHits[0]).toBe('');
     await expect.poll(async () => page.evaluate(async () => {
       const { getStoredMediaBlob } = await import(new URL('./js/offline.js', location.href).href);
       const blob = await getStoredMediaBlob('viewed-once.webp', 'image');
@@ -771,7 +936,7 @@ test.describe('Opportunistic viewed media cache', () => {
       renderQuestion({ ...base, id: 2, q: 'Second', media: 'fast-second.webp' }, card);
     });
     const img = page.locator('#quiz .media-area img');
-    await expect(img).toHaveAttribute('src', /^blob:/, { timeout: 3000 });
+    await expect(img).toHaveAttribute('src', /\/img\/fast-second\.webp$/, { timeout: 3000 });
     await expect(page.locator('#quiz .question-text')).toHaveText('Second');
   });
 
@@ -807,6 +972,140 @@ test.describe('Opportunistic viewed media cache', () => {
     });
     expect(captured.play).toBe(false);
     expect(captured.stored).toBe(0);
+  });
+
+  test('film play waits until remaining download fits in 75% of the film', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    const result = await page.evaluate(async () => {
+      const { filmReadyToStart, filmPaceOk, FILM_PACE_FRACTION } = await import(
+        new URL('./js/film-feed.js', location.href).href
+      );
+      const total = 10000;
+      // Under 2% — no estimate yet.
+      const underSample = filmReadyToStart(199, total, 60, 20);
+      // Fast link: half the file in 50ms → remaining ~0.05s → start (no fixed delay).
+      const fast = filmReadyToStart(5000, total, 0.05, 20);
+      // 2% in 60s for a 20s film → 50 min whole file; still far too early.
+      const early = filmReadyToStart(200, total, 60, 20);
+      // Remaining download must be ≤ 15s (20s − 25%). At that rate, start near the end.
+      const readyAt = Math.ceil(total * (1 - 15 / 3000));
+      const ready = filmReadyToStart(readyAt, total, 60 * (readyAt / 200), 20);
+      const stillShort = filmReadyToStart(readyAt - 1, total, 60 * ((readyAt - 1) / 200), 20);
+      const complete = filmReadyToStart(total, total, 1, 20);
+      const noLength = filmReadyToStart(500, 0, 10, 20);
+      const same = filmPaceOk(readyAt, total, 60 * (readyAt / 200), 20);
+      return {
+        underSample,
+        fast,
+        early,
+        ready,
+        stillShort,
+        complete,
+        noLength,
+        same,
+        readyAt,
+        fraction: FILM_PACE_FRACTION,
+      };
+    });
+    expect(result.fraction).toBe(0.75);
+    expect(result.underSample).toBe(false);
+    expect(result.fast).toBe(true);
+    expect(result.early).toBe(false);
+    expect(result.stillShort).toBe(false);
+    expect(result.ready).toBe(true);
+    expect(result.same).toBe(true);
+    expect(result.complete).toBe(true);
+    expect(result.noLength).toBe(false);
+  });
+
+  test('one same-origin download plays the film and stores that file', async ({ page }) => {
+    await page.route('**/local.json', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ mediaBase: 'media' }),
+      });
+    });
+    const hits = [];
+    await page.route('**/media/vid/watched-lan.mp4', async (route) => {
+      hits.push(route.request().headers()['range'] || '');
+      await route.fulfill({
+        status: 200,
+        contentType: 'video/mp4',
+        body: TINY_MP4,
+      });
+    });
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    await page.evaluate(async () => {
+      const { startOwnedMedia } = await import(new URL('./js/film-feed.js', location.href).href);
+      const { storeMediaBlob } = await import(new URL('./js/offline.js', location.href).href);
+      const video = document.createElement('video');
+      video.autoplay = true;
+      document.body.appendChild(video);
+      startOwnedMedia(video, new URL('media/vid/watched-lan.mp4', location.href).href, storeMediaBlob);
+    });
+    await expect.poll(() => hits.length).toBe(1);
+    expect(hits[0]).toBe('');
+    await expect.poll(async () => page.evaluate(async () => {
+      const { getStoredMediaBlob } = await import(new URL('./js/offline.js', location.href).href);
+      const blob = await getStoredMediaBlob('watched-lan.mp4', 'video');
+      return blob ? blob.size : 0;
+    })).toBe(TINY_MP4.length);
+    const after = hits.length;
+    await page.evaluate(async () => {
+      const { renderQuestion } = await import(new URL('./js/ui.js', location.href).href);
+      renderQuestion({
+        id: 9004,
+        q: 'Watch and keep',
+        media: 'watched-lan.mp4',
+        mediaType: 'video',
+        type: 'basic',
+        correct: 'T',
+      }, document.querySelector('#quiz .question-card') || document.querySelector('.question-card'));
+    });
+    await expect(page.locator('#quiz .media-area video')).toHaveAttribute('src', /^blob:/);
+    expect(hits.length).toBe(after);
+  });
+
+  test('leaving before the film arrives does not store it', async ({ page }) => {
+    let release;
+    const gate = new Promise((resolve) => { release = resolve; });
+    const hits = [];
+    await page.route('**/media/vid/leave-early.mp4', async (route) => {
+      hits.push('start');
+      await gate;
+      hits.push('body');
+      await route.fulfill({
+        status: 200,
+        contentType: 'video/mp4',
+        body: TINY_MP4,
+      });
+    });
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    await page.evaluate(async () => {
+      const { startOwnedMedia } = await import(new URL('./js/film-feed.js', location.href).href);
+      const { storeMediaBlob } = await import(new URL('./js/offline.js', location.href).href);
+      const video = document.createElement('video');
+      document.body.appendChild(video);
+      startOwnedMedia(video, new URL('media/vid/leave-early.mp4', location.href).href, storeMediaBlob);
+    });
+    await expect.poll(() => hits.length).toBe(1);
+    await page.evaluate(async () => {
+      const { abortOwnedMedia } = await import(new URL('./js/film-feed.js', location.href).href);
+      abortOwnedMedia();
+    });
+    release();
+    await page.waitForTimeout(400);
+    const stored = await page.evaluate(async () => {
+      const { getStoredMediaBlob } = await import(new URL('./js/offline.js', location.href).href);
+      const blob = await getStoredMediaBlob('leave-early.mp4', 'video');
+      return blob ? blob.size : 0;
+    });
+    expect(stored).toBe(0);
+    expect(hits.filter((hit) => hit === 'start')).toEqual(['start']);
   });
 
   test('a viewed video is stored once as a complete file', async ({ page }) => {
@@ -867,7 +1166,8 @@ test.describe('Opportunistic viewed media cache', () => {
     expect(result.url).toBe('https://f003.backblazeb2.com/file/prawko-maz/vid/viewed-once.mp4');
     expect(result.play).toBe(true);
     await expect(page.locator('#quiz .media-area video')).toHaveAttribute('src', /^blob:/);
-    expect(videoHits).toEqual(['']);
+    expect(videoHits.length).toBeGreaterThan(0);
+    expect(videoHits[0]).toBe('');
     await expect.poll(async () => page.evaluate(async () => {
       const { getStoredMediaBlob } = await import(new URL('./js/offline.js', location.href).href);
       const blob = await getStoredMediaBlob('viewed-once.mp4', 'video');
@@ -875,7 +1175,7 @@ test.describe('Opportunistic viewed media cache', () => {
     }), { timeout: 5000 }).toBe(TINY_MP4.length);
   });
 
-  test('next question plays a viewed /media/ video from blob without another GET', async ({ page }) => {
+  test('a stored same-origin video replays from the local copy', async ({ page }) => {
     const videoHits = [];
     await page.route('**/local.json', async (route) => {
       await route.fulfill({
@@ -965,6 +1265,22 @@ test.describe('Opportunistic viewed media cache', () => {
     expect(hits).toEqual([]);
   });
 
+  test('playback stores viewed media on every host except this computer disk', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const ui = fs.readFileSync(path.join(__dirname, '../src/js/ui.js'), 'utf8');
+    const start = ui.indexOf('const nextPlayableUrl');
+    const end = ui.indexOf('const showMediaFallback');
+    const fn = ui.slice(start, end);
+    expect(fn).not.toMatch(/captureViewedMedia/);
+    expect(ui).toMatch(/function assignPlayableSrc/);
+    expect(ui).toMatch(/if \(!remote && !workerStoresViewedMedia\(\) && !onThisDisk\) \{\s*startOwnedMedia\(el, url, storeMediaBlob\);/);
+    expect(ui).not.toMatch(/enqueueViewedMediaCopy/);
+    const sw = fs.readFileSync(path.join(__dirname, '../src/sw.js'), 'utf8');
+    expect(sw).toMatch(/function viewedMediaStaysOnDisk/);
+    expect(sw).toMatch(/rememberPlayedMedia/);
+  });
+
   test('loopback local videos are not copied into the offline cache', async ({ page }) => {
     await page.route('**/local.json', async (route) => {
       await route.fulfill({
@@ -991,5 +1307,290 @@ test.describe('Opportunistic viewed media cache', () => {
     });
     expect(result).toBeNull();
     expect(hits).toEqual([]);
+  });
+
+  test('a slow image shows a spinner until the file arrives', async ({ page }) => {
+    let release;
+    const gate = new Promise((resolve) => { release = resolve; });
+    await page.route('**/local.json', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ mediaBase: 'cdn' }),
+      });
+    });
+    await page.route('https://f003.backblazeb2.com/file/prawko-maz/img/slow-spin.webp', async (route) => {
+      if (route.request().method() === 'OPTIONS') {
+        await route.fulfill({
+          status: 204,
+          headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET' },
+        });
+        return;
+      }
+      await gate;
+      await route.fulfill({
+        status: 200,
+        contentType: 'image/png',
+        headers: { 'Access-Control-Allow-Origin': '*' },
+        body: TINY_PNG,
+      });
+    });
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    await page.evaluate(async () => {
+      const { renderQuestion } = await import(new URL('./js/ui.js', location.href).href);
+      renderQuestion({
+        id: 9010,
+        q: 'Slow photo',
+        media: 'slow-spin.webp',
+        mediaType: 'image',
+        type: 'basic',
+        correct: 'T',
+      }, document.querySelector('.question-card'));
+    });
+    const area = page.locator('#quiz .media-area');
+    await expect(area).toHaveClass(/loading/);
+    await expect.poll(() => area.evaluate((el) => getComputedStyle(el, '::after').animationName)).toBe('spin');
+    release();
+    await expect(area).not.toHaveClass(/loading/, { timeout: 5000 });
+  });
+
+  test('a stalled film shows the spinner again and a pause does not', async ({ page }) => {
+    await page.route('**/local.json', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ mediaBase: 'cdn' }),
+      });
+    });
+    await page.route('https://f003.backblazeb2.com/file/prawko-maz/vid/stall-spin.mp4', async (route) => {
+      if (route.request().method() === 'OPTIONS') {
+        await route.fulfill({
+          status: 204,
+          headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET' },
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'video/mp4',
+        headers: { 'Access-Control-Allow-Origin': '*' },
+        body: TINY_MP4,
+      });
+    });
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    await page.evaluate(async () => {
+      const { renderQuestion } = await import(new URL('./js/ui.js', location.href).href);
+      renderQuestion({
+        id: 9011,
+        q: 'Stall',
+        media: 'stall-spin.mp4',
+        mediaType: 'video',
+        type: 'basic',
+        correct: 'T',
+      }, document.querySelector('.question-card'));
+    });
+    await expect(page.locator('#quiz .media-area video')).toHaveCount(1);
+    const result = await page.evaluate(() => {
+      const area = document.querySelector('#quiz .media-area');
+      const video = area.querySelector('video');
+      const button = area.querySelector('.media-replay-btn');
+      button.hidden = false;
+      const swatch = document.createElement('button');
+      swatch.className = 'media-replay-btn';
+      swatch.style.display = 'inline-flex';
+      document.body.appendChild(swatch);
+      const bg = getComputedStyle(swatch).backgroundColor;
+      swatch.remove();
+      const setReady = (n) => {
+        Object.defineProperty(video, 'readyState', { configurable: true, get: () => n });
+      };
+      Object.defineProperty(video, 'ended', { configurable: true, get: () => false });
+      video.play = () => new Promise(() => {});
+      setReady(1);
+      area.classList.remove('loading');
+      button.dataset.mode = 'resume';
+      button.click();
+      video.dispatchEvent(new Event('waiting'));
+      const whileStalled = area.classList.contains('loading');
+      video.dispatchEvent(new Event('playing'));
+      const afterPlay = area.classList.contains('loading');
+      area.classList.add('loading');
+      setReady(2);
+      video.dispatchEvent(new Event('canplay'));
+      const frameHeld = area.classList.contains('loading');
+      button.dataset.mode = 'pause';
+      button.click();
+      video.dispatchEvent(new Event('waiting'));
+      const whilePaused = area.classList.contains('loading');
+      setReady(1);
+      area.classList.remove('loading');
+      const srcBefore = video.src;
+      button.dataset.mode = 'resume';
+      button.click();
+      const resumeStarved = area.classList.contains('loading');
+      const srcAfter = video.src;
+      video.dispatchEvent(new Event('playing'));
+      setReady(4);
+      area.classList.remove('loading');
+      button.dataset.mode = 'resume';
+      button.click();
+      const resumeReady = area.classList.contains('loading');
+      return {
+        whileStalled,
+        afterPlay,
+        frameHeld,
+        whilePaused,
+        resumeStarved,
+        resumeReady,
+        srcSame: srcBefore === srcAfter,
+        bg,
+      };
+    });
+    expect(result.whileStalled).toBe(true);
+    expect(result.afterPlay).toBe(false);
+    expect(result.frameHeld).toBe(true);
+    expect(result.whilePaused).toBe(false);
+    expect(result.resumeStarved).toBe(true);
+    expect(result.resumeReady).toBe(false);
+    expect(result.srcSame).toBe(true);
+    const alpha = Number((String(result.bg).match(/\/\s*([0-9.]+)\s*\)/) || [])[1]);
+    expect(alpha).toBeGreaterThan(0.2);
+    expect(alpha).toBeLessThan(0.5);
+  });
+
+  test('pausing a film does not start a second download', async ({ page }) => {
+    let release;
+    const gate = new Promise((resolve) => { release = resolve; });
+    const hits = [];
+    await page.route('**/local.json', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ mediaBase: 'cdn' }),
+      });
+    });
+    await page.route('https://f003.backblazeb2.com/file/prawko-maz/vid/pause-dl.mp4', async (route) => {
+      if (route.request().method() === 'OPTIONS') {
+        await route.fulfill({
+          status: 204,
+          headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET' },
+        });
+        return;
+      }
+      hits.push(route.request().method());
+      await gate;
+      await route.fulfill({
+        status: 200,
+        contentType: 'video/mp4',
+        headers: { 'Access-Control-Allow-Origin': '*' },
+        body: TINY_MP4,
+      });
+    });
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    await page.evaluate(async () => {
+      const { renderQuestion } = await import(new URL('./js/ui.js', location.href).href);
+      renderQuestion({
+        id: 9012,
+        q: 'Pause does not fetch again',
+        media: 'pause-dl.mp4',
+        mediaType: 'video',
+        type: 'basic',
+        correct: 'T',
+      }, document.querySelector('.question-card'));
+    });
+    await expect.poll(() => hits.length).toBeGreaterThan(0);
+    const duringPlay = hits.length;
+    await page.evaluate(() => {
+      const area = document.querySelector('#quiz .media-area');
+      const button = area.querySelector('.media-replay-btn');
+      button.hidden = false;
+      button.dataset.mode = 'pause';
+      button.click();
+    });
+    await page.waitForTimeout(700);
+    expect(hits.length).toBe(duringPlay);
+    release();
+  });
+
+  test('the empty media slot is a gray plate on light and a lifted black on dark', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    const result = await page.evaluate(() => {
+      const lum = (css) => {
+        const text = String(css);
+        const nums = (text.match(/[\d.]+/g) || []).map(Number);
+        let [r, g, b] = nums;
+        if (/^color\(/i.test(text) && r <= 1 && g <= 1 && b <= 1) {
+          r *= 255;
+          g *= 255;
+          b *= 255;
+        }
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      };
+      const read = (theme) => {
+        if (theme === 'dark') document.documentElement.dataset.theme = 'dark';
+        else delete document.documentElement.dataset.theme;
+        const pageBg = document.createElement('div');
+        pageBg.style.background = 'var(--bg)';
+        const slot = document.createElement('div');
+        slot.className = 'media-area has-media loading awaiting-frame';
+        slot.style.cssText = 'position:fixed;left:8px;top:8px;width:240px;z-index:99999';
+        const video = document.createElement('video');
+        slot.appendChild(video);
+        document.body.append(pageBg, slot);
+        const bg = lum(getComputedStyle(pageBg).backgroundColor);
+        const plate = lum(getComputedStyle(slot, '::before').backgroundColor);
+        const videoHidden = getComputedStyle(video).visibility;
+        pageBg.remove();
+        slot.remove();
+        return { bg, plate, videoHidden };
+      };
+      const light = read('light');
+      const dark = read('dark');
+      delete document.documentElement.dataset.theme;
+      return { light, dark };
+    });
+    expect(result.light.plate).toBeLessThan(result.light.bg - 8);
+    expect(result.dark.plate).toBeGreaterThan(result.dark.bg + 6);
+    expect(result.dark.plate).toBeLessThan(40);
+    expect(result.light.videoHidden).toBe('hidden');
+    expect(result.dark.videoHidden).toBe('hidden');
+  });
+
+  test('the media spinner keeps turning when motion is reduced', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    const result = await page.evaluate(() => {
+      const area = document.createElement('div');
+      area.className = 'media-area loading';
+      area.style.cssText = 'position:fixed;left:8px;top:8px;width:200px;z-index:99999';
+      document.body.appendChild(area);
+      const ring = getComputedStyle(area, '::after');
+      const veil = getComputedStyle(area, '::before');
+      const alpha = Number((veil.backgroundColor.match(/[\d.]+(?=\s*\))/) || [])[0]);
+      const out = {
+        name: ring.animationName,
+        duration: parseFloat(ring.animationDuration),
+        count: ring.animationIterationCount,
+        width: parseFloat(ring.width),
+        mask: ring.maskImage || ring.webkitMaskImage || '',
+        arc: ring.backgroundImage,
+        alpha,
+      };
+      area.remove();
+      return out;
+    });
+    expect(result.name).toBe('spin');
+    expect(result.duration).toBeGreaterThan(0.5);
+    expect(result.count).toBe('infinite');
+    expect(result.width).toBeGreaterThanOrEqual(70);
+    expect(result.mask).toContain('radial-gradient');
+    expect(result.arc).toContain('conic-gradient');
+    expect(result.alpha).toBeGreaterThan(0.3);
+    expect(result.alpha).toBeLessThan(0.55);
   });
 });

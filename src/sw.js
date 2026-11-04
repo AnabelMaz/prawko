@@ -37,6 +37,8 @@ const APP_SHELL = [
   './icons/cursor-white.png',
   './icons/cursor-pointer-black.png',
   './icons/cursor-pointer-white.png',
+  './icons/cursor-unavailable-black.png',
+  './icons/cursor-unavailable-white.png',
   './fonts/NotoSansSymbols-Regular.ttf',
   './fonts/inter-latin-wght-normal.woff2',
   './fonts/inter-latin-ext-wght-normal.woff2',
@@ -77,16 +79,6 @@ function mediaPathTail(href) {
   }
 }
 
-function remoteMediaCached(href) {
-  if (offlineMediaUrls.has(href)) return true;
-  try {
-    const u = new URL(href);
-    if (offlineMediaUrls.has(u.origin + u.pathname)) return true;
-  } catch { /* ignore */ }
-  const tail = mediaPathTail(href);
-  return Boolean(tail && offlineMediaByTail.has(tail));
-}
-
 async function rebuildOfflineMediaIndex() {
   const cache = await caches.open(OFFLINE_MEDIA_CACHE);
   const keys = await cache.keys();
@@ -121,11 +113,26 @@ self.addEventListener('activate', (event) => {
 });
 
 async function serveCachedMedia(cached, request) {
-  const buf = new Uint8Array(await cached.arrayBuffer());
-  const mime = cached.headers.get('Content-Type') || '';
+  // Slice the cached blob. Copying the whole file into one buffer before
+  // answering Range is what delayed the first frame.
+  const blob = await cached.blob();
+  const total = blob.size;
+  const storedType = cached.headers.get('Content-Type') || blob.type || 'application/octet-stream';
   const range = request && request.headers ? request.headers.get('Range') : '';
-  const reply = self.PrawkoVideoAssemble.playerRangeReply(buf, range, mime, self.location.origin);
-  return new Response(reply.body, { status: reply.status, headers: reply.headers });
+  const parsed = total > 0 ? self.PrawkoVideoAssemble.parseRequestRange(range, total) : null;
+  const headers = {
+    'Content-Type': storedType,
+    'Accept-Ranges': 'bytes',
+    'Access-Control-Allow-Origin': self.location.origin || '*',
+  };
+  if (!parsed || (parsed.start === 0 && parsed.end === total - 1)) {
+    headers['Content-Length'] = String(total);
+    return new Response(blob, { status: 200, headers });
+  }
+  const slice = blob.slice(parsed.start, parsed.end + 1, storedType);
+  headers['Content-Length'] = String(slice.size);
+  headers['Content-Range'] = `bytes ${parsed.start}-${parsed.end}/${total}`;
+  return new Response(slice, { status: 206, headers });
 }
 
 async function matchOfflineMedia(request) {
@@ -147,22 +154,102 @@ async function matchOfflineMedia(request) {
     || (await cache.match(new Request(stored, { mode: 'same-origin' }), opts));
 }
 
+function isLoopbackHostName(host) {
+  return host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
+}
+
+// Files already on this computer. Every other host (LAN, GitHub, another
+// install) keeps a copy of what the player just received.
+function viewedMediaStaysOnDisk(url) {
+  return isLoopbackHostName(self.location.hostname)
+    && url.origin === self.location.origin
+    && /\/media\//.test(url.pathname);
+}
+
+function playedMediaKind(href, contentType) {
+  const type = String(contentType || '').toLowerCase();
+  if (type.startsWith('video/')) return 'video';
+  if (type.startsWith('image/')) return 'image';
+  try {
+    const path = new URL(href).pathname;
+    if (/\.(mp4|webm)$/i.test(path)) return 'video';
+    if (/\.(webp|jpe?g|png|gif)$/i.test(path)) return 'image';
+  } catch { /* ignore */ }
+  return '';
+}
+
+const playedMediaAssembler = self.PrawkoVideoAssemble.createAssembler();
+
+async function storePlayedMedia(href, blob, mime) {
+  const cache = await caches.open(OFFLINE_MEDIA_CACHE);
+  const key = videoAssemblyKey(href);
+  const type = mime || blob.type || 'application/octet-stream';
+  await cache.put(new Request(key), new Response(blob, {
+    status: 200,
+    headers: {
+      'Content-Type': type,
+      'Content-Length': String(blob.size),
+    },
+  }));
+  offlineMediaUrls.add(key);
+  try {
+    const u = new URL(key);
+    offlineMediaUrls.add(u.origin + u.pathname);
+  } catch { /* ignore a bad key */ }
+  const tail = mediaPathTail(key);
+  if (tail && !offlineMediaByTail.has(tail)) offlineMediaByTail.set(tail, key);
+  const clients = await self.clients.matchAll({ type: 'window' });
+  clients.forEach((client) => client.postMessage({ type: 'OFFLINE_MEDIA_UPDATED' }));
+}
+
+async function rememberPlayedMedia(href, response) {
+  if (!response || response.type === 'opaque' || response.type === 'opaqueredirect') return;
+  const kind = playedMediaKind(href, response.headers.get('Content-Type'));
+  if (!kind) return;
+  const max = self.PrawkoVideoAssemble.MAX_VIDEO_ASM;
+  const min = kind === 'video' ? self.PrawkoVideoAssemble.MIN_VIDEO_BYTES : 32;
+  if (response.status === 200) {
+    const blob = await response.blob();
+    if (blob.size < min || blob.size > max) return;
+    await storePlayedMedia(href, blob, blob.type || response.headers.get('Content-Type'));
+    return;
+  }
+  if (response.status !== 206 || kind !== 'video') return;
+  const header = response.headers.get('Content-Range') || '';
+  const parsed = self.PrawkoVideoAssemble.parseContentRange(header);
+  const buf = new Uint8Array(await response.arrayBuffer());
+  if (parsed && parsed.start === 0 && parsed.total > 0 && buf.byteLength === parsed.total) {
+    if (buf.byteLength < min || buf.byteLength > max) return;
+    await storePlayedMedia(href, new Blob([buf], { type: response.headers.get('Content-Type') || 'video/mp4' }), response.headers.get('Content-Type'));
+    return;
+  }
+  const done = playedMediaAssembler.pushChunk(
+    videoAssemblyKey(href),
+    206,
+    header,
+    buf,
+    response.headers.get('Content-Type') || 'video/mp4',
+  );
+  if (!done) return;
+  await storePlayedMedia(done.key, new Blob([done.buf], { type: done.mime || 'video/mp4' }), done.mime);
+}
+
+async function fetchAndRememberMedia(event, url) {
+  const cached = await matchOfflineMedia(event.request);
+  if (cached) return serveCachedMedia(cached, event.request);
+  const res = await fetch(event.request);
+  if (res && res.ok && res.type !== 'opaque' && res.type !== 'opaqueredirect') {
+    const copy = res.clone();
+    event.waitUntil(rememberPlayedMedia(url.href, copy).catch(() => {}));
+  }
+  return res;
+}
+
 function isStationMediaUrl(url) {
   if (url.origin !== self.location.origin) {
     return /\.(mp4|webm|webp|jpg|jpeg|png|gif)(\?|$)/i.test(url.pathname);
   }
   return /\/media\//.test(url.pathname);
-}
-
-async function respondFromStationCache(event, url) {
-  const cached = await matchOfflineMedia(event.request);
-  if (cached) return serveCachedMedia(cached, event.request);
-  if (url.origin === self.location.origin) {
-    const mediaCache = await caches.open(MEDIA_CACHE);
-    const fromMedia = await mediaCache.match(event.request);
-    if (fromMedia) return fromMedia;
-  }
-  return fetch(event.request);
 }
 
 self.addEventListener('fetch', (event) => {
@@ -172,12 +259,11 @@ self.addEventListener('fetch', (event) => {
   if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
   if (url.pathname.endsWith('/sw.js')) return;
   if (url.pathname.endsWith('/local.json')) return;
-  // Same path for CDN and /media/: serve a cache hit. Uncached files pass
-  // through; the page stores a complete viewed GET (except loopback + files on this disk).
+  // Same path for CDN and /media/. A cache hit is sliced for the player.
+  // A miss is the player's own response: return it immediately and keep a copy.
+  // Loopback with the files on disk is not intercepted.
   if (isStationMediaUrl(url)) {
-    if (remoteMediaCached(url.href)) {
-      event.respondWith(respondFromStationCache(event, url));
-    }
+    if (!viewedMediaStaysOnDisk(url)) event.respondWith(fetchAndRememberMedia(event, url));
     return;
   }
 

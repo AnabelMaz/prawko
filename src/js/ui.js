@@ -2,9 +2,10 @@
 
 import { t, getLang, translateQuestion } from './i18n.js';
 import { getCategoryStats, getLearnProgress, loadHistory, getLearnTouchedCategories, getLearnCategoryBreakdown, getLearnUniqueFilterCounts } from './stats.js';
-import { getMediaUrls, fetchCategory, usesLocalMedia } from './data.js';
-import { getCategoryMediaAccess, getCategoriesOfflineCoverage, getDownloadedCategories, getActiveDownloadProgress, isAppOnline, offlineCoverageHue, resolvePlayableMediaUrl, captureViewedMedia } from './offline.js';
+import { getMediaUrls, fetchCategory, usesLocalMedia, isLoopbackHost, loadLocalConfig } from './data.js';
+import { getCategoryMediaAccess, getCategoriesOfflineCoverage, getDownloadedCategories, getActiveDownloadProgress, getActiveDownloadCategory, getInProgressOfflineCategory, isAppOnline, offlineCoverageHue, resolvePlayableMediaUrl, storeMediaBlob } from './offline.js';
 import { refitUiScale, layoutCategoryGrid, syncExamMediaAlign, alignAndFitExamDock, fitAfterShowScreen, shouldHoldScreenChange } from './scale.js';
+import { abortOwnedMedia, startOwnedMedia } from './film-feed.js';
 import { prepareAnswerFit, prepareDockFit } from './fit-text.js';
 
 export function showScreen(id) {
@@ -215,21 +216,48 @@ function clampCoveragePct(pct) {
   return Math.max(0, Math.min(100, n));
 }
 
-function paintOfflineButton(dlBtn, access, coverage) {
+export function formatOfflineRunningLabel(pct) {
+  const n = Math.max(0, Math.min(99, Math.round(Number(pct) || 0)));
+  return `\u2193 ${n}% \u00b7 ${t('stopOffline')}`;
+}
+
+function paintOfflineButton(dlBtn, access, coverage, known) {
   if (!dlBtn) return;
-  const active = getActiveDownloadProgress(dlBtn.dataset.category);
-  if (active) {
-    const pct = Math.max(0, Math.min(99, Math.round((active.done / Math.max(1, active.total)) * 100)));
+  const mine = dlBtn.dataset.category;
+  const jobId = getActiveDownloadCategory() || getInProgressOfflineCategory();
+  const active = getActiveDownloadProgress(mine);
+  if (active || jobId === mine) {
+    dlBtn.classList.remove('coverage-pending');
+    dlBtn.removeAttribute('aria-busy');
+    const pct = active
+      ? Math.max(0, Math.min(99, Math.round((active.done / Math.max(1, active.total)) * 100)))
+      : clampCoveragePct(coverage?.pct);
     dlBtn.classList.add('downloading');
-    dlBtn.classList.remove('downloaded', 'unavailable', 'partial');
+    dlBtn.classList.remove('downloaded', 'unavailable', 'partial', 'download-locked');
     dlBtn.style.setProperty('--dl-progress', String(pct));
     dlBtn.style.setProperty('--offline-hue', String(offlineCoverageHue(pct)));
-    dlBtn.textContent = `\u2193 ${pct}%`;
+    dlBtn.textContent = formatOfflineRunningLabel(pct);
     return;
   }
+  if (!known && !access.offlineReady && access.canDownload) {
+    dlBtn.classList.add('coverage-pending');
+    dlBtn.classList.remove('downloading', 'downloaded', 'unavailable', 'partial', 'download-locked');
+    dlBtn.style.removeProperty('--offline-hue');
+    dlBtn.style.removeProperty('--dl-progress');
+    delete dlBtn.dataset.offlinePct;
+    dlBtn.textContent = '\u2026';
+    dlBtn.setAttribute('aria-busy', 'true');
+    return;
+  }
+  dlBtn.classList.remove('coverage-pending');
+  dlBtn.removeAttribute('aria-busy');
   dlBtn.classList.remove('downloading');
+  dlBtn.classList.toggle('download-locked', Boolean(jobId));
   const pct = clampCoveragePct(coverage?.pct);
-  const showPct = !access.offlineReady && pct >= 1 && pct <= 99;
+  // A few saved files in a large category round to 0%. That is still offline
+  // progress: "Pobierz offline" would look like nothing was stored.
+  const have = Number(coverage?.have) || 0;
+  const showPct = !access.offlineReady && pct < 100 && (have > 0 || pct >= 1);
 
   dlBtn.classList.toggle('downloaded', access.offlineReady);
   dlBtn.classList.toggle('unavailable', !access.available);
@@ -258,7 +286,7 @@ function paintCoverageMap(coverageMap, downloadedSet = new Set()) {
       coveragePct: cov?.pct,
     });
     applyCategoryAccess(dlBtn.closest('.category-card'), access);
-    paintOfflineButton(dlBtn, access, cov);
+    paintOfflineButton(dlBtn, access, cov, Object.prototype.hasOwnProperty.call(lastCoverageMap, catId));
   });
 }
 
@@ -363,7 +391,7 @@ export function renderCategories(meta, downloadedSet = new Set()) {
       coveragePct: coverage?.pct,
     });
     applyCategoryAccess(card, access);
-    paintOfflineButton(dlBtn, access, coverage);
+    paintOfflineButton(dlBtn, access, coverage, Object.prototype.hasOwnProperty.call(lastCoverageMap, cat.id));
   });
   scheduleCoverageScan(meta, downloadedSet);
   requestAnimationFrame(() => {
@@ -373,16 +401,81 @@ export function renderCategories(meta, downloadedSet = new Set()) {
 }
 
 
-// Keep the element invisible until currentTime is on the last frame, so frame 0 never paints.
+// Times come from media-trim.json via the question. Missing fields keep the
+// old playback: start at 0, stop on the file's real last frame.
+export function mediaClipStart(video) {
+  const t = Number(video?.dataset?.mediaIn);
+  return Number.isFinite(t) && t > 0.04 ? t : 0;
+}
+
+function mediaClipEnd(video) {
+  const t = Number(video?.dataset?.mediaOut);
+  if (!Number.isFinite(t) || t <= 0.04) return 0;
+  const duration = video?.duration;
+  if (Number.isFinite(duration) && duration > 0 && t >= duration - 0.04) return 0;
+  return t;
+}
+
+function stampMediaClip(video, q) {
+  const inn = Number(q && q.mediaIn);
+  const out = Number(q && q.mediaOut);
+  if (Number.isFinite(inn) && inn > 0.04) video.dataset.mediaIn = String(inn);
+  if (Number.isFinite(out) && out > 0.04) video.dataset.mediaOut = String(out);
+}
+
+function bindClipStart(video) {
+  const start = mediaClipStart(video);
+  if (!start) return;
+  const pin = () => {
+    if (video.dataset.trimmedEnd === '1') return;
+    if (video.currentTime < start - 0.03) {
+      try { video.currentTime = start; } catch { /* not seekable yet */ }
+    }
+  };
+  video.addEventListener('loadedmetadata', pin);
+  video.addEventListener('loadeddata', pin);
+}
+
+function bindClipEnd(video) {
+  if (!video.dataset.mediaOut) return;
+  let reached = false;
+  const reach = () => {
+    if (reached) return;
+    const end = mediaClipEnd(video);
+    if (!end || video.currentTime + 0.03 < end) return;
+    reached = true;
+    video.dataset.trimmedEnd = '1';
+    video.pause();
+    const finish = () => video.dispatchEvent(new Event('ended'));
+    if (video.currentTime > end + 0.03) {
+      video.addEventListener('seeked', finish, { once: true });
+      try { video.currentTime = end; } catch { finish(); }
+    } else finish();
+  };
+  video.addEventListener('timeupdate', reach);
+  video.addEventListener('play', () => {
+    reached = false;
+    delete video.dataset.trimmedEnd;
+  });
+}
+
+// Keep the element invisible until currentTime is on the last picture, so frame 0 never paints.
 function holdLearnVideoAtEnd(video, mediaArea, stillCurrent, onReady) {
   mediaArea.classList.add('learn-video-hold');
   let pinned = false;
   let seekArmed = false;
 
-  const atEnd = () => {
+  const endTarget = () => {
     const duration = video.duration;
-    if (!Number.isFinite(duration) || duration <= 0) return false;
-    const target = Math.max(0, duration - 0.001);
+    const clip = mediaClipEnd(video);
+    if (clip) return clip;
+    if (!Number.isFinite(duration) || duration <= 0) return 0;
+    return Math.max(0, duration - 0.001);
+  };
+
+  const atEnd = () => {
+    const target = endTarget();
+    if (target <= 0) return false;
     return video.currentTime >= target - 0.0005;
   };
 
@@ -390,14 +483,14 @@ function holdLearnVideoAtEnd(video, mediaArea, stillCurrent, onReady) {
     if (pinned || !stillCurrent() || !atEnd()) return;
     pinned = true;
     video.pause();
-    mediaArea.classList.remove('learn-video-hold', 'loading');
+    mediaArea.classList.remove('learn-video-hold', 'loading', 'awaiting-frame');
     onReady();
   };
 
   const pin = () => {
     if (pinned || !stillCurrent()) return;
-    const duration = video.duration;
-    if (!Number.isFinite(duration) || duration <= 0) return;
+    const target = endTarget();
+    if (target <= 0) return;
     if (atEnd()) {
       show();
       return;
@@ -405,7 +498,7 @@ function holdLearnVideoAtEnd(video, mediaArea, stillCurrent, onReady) {
     if (seekArmed) return;
     seekArmed = true;
     try {
-      video.currentTime = Math.max(0, duration - 0.001);
+      video.currentTime = target;
     } catch {
       seekArmed = false;
     }
@@ -429,6 +522,67 @@ function holdLearnVideoAtEnd(video, mediaArea, stillCurrent, onReady) {
   video.addEventListener('ended', show);
 }
 
+function bindMediaBufferSpinner(video, mediaArea, stillCurrent) {
+  // Intent to play, not video.paused. A film that has one frame and is still
+  // buffering reports paused, and that frame must not sit there like a photo.
+  let wantPlay = video.autoplay === true;
+  const skip = () => !stillCurrent()
+    || video.ended
+    || video.dataset.examEnded === '1'
+    || video.dataset.trimmedEnd === '1'
+    || mediaArea.classList.contains('learn-video-hold');
+  const fromCache = () => {
+    if (video.dataset.byteSource === 'live') return false;
+    if (video.dataset.byteSource === 'stored') return true;
+    return /^(blob|data):/i.test(video.currentSrc || video.src || '');
+  };
+  const show = () => {
+    if (skip() || !wantPlay || fromCache()) return;
+    mediaArea.classList.add('loading');
+  };
+  const hide = () => {
+    if (!stillCurrent()) return;
+    mediaArea.classList.remove('loading');
+  };
+  // A decoded frame is not playback. The ring stays until `playing`.
+  const onFrame = () => {
+    if (skip()) return;
+    if (!wantPlay || fromCache()) hide();
+  };
+  const onWait = () => {
+    if (skip() || !wantPlay || fromCache()) return;
+    show();
+  };
+  video.addEventListener('play', () => {
+    wantPlay = true;
+    if (skip() || fromCache() || video.readyState >= 3) return;
+    show();
+  });
+  video.addEventListener('playing', () => {
+    wantPlay = true;
+    hide();
+  });
+  video.addEventListener('waiting', onWait);
+  video.addEventListener('stalled', onWait);
+  video.addEventListener('loadeddata', onFrame);
+  video.addEventListener('canplay', onFrame);
+  video.addEventListener('ended', () => {
+    wantPlay = false;
+    hide();
+  });
+  return {
+    notePause() {
+      wantPlay = false;
+      hide();
+    },
+    noteResume() {
+      wantPlay = true;
+      if (skip() || fromCache() || video.readyState >= 3) return;
+      show();
+    },
+  };
+}
+
 function lockVideoChrome(video) {
   video.controls = false;
   video.playsInline = true;
@@ -441,6 +595,42 @@ function lockVideoChrome(video) {
 
 let mediaLoadGen = 0;
 let playableBlobUrl = '';
+
+function workerStoresViewedMedia() {
+  return Boolean(typeof navigator !== 'undefined' && navigator.serviceWorker?.controller);
+}
+
+function flushViewedMediaCopy() {
+  abortOwnedMedia();
+}
+
+// One reader for the bytes. A blob is already stored. A service worker reads
+// the element's request and keeps that copy. Files on this computer's disk
+// are opened directly. A same-origin file anywhere else (a LAN server) is
+// read once by the page: that read is what plays and, once complete, what is
+// stored. A cross-origin file is opened by the element. Backblaze sends no
+// CORS header, so a page fetch cannot see those bytes and must not run —
+// it would fail the picture and download it a second time.
+function assignPlayableSrc(el, url) {
+  if (!url) return;
+  const owned = /^(blob|data):/i.test(url);
+  if (owned) {
+    el.dataset.byteSource = 'stored';
+    el.src = url;
+    return;
+  }
+  delete el.dataset.byteSource;
+  let remote = false;
+  try {
+    remote = new URL(url, location.href).origin !== location.origin;
+  } catch { /* a bad URL still goes to the element */ }
+  const onThisDisk = !remote && usesLocalMedia() && isLoopbackHost();
+  if (!remote && !workerStoresViewedMedia() && !onThisDisk) {
+    startOwnedMedia(el, url, storeMediaBlob);
+    return;
+  }
+  el.src = url;
+}
 
 function revokePlayableBlob() {
   if (!playableBlobUrl) return;
@@ -457,14 +647,17 @@ export function renderQuestion(question, container, options = {}) {
   if (question?.id != null) container.dataset.questionId = String(question.id);
   else delete container.dataset.questionId;
 
-  // Stop any playing video before clearing
+  // Drop the previous view before its error handler can start another read.
+  const mediaGen = ++mediaLoadGen;
   const oldVideo = mediaArea.querySelector('video');
+  const oldCopy = oldVideo?.dataset?.pausedCopy || '';
   if (oldVideo) { oldVideo.pause(); oldVideo.removeAttribute('src'); oldVideo.load(); }
+  if (oldCopy && oldCopy !== playableBlobUrl) URL.revokeObjectURL(oldCopy);
+  flushViewedMediaCopy();
   mediaArea.innerHTML = '';
   revokePlayableBlob();
-  const mediaGen = ++mediaLoadGen;
   mediaArea.onclick = null;
-  mediaArea.classList.remove('has-media', 'loading', 'has-learn-video', 'learn-video-hold', 'exam-film-pending', 'media-empty');
+  mediaArea.classList.remove('has-media', 'loading', 'awaiting-frame', 'has-learn-video', 'learn-video-hold', 'exam-film-pending', 'media-empty');
   mediaArea.removeAttribute('aria-hidden');
   mediaArea.removeAttribute('role');
   mediaArea.removeAttribute('aria-label');
@@ -492,9 +685,22 @@ export function renderQuestion(question, container, options = {}) {
   syncExamMediaAlign();
 
   if (q.media) {
-    mediaArea.classList.add('has-media', 'loading');
+    mediaArea.classList.add('has-media', 'loading', 'awaiting-frame');
     mediaArea.setAttribute('aria-hidden', 'false');
-    const mediaCandidates = getMediaUrls(q.media, q.mediaType);
+    // Filled after local.json answers. A slow 200 must not be read as "no
+    // file" and sent to Backblaze; a fast 404 settles this immediately.
+    let mediaCandidates = [];
+    let mediaReady = null;
+    const ensureMediaCandidates = () => {
+      if (!mediaReady) {
+        mediaReady = (async () => {
+          await loadLocalConfig();
+          if (mediaGen !== mediaLoadGen) return;
+          mediaCandidates = getMediaUrls(q.media, q.mediaType);
+        })();
+      }
+      return mediaReady;
+    };
 
     let candidateIndex = 0;
     let triedStored = false;
@@ -504,37 +710,52 @@ export function renderQuestion(question, container, options = {}) {
       candidateIndex += 1;
       return url;
     };
-    const nextPlayableUrl = async () => {
-      if (!triedStored) {
-        triedStored = true;
-        const stored = await resolvePlayableMediaUrl(q.media, q.mediaType);
-        if (!stillCurrent()) {
-          if (stored) URL.revokeObjectURL(stored);
-          return null;
-        }
-        if (stored) {
-          playableBlobUrl = stored;
-          return stored;
-        }
-      }
-      if (!isAppOnline()) return null;
-      const url = getNextMediaUrl();
-      if (!url) return null;
-      const captured = await captureViewedMedia(url);
+    const stillCurrent = () => mediaGen === mediaLoadGen;
+    // A stored blob is the whole file from an earlier view. Otherwise the
+    // element gets the file URL and one read of that response plays it.
+    const takeStored = async () => {
+      if (triedStored) return null;
+      triedStored = true;
+      const stored = await resolvePlayableMediaUrl(q.media, q.mediaType);
       if (!stillCurrent()) {
-        if (captured) URL.revokeObjectURL(captured);
+        if (stored) URL.revokeObjectURL(stored);
         return null;
       }
-      if (captured) {
-        playableBlobUrl = captured;
-        return captured;
+      if (stored) {
+        playableBlobUrl = stored;
+        return stored;
       }
-      return url;
+      return null;
     };
-    const stillCurrent = () => mediaGen === mediaLoadGen;
+    const nextPlayableUrl = async () => {
+      await ensureMediaCandidates();
+      if (!stillCurrent()) return null;
+      if (isAppOnline()) {
+        const url = getNextMediaUrl();
+        if (url) {
+          // A service worker serves its own cache as ranges. Without one
+          // (plain HTTP), a stored file is a blob so the replay does not
+          // touch the network. A miss returns the file URL immediately.
+          if (!workerStoresViewedMedia()) {
+            const stored = await resolvePlayableMediaUrl(q.media, q.mediaType);
+            if (!stillCurrent()) {
+              if (stored) URL.revokeObjectURL(stored);
+              return null;
+            }
+            if (stored) {
+              playableBlobUrl = stored;
+              triedStored = true;
+              return stored;
+            }
+          }
+          return url;
+        }
+      }
+      return takeStored();
+    };
 
     const showMediaFallback = (onRetry) => {
-      mediaArea.classList.remove('loading');
+      mediaArea.classList.remove('loading', 'awaiting-frame');
       mediaArea.innerHTML = '';
       if (examMedia) {
         mediaArea.classList.remove('has-media', 'exam-film-pending');
@@ -594,10 +815,11 @@ export function renderQuestion(question, container, options = {}) {
             return;
           }
 
-          mediaArea.classList.add('loading');
+          mediaArea.classList.add('loading', 'awaiting-frame');
           mediaArea.innerHTML = '';
 
           const video = document.createElement('video');
+          stampMediaClip(video, q);
           lockVideoChrome(video);
           video.preload = 'auto';
           video.addEventListener('error', () => {
@@ -631,83 +853,130 @@ export function renderQuestion(question, container, options = {}) {
               if (!mediaArea.classList.contains('exam-film-pending')) return;
               video.pause();
               try {
-                if (video.currentTime !== 0) video.currentTime = 0;
+                const start = mediaClipStart(video);
+                if (Math.abs(video.currentTime - start) > 0.02) video.currentTime = start;
               } catch {}
             };
             video.addEventListener('loadedmetadata', pinStartFrame);
             video.onloadeddata = () => {
-              mediaArea.classList.remove('loading');
               pinStartFrame();
+              if (stillCurrent()) mediaArea.classList.remove('awaiting-frame');
             };
-            if (hideFilm) mediaArea.classList.remove('loading');
             mediaArea.appendChild(video);
-            video.src = mediaUrl;
+            bindMediaBufferSpinner(video, mediaArea, stillCurrent);
+            bindClipStart(video);
+            bindClipEnd(video);
+            assignPlayableSrc(video, mediaUrl);
             syncExamMediaAlign();
           } else {
             const holdEnd = options.holdVideoEnd === true;
             video.muted = true;
             video.autoplay = !holdEnd;
             video.onloadeddata = () => {
-              if (!stillCurrent() || holdEnd) return;
-              mediaArea.classList.remove('loading');
+              if (!stillCurrent()) return;
+              if (holdEnd) return;
+              mediaArea.classList.remove('awaiting-frame');
               onLearnMediaSettled(learnMediaMark);
             };
 
-            const replay = document.createElement('button');
-            replay.type = 'button';
-            replay.className = 'media-replay-btn';
-            replay.hidden = true;
-            replay.setAttribute('aria-label', t('replayMedia'));
-            replay.title = t('replayMedia');
-            replay.innerHTML = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M12 5V1L7 6l5 5V7c3.3 0 6 2.7 6 6s-2.7 6-6 6-6-2.7-6-6H4c0 4.4 3.6 8 8 8s8-3.6 8-8-3.6-8-8-8z"/></svg>';
-            const setReplayVisible = (visible) => {
-              replay.hidden = !visible;
-              mediaArea.classList.toggle('is-replayable', visible);
+            const transportIcons = {
+              pause: '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>',
+              resume: '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>',
+              replay: '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M12 5V1L7 6l5 5V7c3.3 0 6 2.7 6 6s-2.7 6-6 6-6-2.7-6-6H4c0 4.4 3.6 8 8 8s8-3.6 8-8-3.6-8-8-8z"/></svg>',
             };
+            const transportLabels = {
+              pause: () => t('pauseMedia'),
+              resume: () => t('resumeMedia'),
+              replay: () => t('replayMedia'),
+            };
+            const transport = document.createElement('button');
+            transport.type = 'button';
+            transport.className = 'media-replay-btn';
+            transport.hidden = true;
             let hideMarkForReplayPlay = false;
-            const revealMarkAfterReplayStop = () => {
-              if (!hideMarkForReplayPlay) return;
-              if (!video.paused && !video.ended) return;
-              if (video.seeking) return;
-              if (!video.ended && video.currentTime < 0.05) return;
-              if (video.ended) hideMarkForReplayPlay = false;
-              onLearnMediaSettled(learnMediaMark);
+            const setTransport = (mode) => {
+              if (mediaArea.classList.contains('learn-video-hold') && mode !== 'replay') return;
+              transport.dataset.mode = mode;
+              const label = transportLabels[mode]();
+              transport.hidden = false;
+              transport.setAttribute('aria-label', label);
+              transport.title = label;
+              transport.innerHTML = transportIcons[mode];
+              mediaArea.classList.add('is-replayable');
             };
-            replay.addEventListener('click', (e) => {
+            const bufferSpinner = bindMediaBufferSpinner(video, mediaArea, stillCurrent);
+            const replayFromStart = () => {
+              bufferSpinner.noteResume();
+              hideMarkForReplayPlay = true;
+              mediaArea.classList.remove('learn-video-hold');
+              delete video.dataset.trimmedEnd;
+              try { video.currentTime = mediaClipStart(video); } catch { /* not seekable yet */ }
+              video.muted = false;
+              setLearnMediaMarkHidden(true);
+              const pending = video.play();
+              if (pending && typeof pending.catch === 'function') pending.catch(() => {});
+            };
+            const activateTransport = async () => {
+              const mode = transport.dataset.mode;
+              if (!mode) return;
+              if (mode === 'replay' || video.ended) {
+                replayFromStart();
+                return;
+              }
+              // Pause and resume leave the session mark as it is.
+              // Only watching through to the end brings it back.
+              if (mode === 'resume') {
+                bufferSpinner.noteResume();
+                const pending = video.play();
+                if (pending && typeof pending.catch === 'function') pending.catch(() => {});
+                return;
+              }
+              bufferSpinner.notePause();
+              video.pause();
+              if (video.paused) setTransport('resume');
+            };
+            transport.addEventListener('click', (e) => {
               e.preventDefault();
               e.stopPropagation();
-              hideMarkForReplayPlay = true;
-              mediaArea.classList.remove('learn-video-hold', 'loading');
-              video.currentTime = 0;
-              video.muted = false;
-              setReplayVisible(false);
-              setLearnMediaMarkHidden(true);
-              video.play();
+              activateTransport();
             });
+            // The film fills the frame and ignores hits, so the area receives them.
+            // The corner button is the same action and keeps the visible state.
+            mediaArea.onclick = (e) => {
+              if (e.target.closest('.media-replay-btn')) return;
+              e.preventDefault();
+              activateTransport();
+            };
             video.addEventListener('play', () => {
-              setReplayVisible(false);
+              if (mediaArea.classList.contains('learn-video-hold')) return;
               if (hideMarkForReplayPlay) setLearnMediaMarkHidden(true);
+              setTransport('pause');
             });
-            video.addEventListener('pause', revealMarkAfterReplayStop);
+            video.addEventListener('pause', () => {
+              if (mediaArea.classList.contains('learn-video-hold')) return;
+              if (video.ended || video.dataset.trimmedEnd === '1') return;
+              setTransport('resume');
+            });
             video.addEventListener('ended', () => {
               hideMarkForReplayPlay = false;
-              setReplayVisible(true);
+              setTransport('replay');
               onLearnMediaSettled(learnMediaMark);
             });
 
             mediaArea.classList.add('has-learn-video');
             if (holdEnd) {
               holdLearnVideoAtEnd(video, mediaArea, stillCurrent, () => {
-                setReplayVisible(true);
+                setTransport('replay');
                 onLearnMediaSettled(learnMediaMark);
               });
             }
-            mediaArea.append(video, replay);
-            video.src = mediaUrl;
-            if (!holdEnd && video.readyState >= 2) {
-              mediaArea.classList.remove('loading');
-              onLearnMediaSettled(learnMediaMark);
+            mediaArea.append(video, transport);
+            if (!holdEnd) {
+              bindClipStart(video);
+              bindClipEnd(video);
             }
+            assignPlayableSrc(video, mediaUrl);
+            if (!holdEnd && video.readyState >= 2) onLearnMediaSettled(learnMediaMark);
             syncExamMediaAlign();
           }
         })();
@@ -727,18 +996,21 @@ export function renderQuestion(question, container, options = {}) {
             return;
           }
 
-          mediaArea.classList.add('loading');
+          mediaArea.classList.add('loading', 'awaiting-frame');
           mediaArea.innerHTML = '';
 
           const img = document.createElement('img');
           const onImageReady = () => {
             if (!stillCurrent()) return;
-            mediaArea.classList.remove('loading');
+            mediaArea.classList.remove('loading', 'awaiting-frame');
             onLearnMediaSettled(learnMediaMark);
           };
           img.onload = onImageReady;
           img.onerror = () => {
             if (!stillCurrent()) return;
+            // An img with no src yet is not a failed file. The page read sets
+            // src when its bytes arrive.
+            if (!img.getAttribute('src')) return;
             loadImage();
           };
           img.alt = t('imgAlt');
@@ -752,10 +1024,20 @@ export function renderQuestion(question, container, options = {}) {
             img.addEventListener('mousedown', (e) => e.preventDefault());
             img.addEventListener('click', (e) => e.preventDefault());
             img.addEventListener('contextmenu', (e) => e.preventDefault());
+          } else {
+            // Answered questions keep the result mark on the photo. A click
+            // peeks under it; another click puts it back. Unanswered: no mark.
+            mediaArea.onclick = (e) => {
+              if (e.target.closest('.media-retry-btn, .media-offline-link, .media-fallback')) return;
+              const mark = mediaArea.querySelector('.learn-media-mark');
+              if (!mark) return;
+              e.preventDefault();
+              setLearnMediaMarkHidden(!mark.hidden);
+            };
           }
           mediaArea.appendChild(img);
-          img.src = mediaUrl;
-          if (img.complete) onImageReady();
+          assignPlayableSrc(img, mediaUrl);
+          if (img.getAttribute('src') && img.complete) onImageReady();
           syncExamMediaAlign();
         })();
       };
@@ -870,8 +1152,12 @@ export function playExamVideo(container) {
   delete video.dataset.examEnded;
   const attempt = () => {
     try {
-      if (video.ended || video.currentTime > 0.05) video.currentTime = 0;
+      const start = mediaClipStart(video);
+      if (video.ended || video.dataset.trimmedEnd === '1' || video.currentTime > start + 0.05) {
+        video.currentTime = start;
+      }
     } catch {}
+    delete video.dataset.trimmedEnd;
     return video.play();
   };
 
@@ -942,7 +1228,8 @@ function bindMediaFallback(el, urls) {
   let i = 0;
   const tryUrl = () => {
     if (i >= urls.length) return;
-    el.src = urls[i++];
+    flushViewedMediaCopy();
+    assignPlayableSrc(el, urls[i++]);
   };
   el.addEventListener('error', tryUrl);
   tryUrl();
@@ -950,6 +1237,13 @@ function bindMediaFallback(el, urls) {
 
 function appendReviewMedia(container, q) {
   if (!q.media) return;
+  void loadLocalConfig().then(() => {
+    if (!container.isConnected) return;
+    appendReviewMediaNow(container, q);
+  });
+}
+
+function appendReviewMediaNow(container, q) {
   const wrap = document.createElement('div');
   wrap.className = 'review-media';
   const urls = getMediaUrls(q.media, q.mediaType);
@@ -957,12 +1251,13 @@ function appendReviewMedia(container, q) {
   if (q.mediaType === 'video') {
     wrap.classList.add('has-review-video');
     const video = document.createElement('video');
+    stampMediaClip(video, q);
     lockVideoChrome(video);
     video.preload = 'metadata';
     wrap.addEventListener('click', (e) => {
       if (e.target.closest('.media-replay-btn')) return;
-      if (video.ended) video.currentTime = 0;
-      if (video.paused || video.ended) video.play();
+      if (video.ended || video.dataset.trimmedEnd === '1') video.currentTime = mediaClipStart(video);
+      if (video.paused || video.ended || video.dataset.trimmedEnd === '1') video.play();
       else video.pause();
     });
 
@@ -987,15 +1282,17 @@ function appendReviewMedia(container, q) {
     replay.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      if (video.ended) video.currentTime = 0;
+      if (video.ended || video.dataset.trimmedEnd === '1') video.currentTime = mediaClipStart(video);
       setPlaybackControl(null);
       video.play();
     });
     video.addEventListener('play', () => setPlaybackControl(null));
     video.addEventListener('pause', () => {
-      if (!video.ended) setPlaybackControl('play');
+      if (!video.ended && video.dataset.trimmedEnd !== '1') setPlaybackControl('play');
     });
     video.addEventListener('ended', () => setPlaybackControl('replay'));
+    bindClipStart(video);
+    bindClipEnd(video);
     bindMediaFallback(video, urls);
     wrap.append(video, replay);
     setPlaybackControl('play');

@@ -6,6 +6,7 @@ import {
   markSelectedAnswer,
   setAnswerButtonsEnabled,
   playExamVideo,
+  mediaClipStart,
   renderResults,
   showConfirmModal,
   cancelModalAction,
@@ -734,7 +735,8 @@ function beginMediaPlayback() {
   updateFilmStartButton();
   try {
     video.pause();
-    if (video.currentTime !== 0) video.currentTime = 0;
+    const start = mediaClipStart(video);
+    if (Math.abs(video.currentTime - start) > 0.02) video.currentTime = start;
   } catch {}
   delete video.dataset.examEnded;
   bindFilmEnd(video);

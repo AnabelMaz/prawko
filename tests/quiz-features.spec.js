@@ -1,6 +1,7 @@
 const { test, expect } = require('@playwright/test');
 const { goToCategories, cycleLanguage, cycleSkin, learnCatalogLabel, waitForUiHold } = require('./helpers');
 const TINY_MP4 = require('./tiny-mp4');
+const TRIM_MP4 = require('fs').readFileSync(require('path').join(__dirname, 'trim-1s.mp4'));
 
 // Helper: navigate to categories and start learn mode for category B
 async function startLearnMode(page, { localJson, category = 'B' } = {}) {
@@ -206,7 +207,12 @@ test.describe('Video autoplay', () => {
       const el = document.querySelector('#quiz .media-area video');
       if (!el || !Number.isFinite(el.duration) || el.duration <= 0) return false;
       const opacity = Number(getComputedStyle(el).opacity);
-      return opacity > 0.9 && el.paused && el.currentTime >= el.duration - 0.05;
+      const clip = Number(el.dataset.mediaOut);
+      const useClip = Number.isFinite(clip) && clip > 0.04 && clip < el.duration - 0.04;
+      const near = useClip
+        ? Math.abs(el.currentTime - clip) < 0.08
+        : el.currentTime >= el.duration - 0.05;
+      return opacity > 0.9 && el.paused && near;
     });
     const snap = await video.evaluate((el) => ({
       autoplay: el.autoplay,
@@ -229,6 +235,67 @@ test.describe('Video autoplay', () => {
       ));
     });
     expect(earlyVisible).toEqual([]);
+  });
+
+  test('mediaOut stops on that time and a question without times plays as before', async ({ page }) => {
+    await page.route(/\.(mp4|webm)(\?|$)/i, async (route) => {
+      const url = route.request().url();
+      const body = url.includes('trim-end.mp4') ? TRIM_MP4 : TINY_MP4;
+      if (route.request().method() === 'OPTIONS') {
+        await route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': '*' } });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'video/mp4',
+        headers: { 'Access-Control-Allow-Origin': '*' },
+        body,
+      });
+    });
+    await startLearnMode(page, { localJson: { mediaBase: 'cdn', learnQuestionJump: true } });
+    await page.evaluate(async () => {
+      const { renderQuestion } = await import(new URL('./js/ui.js', location.href).href);
+      const card = document.querySelector('#quiz .question-card') || document.querySelector('.question-card');
+      renderQuestion({
+        id: 99001,
+        q: 'Trim end',
+        type: 'basic',
+        correct: 'T',
+        media: 'trim-end.mp4',
+        mediaType: 'video',
+        mediaOut: 0.15,
+      }, card);
+    });
+    const video = page.locator('#quiz .media-area video');
+    await expect(video).toHaveCount(1);
+    await expect.poll(() => video.evaluate((el) => {
+      if (el.dataset.trimmedEnd !== '1' || !el.paused) return false;
+      return Math.abs(el.currentTime - 0.15) < 0.2;
+    })).toBe(true);
+
+    await page.evaluate(async () => {
+      const { renderQuestion } = await import(new URL('./js/ui.js', location.href).href);
+      const card = document.querySelector('#quiz .question-card') || document.querySelector('.question-card');
+      renderQuestion({
+        id: 99002,
+        q: 'No trim',
+        type: 'basic',
+        correct: 'T',
+        media: 'no-trim.mp4',
+        mediaType: 'video',
+      }, card);
+    });
+    const plain = page.locator('#quiz .media-area video');
+    await expect(plain).toHaveCount(1);
+    await expect.poll(() => plain.evaluate((el) => el.readyState)).toBeGreaterThan(0);
+    const plainSnap = await plain.evaluate((el) => ({
+      out: el.dataset.mediaOut || '',
+      inn: el.dataset.mediaIn || '',
+      trimmed: el.dataset.trimmedEnd || '',
+    }));
+    expect(plainSnap.out).toBe('');
+    expect(plainSnap.inn).toBe('');
+    expect(plainSnap.trimmed).toBe('');
   });
 
   test('a video answered before this visit plays from the start', async ({ page }) => {
@@ -329,6 +396,22 @@ test.describe('Learn video result mark', () => {
       video.dispatchEvent(new Event('play'));
     });
     await expect(mark).toBeVisible();
+    const transport = page.locator('#quiz .media-replay-btn');
+    await expect(transport).toBeVisible();
+    await expect(transport).toHaveAttribute('aria-label', /Pauza|Pause|Пауза/);
+    await transport.click();
+    await expect(mark).toBeVisible();
+    await expect(transport).toHaveAttribute('aria-label', /Wznów|Resume|Fortsetzen|Продовжити/);
+    await mediaArea.locator('video').evaluate((video) => {
+      video.play = () => {
+        video.dataset.areaPlay = '1';
+        return Promise.resolve();
+      };
+    });
+    await mediaArea.click({ position: { x: 24, y: 24 } });
+    await expect.poll(() => mediaArea.locator('video').evaluate((el) => el.dataset.areaPlay || '')).toBe('1');
+    await expect(mark).toBeVisible();
+    await expect(transport).toHaveAttribute('aria-label', /Wznów|Resume|Fortsetzen|Продовжити/);
     const markedAnswers = page.locator('.answers .answer-btn.correct, .answers .answer-btn.incorrect');
     await expect(markedAnswers).not.toHaveCount(0);
     const answerSnapshot = await markedAnswers.evaluateAll((els) => els.map((el) => el.className).sort());
@@ -350,7 +433,7 @@ test.describe('Learn video result mark', () => {
       video.pause();
       video.dispatchEvent(new Event('pause'));
     });
-    await expect(mark).toBeVisible();
+    await expect(mark).toBeHidden();
     await mediaArea.locator('video').evaluate((video) => {
       video.dispatchEvent(new Event('play'));
     });
@@ -361,6 +444,36 @@ test.describe('Learn video result mark', () => {
     });
     await expect(mark).toBeVisible();
     expect(await markedAnswers.evaluateAll((els) => els.map((el) => el.className).sort())).toEqual(answerSnapshot);
+  });
+
+  test('clicking an answered image toggles the result mark', async ({ page }) => {
+    await startLearnMode(page, {
+      localJson: { mediaBase: 'cdn', learnQuestionJump: true },
+    });
+    await setLearnQueue(page, 'filter', 'all');
+    await setLearnQueue(page, 'order', 'sequential');
+    const imagePos = await page.evaluate(async () => {
+      const data = await import(new URL('./js/data.js', location.href).href).then((m) => m.fetchCategory('B'));
+      return data.questions.findIndex((q) => q.media && q.mediaType === 'image') + 1;
+    });
+    expect(imagePos).toBeGreaterThan(0);
+    await page.locator('.learn-qnum-input').fill(String(imagePos));
+    await page.locator('.learn-qnum-input').press('Enter');
+    const area = page.locator('#quiz .media-area');
+    const mark = page.locator('#quiz .learn-media-mark');
+    await expect(area.locator('img')).toHaveCount(1);
+    await area.click({ position: { x: 40, y: 40 } });
+    await expect(mark).toHaveCount(0);
+    await page.locator('.answers .answer-btn').first().click();
+    await expect(mark).toBeVisible();
+    await area.click({ position: { x: 40, y: 40 } });
+    await expect(mark).toBeHidden();
+    await area.click({ position: { x: 40, y: 40 } });
+    await expect(mark).toBeVisible();
+    await page.locator('.btn-next').click();
+    await page.locator('.btn-prev').click();
+    await expect(area.locator('img')).toHaveCount(1);
+    await expect(mark).toBeVisible();
   });
 
   test('answer mark returns after next/prev on image and video questions', async ({ page }) => {
@@ -392,7 +505,7 @@ test.describe('Learn video result mark', () => {
       const area = document.querySelector('#quiz .media-area');
       const see = () => {
         const badge = area.querySelector('.learn-media-mark');
-        if (area.classList.contains('loading') && badge && !badge.hidden) window.__markDuringLoad = true;
+        if (area.classList.contains('awaiting-frame') && badge && !badge.hidden) window.__markDuringLoad = true;
       };
       new MutationObserver(see).observe(area, {
         attributes: true,
