@@ -3,6 +3,8 @@
 
 Same job as scripts/convert-media.ps1. Unpacks gov-cache ZIPs into TEMP, converts, then deletes the unpack tree. Does not convert PJM.
 
+After MP4s exist, measures a black run glued to the start or the end by reading only the first and last 1.5s. Each measured file is written to src/data/media-trim.json immediately. A later run skips a file whose size and mtime are unchanged. Playback ignores a file that has no "in" or "out". An existing WebP/MP4 is not encoded again.
+
   python3 scripts/convert-media.py
   python3 scripts/convert-media.py --source DIR --img-out DIR --vid-out DIR --ffmpeg PATH
 """
@@ -11,6 +13,8 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import json
+import re
 import shutil
 import subprocess
 import sys
@@ -75,6 +79,224 @@ def run_ffmpeg(args: list[str]) -> int:
     return subprocess.call(args, stdin=subprocess.DEVNULL)
 
 
+def _frame_duration(rate: str) -> float:
+    text = (rate or "").strip()
+    if "/" in text:
+        num, den = text.split("/", 1)
+        try:
+            fps = float(num) / float(den)
+        except (ValueError, ZeroDivisionError):
+            fps = 0
+    else:
+        try:
+            fps = float(text)
+        except ValueError:
+            fps = 0
+    if fps <= 1:
+        return 0.04
+    return min(0.2, max(0.01, 1.0 / fps))
+
+
+def _probe_clip(ffprobe: str, path: Path):
+    proc = subprocess.run(
+        [
+            ffprobe, "-v", "error", "-select_streams", "v:0",
+            "-show_entries", "stream=avg_frame_rate,duration",
+            "-of", "csv=p=0", str(path),
+        ],
+        capture_output=True, text=True, errors="replace", check=False,
+    )
+    line = ((proc.stdout or "").strip().splitlines() or [""])[0]
+    parts = [p.strip() for p in line.split(",")]
+    duration = 0.0
+    rate = ""
+    if len(parts) >= 2:
+        rate = parts[0]
+        try:
+            duration = float(parts[1])
+        except ValueError:
+            duration = 0.0
+    if duration <= 0:
+        proc = subprocess.run(
+            [ffprobe, "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
+            capture_output=True, text=True, errors="replace", check=False,
+        )
+        try:
+            duration = float((proc.stdout or "").strip().splitlines()[0])
+        except (ValueError, IndexError):
+            return None
+    if duration <= 0:
+        return None
+    if duration <= 0.2:
+        return duration, 0.04, True
+    return duration, _frame_duration(rate), False
+
+
+def _run_ffmpeg(ffmpeg: str, args: list[str], timeout: float = 20) -> str | None:
+    proc = subprocess.Popen(
+        [ffmpeg, *args],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+    )
+    try:
+        _, err = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.communicate()
+        return None
+    return (err or b"").decode("utf-8", "replace")
+
+
+def _black_span(ffmpeg: str, path: Path, seek: float, seconds: float) -> list[float] | None:
+    # -ss/-t before -i read only that span, not the whole file.
+    # Reported times are relative to the seek, so add it back.
+    args = ["-hide_banner"]
+    if seek > 0:
+        args += ["-ss", f"{seek:.3f}"]
+    args += [
+        "-t", f"{seconds:.3f}", "-i", str(path),
+        "-vf", "blackframe=amount=90:threshold=32",
+        "-an", "-f", "null", "-",
+    ]
+    err = _run_ffmpeg(ffmpeg, args)
+    if err is None:
+        return None
+    return [float(m.group(1)) + seek for m in re.finditer(r"\bt:([0-9.]+)", err)]
+
+
+def _edge_black_times(ffmpeg: str, path: Path, duration: float) -> list[float] | None:
+    head = _black_span(ffmpeg, path, 0, 1.5)
+    if head is None:
+        return None
+    seek = max(0.0, duration - 1.5)
+    if seek < 0.2:
+        return head
+    tail = _black_span(ffmpeg, path, seek, 1.5)
+    if tail is None:
+        return None
+    return head + tail
+
+
+def _trim_edges(times: list[float], duration: float, frame_dur: float) -> tuple[float | None, float | None]:
+    """Black run glued to an edge, at most 1.5s. Returns start and end inside the picture."""
+    max_run = 1.5
+    ordered = sorted(t for t in times if t >= 0)
+    inn = None
+    out = None
+    if ordered and ordered[0] <= frame_dur * 0.75:
+        run = [ordered[0]]
+        for t in ordered[1:]:
+            if t - run[-1] <= frame_dur * 1.6 and t <= max_run + frame_dur:
+                run.append(t)
+            else:
+                break
+        start = run[-1] + frame_dur
+        if (run[-1] - run[0]) <= max_run and 0.04 < start < duration - 0.2:
+            inn = round(start, 3)
+    if ordered and ordered[-1] >= duration - frame_dur * 1.25:
+        run = [ordered[-1]]
+        for t in reversed(ordered[:-1]):
+            if run[0] - t <= frame_dur * 1.6 and duration - t <= max_run + frame_dur:
+                run.insert(0, t)
+            else:
+                break
+        end = run[0] - frame_dur
+        if (run[-1] - run[0]) <= max_run and end > 0.2 and duration - end > 0.04:
+            out = round(end, 3)
+    if inn is not None and out is not None and out - inn < 0.4:
+        return None, None
+    return inn, out
+
+
+def _save_trim(dest: Path, files: dict) -> None:
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    ordered = {name: files[name] for name in sorted(files)}
+    payload = json.dumps({"version": 1, "files": ordered}, ensure_ascii=False, indent=2) + "\n"
+    tmp = dest.with_suffix(".json.tmp")
+    tmp.write_text(payload, encoding="utf-8")
+    tmp.replace(dest)
+
+
+def _load_trim_index(path: Path) -> dict:
+    if not path.is_file():
+        return {}
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    files = doc.get("files") if isinstance(doc, dict) else None
+    return files if isinstance(files, dict) else {}
+
+
+def _write_black_edge_trim(vid_out: Path, ffmpeg: str, repo_root: Path) -> None:
+    ffprobe = str(Path(ffmpeg).with_name("ffprobe"))
+    if not Path(ffprobe).is_file():
+        found = shutil.which("ffprobe")
+        if not found:
+            say("ffprobe missing; black-edge trim skipped.", "y")
+            return
+        ffprobe = found
+    dest = repo_root / "src" / "data" / "media-trim.json"
+    previous = _load_trim_index(dest)
+    videos = sorted(
+        p for p in vid_out.iterdir()
+        if p.is_file() and p.suffix.lower() == ".mp4" and not is_pjm_name(p)
+    )
+    files: dict = {}
+    measured = 0
+    trimmed = 0
+    timed_out = 0
+    say(f"-> Black edges on MP4 ({len(videos)} files, first and last 1.5s)...", "c")
+    for i, vid in enumerate(videos, 1):
+        stat = vid.stat()
+        mtime_s = int(stat.st_mtime)
+        prev = previous.get(vid.name) if isinstance(previous.get(vid.name), dict) else None
+        if prev and int(prev.get("bytes") or -1) == stat.st_size and int(prev.get("mtimeS") or -1) == mtime_s:
+            files[vid.name] = prev
+            if prev.get("in") or prev.get("out"):
+                trimmed += 1
+            say(f"   edges {i} / {len(videos)} {vid.name} cached", "d")
+            continue
+        say(f"   edges {i} / {len(videos)} {vid.name}", "d")
+        probed = _probe_clip(ffprobe, vid)
+        entry = {"bytes": stat.st_size, "mtimeS": mtime_s}
+        if probed is None:
+            say(f"   probe failed: {vid.name}", "y")
+            continue
+        duration, frame_dur, short = probed
+        if not short:
+            try:
+                found = _edge_black_times(ffmpeg, vid, duration)
+            except (OSError, ValueError):
+                found = None
+            if found is None:
+                timed_out += 1
+                say(f"   timeout: {vid.name}", "y")
+                continue
+            inn, out = _trim_edges(found, duration, frame_dur)
+            if inn is not None:
+                entry["in"] = inn
+            if out is not None:
+                entry["out"] = out
+            measured += 1
+        if entry.get("in") or entry.get("out"):
+            trimmed += 1
+            bits = []
+            if entry.get("in"):
+                bits.append(f"in={entry['in']}")
+            if entry.get("out"):
+                bits.append(f"out={entry['out']}")
+            say(f"   trim {vid.name} {' '.join(bits)}", "g")
+        files[vid.name] = entry
+        if measured % 20 == 0:
+            _save_trim(dest, files)
+    _save_trim(dest, files)
+    say(
+        f"-> Black-edge trim: measured {measured}, with a cut {trimmed}, timeouts {timed_out}, wrote {dest}",
+        "g",
+    )
+
+
 def main() -> None:
     dg = load_download_gov()
     server = find_server()
@@ -121,13 +343,13 @@ def main() -> None:
         say(f"Source (situational): {source}", "d")
         say(f"Output: {img_out}  /  {vid_out}", "d")
         say("Temp unpack is deleted after convert. PJM is not converted.", "d")
-        _convert_media(source, img_out, vid_out, ffmpeg)
+        _convert_media(source, img_out, vid_out, ffmpeg, Path(__file__).resolve().parents[1])
     finally:
         if clean_raw:
             dg.remove_gov_raw_temp()
 
 
-def _convert_media(source: Path, img_out: Path, vid_out: Path, ffmpeg: str) -> None:
+def _convert_media(source: Path, img_out: Path, vid_out: Path, ffmpeg: str, repo_root: Path) -> None:
     img_out.mkdir(parents=True, exist_ok=True)
     vid_out.mkdir(parents=True, exist_ok=True)
 
@@ -201,6 +423,7 @@ def _convert_media(source: Path, img_out: Path, vid_out: Path, ffmpeg: str) -> N
     webp_n = len([p for p in img_out.iterdir() if p.is_file() and p.suffix.lower() == ".webp"])
     mp4_n = len([p for p in vid_out.iterdir() if p.is_file() and p.suffix.lower() == ".mp4"])
     say(f"-> App media ready: {webp_n} WebP, {mp4_n} MP4", "g")
+    _write_black_edge_trim(vid_out, ffmpeg, repo_root)
 
 
 if __name__ == "__main__":
