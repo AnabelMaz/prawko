@@ -3,9 +3,10 @@
 const cache = new Map();
 const inflight = new Map();
 
-// Media URLs. Empty until `local.json` is attempted, so the first request
-// does not go to Backblaze while that file is still in flight. After the
-// attempt: `mediaBase: media` → `/media/`, `cdn` → B2, missing file → B2.
+// Media URLs. Empty until `local.json` answers, so nothing is fetched from
+// Backblaze while that request is still open. A 200 applies its options.
+// A 404 or a failed read means the file is absent and media stays on B2.
+// The first screen does not wait that out: see `firstScreenLocalConfig`.
 export const MEDIA_CDN = 'https://f003.backblazeb2.com/file/prawko-maz';
 export const PACKS_CDN = 'https://pub-e8e3a36b9ab44034913636d87ee3f0ee.r2.dev';
 
@@ -36,15 +37,19 @@ function applyLocalConfig(data) {
 
 let localConfigPromise = null;
 
-/** Same-origin `local.json` is tiny when present. Bound the wait so a missing
- *  file or a slow origin 404 cannot stall the first screen on any host. */
+/** How long the first screen may wait. A fast 404 (GitHub Pages) returns
+ *  before this and the screen continues at once. This timer does not cancel
+ *  the request and does not mean the file is missing. */
 export const LOCAL_JSON_WAIT_MS = 1000;
+
+/** A socket that never sends a status. Existence is the status line, not this. */
+const LOCAL_JSON_HANG_MS = 8000;
 
 export function loadLocalConfig() {
   if (!localConfigPromise) {
     localConfigPromise = (async () => {
       const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), LOCAL_JSON_WAIT_MS);
+      const timer = setTimeout(() => ctrl.abort(), LOCAL_JSON_HANG_MS);
       try {
         const res = await fetch(new URL('local.json', document.baseURI), {
           cache: 'no-store',
@@ -63,6 +68,15 @@ export function loadLocalConfig() {
     })();
   }
   return localConfigPromise;
+}
+
+/** Let the home screen paint. `loadLocalConfig` keeps running and applies
+ *  `mediaBase` when the status line arrives, including after this wait. */
+export function firstScreenLocalConfig() {
+  return Promise.race([
+    loadLocalConfig(),
+    new Promise((resolve) => { setTimeout(resolve, LOCAL_JSON_WAIT_MS); }),
+  ]);
 }
 
 export function isRemoteMediaBase(base = MEDIA_BASE) {
@@ -163,6 +177,10 @@ function assembleQuestion(id, fact, text) {
     media: fact && fact.media ? fact.media : null,
     mediaType: fact && fact.mediaType ? fact.mediaType : null,
   };
+  const mediaIn = Number(fact && fact.mediaIn);
+  const mediaOut = Number(fact && fact.mediaOut);
+  if (Number.isFinite(mediaIn) && mediaIn > 0.04) q.mediaIn = mediaIn;
+  if (Number.isFinite(mediaOut) && mediaOut > 0.04) q.mediaOut = mediaOut;
   if (text && (text.a || text.b || text.c)) {
     q.a = text.a || '';
     q.b = text.b || '';
@@ -175,21 +193,58 @@ function assembleQuestion(id, fact, text) {
 // that still holds the previous full-question files under the same name.
 const CATEGORY_FILE_REV = '2';
 
-export async function fetchCategory(cat) {
-  const key = `cat_${cat}`;
-  if (cache.has(key)) return cache.get(key);
+function fetchCategoryFile(cat) {
+  const key = `catfile_${cat}`;
+  if (cache.has(key)) return Promise.resolve(cache.get(key));
   if (inflight.has(key)) return inflight.get(key);
   const promise = fetch(`data/${encodeURIComponent(cat)}.json?v=${CATEGORY_FILE_REV}`)
     .then((res) => {
       if (!res.ok) throw new Error(`Failed to load category ${cat}: ${res.status}`);
       return res.json();
     })
-    .then(async (data) => {
+    .then((data) => {
       if (!data || !Array.isArray(data.questionIds)) {
         throw new Error(`Category ${cat} has no questionIds`);
       }
+      cache.set(key, data);
+      return data;
+    })
+    .finally(() => inflight.delete(key));
+  inflight.set(key, promise);
+  return promise;
+}
+
+export function loadQuestionFacts() {
+  return fetchJson('data/questions.json');
+}
+
+/** Media names for one category. Question text is not required, so this does
+ *  not wait for `translations_pl.json`. */
+export async function fetchCategoryMediaList(cat) {
+  const [file, facts] = await Promise.all([
+    fetchCategoryFile(cat),
+    loadQuestionFacts(),
+  ]);
+  const seen = new Set();
+  const questions = [];
+  for (const id of file.questionIds) {
+    const fact = facts[String(id)];
+    const media = fact && fact.media;
+    if (!media || seen.has(media)) continue;
+    seen.add(media);
+    questions.push({ media, mediaType: fact.mediaType || null });
+  }
+  return { category: file.category || cat, questions };
+}
+
+export async function fetchCategory(cat) {
+  const key = `cat_${cat}`;
+  if (cache.has(key)) return cache.get(key);
+  if (inflight.has(key)) return inflight.get(key);
+  const promise = fetchCategoryFile(cat)
+    .then(async (data) => {
       const [facts, polish] = await Promise.all([
-        fetchJson('data/questions.json'),
+        loadQuestionFacts(),
         fetchJson('data/translations_pl.json'),
       ]);
       const questions = data.questionIds.map((id) => (
