@@ -4,10 +4,10 @@ const {
   mergeByteRange,
   rangesCoverTotal,
   createAssembler,
-  MIN_VIDEO_BYTES,
+  MIN_RANGE_BYTES,
   parseRequestRange,
   playerRangeReply,
-} = require('../src/js/media-assemble.js');
+} = require('../src/js/range-assemble.js');
 
 test.describe('CDN video range assembly', () => {
   test('parses Content-Range and merges holes until 0..total', () => {
@@ -42,24 +42,24 @@ test.describe('CDN video range assembly', () => {
     const key = 'https://f003.backblazeb2.com/file/prawko-maz/vid/full.mp4';
     const small = a.pushChunk(key, 200, '', new Uint8Array(64).fill(1), 'video/mp4');
     expect(small).toBeNull();
-    const full = new Uint8Array(MIN_VIDEO_BYTES).fill(7);
+    const full = new Uint8Array(MIN_RANGE_BYTES).fill(7);
     const done = a.pushChunk(key, 200, '', full, 'video/mp4');
-    expect(done.buf.byteLength).toBe(MIN_VIDEO_BYTES);
+    expect(done.buf.byteLength).toBe(MIN_RANGE_BYTES);
     expect(done.buf[0]).toBe(7);
   });
 
   test('a 200 with Content-Range for the whole file is stored', () => {
     const a = createAssembler();
     const key = 'https://f003.backblazeb2.com/file/prawko-maz/vid/ranged-200.mp4';
-    const full = new Uint8Array(MIN_VIDEO_BYTES).fill(3);
+    const full = new Uint8Array(MIN_RANGE_BYTES).fill(3);
     const done = a.pushChunk(
       key,
       200,
-      `bytes 0-${MIN_VIDEO_BYTES - 1}/${MIN_VIDEO_BYTES}`,
+      `bytes 0-${MIN_RANGE_BYTES - 1}/${MIN_RANGE_BYTES}`,
       full,
       'video/mp4',
     );
-    expect(done.buf.byteLength).toBe(MIN_VIDEO_BYTES);
+    expect(done.buf.byteLength).toBe(MIN_RANGE_BYTES);
     expect(done.buf[0]).toBe(3);
   });
 

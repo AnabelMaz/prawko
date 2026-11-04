@@ -3,10 +3,10 @@
 (function (root, factory) {
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
-  root.PrawkoVideoAssemble = api;
+  root.PrawkoRangeAssemble = api;
 })(typeof self !== 'undefined' ? self : globalThis, function () {
-  const MAX_VIDEO_ASM = 80 * 1024 * 1024;
-  const MIN_VIDEO_BYTES = 256;
+  const MAX_RANGE_ASM = 80 * 1024 * 1024;
+  const MIN_RANGE_BYTES = 256;
 
   function parseContentRange(header) {
     const m = String(header || '').match(/bytes\s+(\d+)-(\d+)\/(\d+|\*)/i);
@@ -58,12 +58,12 @@
               && chunk.byteLength === parsed.total);
           if (!whole) return null;
           cur = null;
-          if (chunk.byteLength < MIN_VIDEO_BYTES || chunk.byteLength > MAX_VIDEO_ASM) return null;
+          if (chunk.byteLength < MIN_RANGE_BYTES || chunk.byteLength > MAX_RANGE_ASM) return null;
           return { key, buf: chunk, mime };
         }
         if (status !== 206) return null;
         const parsed = parseContentRange(rangeHeader);
-        if (!parsed || !parsed.total || parsed.total > MAX_VIDEO_ASM) {
+        if (!parsed || !parsed.total || parsed.total > MAX_RANGE_ASM) {
           cur = null;
           return null;
         }
@@ -142,8 +142,8 @@
   }
 
   return {
-    MAX_VIDEO_ASM,
-    MIN_VIDEO_BYTES,
+    MAX_RANGE_ASM,
+    MIN_RANGE_BYTES,
     parseContentRange,
     mergeByteRange,
     rangesCoverTotal,

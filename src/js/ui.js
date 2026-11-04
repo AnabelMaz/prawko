@@ -5,8 +5,12 @@ import { getCategoryStats, getLearnProgress, loadHistory, getLearnTouchedCategor
 import { getMediaUrls, fetchCategory, usesLocalMedia, isLoopbackHost, loadLocalConfig } from './data.js';
 import { getCategoryMediaAccess, getCategoriesOfflineCoverage, getDownloadedCategories, getActiveDownloadProgress, getActiveDownloadCategory, getInProgressOfflineCategory, isAppOnline, offlineCoverageHue, resolvePlayableMediaUrl, storeMediaBlob } from './offline.js';
 import { refitUiScale, layoutCategoryGrid, syncExamMediaAlign, alignAndFitExamDock, fitAfterShowScreen, shouldHoldScreenChange } from './scale.js';
-import { abortOwnedMedia, startOwnedMedia } from './film-feed.js';
+import { abortMediaFeed, startMediaFeed } from './media-feed.js';
 import { prepareAnswerFit, prepareDockFit } from './fit-text.js';
+
+const MEDIA_ICON_PAUSE = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>';
+const MEDIA_ICON_PLAY = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>';
+const MEDIA_ICON_REPLAY = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M12 5V1L7 6l5 5V7c3.3 0 6 2.7 6 6s-2.7 6-6 6-6-2.7-6-6H4c0 4.4 3.6 8 8 8s8-3.6 8-8-3.6-8-8-8z"/></svg>';
 
 export function showScreen(id) {
   const prev = document.querySelector('.screen.active')?.id;
@@ -204,6 +208,20 @@ function applyCategoryAccess(card, access) {
   card.dataset.mediaAccess = !access.available ? 'blocked' : (access.offlineReady ? 'offline' : 'online');
   if (!access.available) card.title = t('unavailableOfflineHint');
   else card.removeAttribute('title');
+}
+
+/** While the question bank JSON is still warming, block entering a category. */
+export function setCategoryCardsBankPending(pending) {
+  document.querySelectorAll('.category-card').forEach((card) => {
+    card.classList.toggle('bank-pending', pending);
+    if (pending) {
+      card.dataset.bankPending = '1';
+      card.setAttribute('aria-busy', 'true');
+    } else {
+      delete card.dataset.bankPending;
+      card.removeAttribute('aria-busy');
+    }
+  });
 }
 
 let lastCoverageMap = {};
@@ -596,27 +614,20 @@ function lockVideoChrome(video) {
 let mediaLoadGen = 0;
 let playableBlobUrl = '';
 
-function workerStoresViewedMedia() {
-  return Boolean(typeof navigator !== 'undefined' && navigator.serviceWorker?.controller);
-}
-
-function flushViewedMediaCopy() {
-  abortOwnedMedia();
-}
-
-// One reader for the bytes. A blob is already stored. A service worker reads
-// the element's request and keeps that copy. Files on this computer's disk
-// are opened directly. A same-origin file anywhere else (a LAN server) is
-// read once by the page: that read is what plays and, once complete, what is
-// stored. A cross-origin file is opened by the element. Backblaze sends no
-// CORS header, so a page fetch cannot see those bytes and must not run —
-// it would fail the picture and download it a second time.
-function assignPlayableSrc(el, url) {
+// blob/data → replay from offline-cache (second+ visit). First visit elsewhere:
+// one page media-feed fetch → storeMediaBlob → paint from that body (MSE / object URL).
+// Loopback + mediaBase media: files already on this computer — el.src, no copy.
+function bindMediaElement(el, url) {
   if (!url) return;
-  const owned = /^(blob|data):/i.test(url);
-  if (owned) {
+  if (/^(blob|data):/i.test(url)) {
     el.dataset.byteSource = 'stored';
     el.src = url;
+    // Stored replay keeps the caller's autoplay flag; kick play the same way
+    // media-feed does after a live body (attribute alone is not enough after a src swap).
+    if (el.tagName === 'VIDEO' && el.autoplay) {
+      const pending = el.play();
+      if (pending && typeof pending.catch === 'function') pending.catch(() => {});
+    }
     return;
   }
   delete el.dataset.byteSource;
@@ -624,12 +635,11 @@ function assignPlayableSrc(el, url) {
   try {
     remote = new URL(url, location.href).origin !== location.origin;
   } catch { /* a bad URL still goes to the element */ }
-  const onThisDisk = !remote && usesLocalMedia() && isLoopbackHost();
-  if (!remote && !workerStoresViewedMedia() && !onThisDisk) {
-    startOwnedMedia(el, url, storeMediaBlob);
+  if (!remote && usesLocalMedia() && isLoopbackHost()) {
+    el.src = url;
     return;
   }
-  el.src = url;
+  startMediaFeed(el, url, storeMediaBlob);
 }
 
 function revokePlayableBlob() {
@@ -653,7 +663,7 @@ export function renderQuestion(question, container, options = {}) {
   const oldCopy = oldVideo?.dataset?.pausedCopy || '';
   if (oldVideo) { oldVideo.pause(); oldVideo.removeAttribute('src'); oldVideo.load(); }
   if (oldCopy && oldCopy !== playableBlobUrl) URL.revokeObjectURL(oldCopy);
-  flushViewedMediaCopy();
+  abortMediaFeed();
   mediaArea.innerHTML = '';
   revokePlayableBlob();
   mediaArea.onclick = null;
@@ -733,20 +743,16 @@ export function renderQuestion(question, container, options = {}) {
       if (isAppOnline()) {
         const url = getNextMediaUrl();
         if (url) {
-          // A service worker serves its own cache as ranges. Without one
-          // (plain HTTP), a stored file is a blob so the replay does not
-          // touch the network. A miss returns the file URL immediately.
-          if (!workerStoresViewedMedia()) {
-            const stored = await resolvePlayableMediaUrl(q.media, q.mediaType);
-            if (!stillCurrent()) {
-              if (stored) URL.revokeObjectURL(stored);
-              return null;
-            }
-            if (stored) {
-              playableBlobUrl = stored;
-              triedStored = true;
-              return stored;
-            }
+          // Prefer a stored complete file so replay does not touch the network.
+          const stored = await resolvePlayableMediaUrl(q.media, q.mediaType);
+          if (!stillCurrent()) {
+            if (stored) URL.revokeObjectURL(stored);
+            return null;
+          }
+          if (stored) {
+            playableBlobUrl = stored;
+            triedStored = true;
+            return stored;
           }
           return url;
         }
@@ -866,7 +872,7 @@ export function renderQuestion(question, container, options = {}) {
             bindMediaBufferSpinner(video, mediaArea, stillCurrent);
             bindClipStart(video);
             bindClipEnd(video);
-            assignPlayableSrc(video, mediaUrl);
+            bindMediaElement(video, mediaUrl);
             syncExamMediaAlign();
           } else {
             const holdEnd = options.holdVideoEnd === true;
@@ -880,9 +886,9 @@ export function renderQuestion(question, container, options = {}) {
             };
 
             const transportIcons = {
-              pause: '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>',
-              resume: '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>',
-              replay: '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M12 5V1L7 6l5 5V7c3.3 0 6 2.7 6 6s-2.7 6-6 6-6-2.7-6-6H4c0 4.4 3.6 8 8 8s8-3.6 8-8-3.6-8-8-8z"/></svg>',
+              pause: MEDIA_ICON_PAUSE,
+              resume: MEDIA_ICON_PLAY,
+              replay: MEDIA_ICON_REPLAY,
             };
             const transportLabels = {
               pause: () => t('pauseMedia'),
@@ -975,7 +981,7 @@ export function renderQuestion(question, container, options = {}) {
               bindClipStart(video);
               bindClipEnd(video);
             }
-            assignPlayableSrc(video, mediaUrl);
+            bindMediaElement(video, mediaUrl);
             if (!holdEnd && video.readyState >= 2) onLearnMediaSettled(learnMediaMark);
             syncExamMediaAlign();
           }
@@ -1008,9 +1014,9 @@ export function renderQuestion(question, container, options = {}) {
           img.onload = onImageReady;
           img.onerror = () => {
             if (!stillCurrent()) return;
-            // An img with no src yet is not a failed file. The page read sets
-            // src when its bytes arrive.
-            if (!img.getAttribute('src')) return;
+            // No src yet is normal while the page read is in flight. A failed
+            // owned fetch keeps byteSource=live and must try the next URL.
+            if (!img.getAttribute('src') && img.dataset.byteSource !== 'live') return;
             loadImage();
           };
           img.alt = t('imgAlt');
@@ -1036,7 +1042,7 @@ export function renderQuestion(question, container, options = {}) {
             };
           }
           mediaArea.appendChild(img);
-          assignPlayableSrc(img, mediaUrl);
+          bindMediaElement(img, mediaUrl);
           if (img.getAttribute('src') && img.complete) onImageReady();
           syncExamMediaAlign();
         })();
@@ -1228,8 +1234,8 @@ function bindMediaFallback(el, urls) {
   let i = 0;
   const tryUrl = () => {
     if (i >= urls.length) return;
-    flushViewedMediaCopy();
-    assignPlayableSrc(el, urls[i++]);
+    abortMediaFeed();
+    bindMediaElement(el, urls[i++]);
   };
   el.addEventListener('error', tryUrl);
   tryUrl();
@@ -1261,8 +1267,6 @@ function appendReviewMediaNow(container, q) {
       else video.pause();
     });
 
-    const PLAY_ICON = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>';
-    const REPLAY_ICON = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M12 5V1L7 6l5 5V7c3.3 0 6 2.7 6 6s-2.7 6-6 6-6-2.7-6-6H4c0 4.4 3.6 8 8 8s8-3.6 8-8-3.6-8-8-8z"/></svg>';
     const replay = document.createElement('button');
     replay.type = 'button';
     replay.className = 'media-replay-btn';
@@ -1270,11 +1274,11 @@ function appendReviewMediaNow(container, q) {
       wrap.classList.toggle('is-replayable', Boolean(mode));
       replay.hidden = !mode;
       if (mode === 'replay') {
-        replay.innerHTML = REPLAY_ICON;
+        replay.innerHTML = MEDIA_ICON_REPLAY;
         replay.setAttribute('aria-label', t('replayMedia'));
         replay.title = t('replayMedia');
       } else if (mode === 'play') {
-        replay.innerHTML = PLAY_ICON;
+        replay.innerHTML = MEDIA_ICON_PLAY;
         replay.setAttribute('aria-label', t('playMedia'));
         replay.title = t('playMedia');
       }

@@ -1,6 +1,6 @@
 // offline.js — Offline download management
 
-import { fetchMeta, fetchCategory, fetchCategoryMediaList, getMediaUrls, usesLocalMedia, isLoopbackHost, PACKS_BASE, OFFLINE_DOWNLOAD, loadLocalConfig } from './data.js';
+import { fetchMeta, fetchCategoryMediaList, getMediaUrls, usesLocalMedia, isLoopbackHost, PACKS_BASE, OFFLINE_DOWNLOAD, loadLocalConfig } from './data.js';
 import { forEachZipFile } from './zip.js';
 
 const DOWNLOAD_KEY = 'prawko_offline';
@@ -240,6 +240,10 @@ function idbGet(tail) {
   return idbRequest('readonly', (store) => store.get(tail));
 }
 
+function idbDelete(tail) {
+  return idbRequest('readwrite', (store) => store.delete(tail));
+}
+
 function idbKeys() {
   return idbRequest('readonly', (store) => store.getAllKeys()).then((keys) => keys || []);
 }
@@ -327,6 +331,7 @@ export async function storeMediaBlob(url, blob) {
         },
       }));
       invalidateOfflineMediaKeys();
+      notifyServiceWorkerOfflineMedia();
       return;
     } catch {
       /* Cache Storage can exist but reject puts; keep going to IndexedDB. */
@@ -335,6 +340,7 @@ export async function storeMediaBlob(url, blob) {
   if (!tail) throw new Error('no media storage');
   await idbPut(tail, body);
   invalidateOfflineMediaKeys();
+  notifyServiceWorkerOfflineMedia();
 }
 
 async function matchCachedMediaResponse(cache, media, mediaType) {
@@ -397,108 +403,6 @@ export async function resolvePlayableMediaUrl(media, mediaType) {
   const minBytes = mediaType === 'video' ? 256 : 32;
   if (blob.size < minBytes) return null;
   return URL.createObjectURL(blob);
-}
-
-const MAX_VIEWED_MEDIA = 80 * 1024 * 1024;
-
-function viewedMediaKind(url) {
-  try {
-    const path = new URL(url, typeof location !== 'undefined' ? location.href : 'https://example.invalid/').pathname;
-    if (/\/vid\/[^/]+\.(mp4|webm)(\?|$)/i.test(path) || /\.(mp4|webm)$/i.test(path)) return 'video';
-    if (/\/img\/[^/]+$/i.test(path) || /\.(webp|jpe?g|png|gif)$/i.test(path)) return 'image';
-    return '';
-  } catch {
-    return '';
-  }
-}
-
-function isCompleteMediaResponse(res) {
-  if (!res || res.type === 'opaque' || !res.ok || res.status !== 200) return false;
-  if (res.status === 206) return false;
-  if (res.headers.get('Content-Range')) return false;
-  return true;
-}
-
-let viewedMediaSwTimer = 0;
-
-function scheduleRememberViewedMedia(url, blob) {
-  const run = () => {
-    storeMediaBlob(url, blob).then(() => {
-      if (viewedMediaSwTimer) clearTimeout(viewedMediaSwTimer);
-      viewedMediaSwTimer = setTimeout(() => {
-        viewedMediaSwTimer = 0;
-        notifyServiceWorkerOfflineMedia();
-      }, 400);
-    }).catch(() => {});
-  };
-  if (typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: 1500 });
-  else setTimeout(run, 0);
-}
-
-/** True when this browser already has a complete copy. Does not read the body. */
-async function offlineMediaAlreadyStored(name, kind) {
-  const cache = await openOfflineCache();
-  if (cache) {
-    try {
-      const hit = await matchCachedMediaResponse(cache, name, kind);
-      if (hit && hit.ok && hit.status === 200 && !hit.headers.get('Content-Range')) return true;
-    } catch { /* a failed lookup still fetches */ }
-  }
-  try {
-    const keys = await listIdbMediaKeys();
-    const want = name.toLowerCase();
-    for (const key of keys) {
-      const file = String(key).split('/').pop() || '';
-      let decoded = file;
-      try { decoded = decodeURIComponent(file); } catch { /* keep the raw key */ }
-      if (file.toLowerCase() === want || decoded.toLowerCase() === want) return true;
-    }
-  } catch { /* a failed lookup still fetches */ }
-  return false;
-}
-
-/** Full GET of a viewed image or video. Skip only when this computer already has the files (loopback + mediaBase media), or this browser already stored that file. */
-export async function captureViewedMedia(url, options = {}) {
-  if (!url || /^(blob|data):/i.test(url)) return null;
-  const kind = viewedMediaKind(url);
-  if (!kind) return null;
-  let abs;
-  try {
-    abs = new URL(url, typeof location !== 'undefined' ? location.href : 'https://example.invalid/');
-  } catch {
-    return null;
-  }
-  const remote = abs.origin !== (typeof location !== 'undefined' ? location.origin : abs.origin);
-  const localMedia = options.localMedia ?? usesLocalMedia();
-  const loopback = options.loopback ?? isLoopbackHost();
-  if (!remote && localMedia && loopback) return null;
-  try {
-    const name = decodeURIComponent((abs.pathname.split('/').pop() || '').split('?')[0]);
-    if (name && await offlineMediaAlreadyStored(name, kind)) return null;
-    const res = await fetch(abs.href, { mode: 'cors', credentials: 'omit', priority: 'low', signal: options.signal });
-    if (!isCompleteMediaResponse(res)) return null;
-    const listed = Number(res.headers.get('Content-Length'));
-    if (Number.isFinite(listed) && listed > MAX_VIEWED_MEDIA) return null;
-    const blob = await res.blob();
-    const minBytes = kind === 'video' ? 256 : 32;
-    if (!blob || blob.size < minBytes || blob.size > MAX_VIEWED_MEDIA) return null;
-    const mime = mediaMime(url);
-    const type = blob.type && (
-      kind === 'video' ? blob.type.startsWith('video/') : blob.type.startsWith('image/')
-    ) ? blob.type : mime;
-    if (kind === 'video' && !String(type).startsWith('video/')) return null;
-    if (kind === 'image' && !String(type).startsWith('image/')) return null;
-    const body = blob.type === type ? blob : new Blob([blob], { type });
-    scheduleRememberViewedMedia(abs.href, body);
-    return URL.createObjectURL(body);
-  } catch (err) {
-    if (err && err.name === 'AbortError') throw err;
-    return null;
-  }
-}
-
-export function captureViewedImage(url, options) {
-  return captureViewedMedia(url, options);
 }
 
 export function coverageFromUrls(neededUrls, cachedSet) {
@@ -600,14 +504,6 @@ let userStop = false;
 
 export function getActiveDownloadCategory() {
   return activeDownload?.categoryId || null;
-}
-
-/** Abort the current socket. The job stays in progress and tries again. */
-export function cancelDownload() {
-  if (activeController) {
-    activeController.abort();
-    activeController = null;
-  }
 }
 
 /** User asked to stop. Keeps bytes already stored and ends the job. */
@@ -1194,14 +1090,124 @@ function nameInCachedSet(name, cachedSet, mediaType) {
   return false;
 }
 
-function packFilesCached(pack, doneMap, cachedSet) {
-  const prev = doneMap[pack.id];
-  if (!prev || String(prev.sha256 || '') !== String(pack.sha256 || '')) return false;
-  if (!Array.isArray(prev.names) || !prev.names.length) return false;
-  for (const name of prev.names) {
+function mediaFileNameFromUrl(url) {
+  try {
+    const path = new URL(url, typeof location !== 'undefined' ? location.href : 'https://example.invalid/').pathname;
+    const file = path.split('/').pop() || '';
+    try { return decodeURIComponent(file); } catch { return file; }
+  } catch {
+    const file = String(url || '').split('/').pop() || '';
+    try { return decodeURIComponent(file); } catch { return file; }
+  }
+}
+
+function mediaNamesFromUrls(urls) {
+  const names = new Set();
+  for (const url of urls || []) {
+    const name = mediaFileNameFromUrl(url);
+    if (name) names.add(name);
+  }
+  return names;
+}
+
+function packNamesList(pack) {
+  if (!pack || !Array.isArray(pack.names) || !pack.names.length) return null;
+  return pack.names.map((n) => String(n));
+}
+
+function packAllNamesInCache(names, cachedSet) {
+  if (!names || !names.length) return false;
+  for (const name of names) {
     if (!nameInCachedSet(name, cachedSet)) return false;
   }
   return true;
+}
+
+/** True when every file of the pack is already local (by manifest names or prior unpack). */
+function packFilesCached(pack, doneMap, cachedSet) {
+  const listed = packNamesList(pack);
+  if (listed && packAllNamesInCache(listed, cachedSet)) return true;
+  const prev = doneMap[pack.id];
+  if (!prev || String(prev.sha256 || '') !== String(pack.sha256 || '')) return false;
+  if (!Array.isArray(prev.names) || !prev.names.length) return false;
+  return packAllNamesInCache(prev.names, cachedSet);
+}
+
+/** Align packsDone with a pack whose files are already in cache (new sha / repartition). */
+function syncPackDoneFromCache(pack, doneMap, cachedSet) {
+  const listed = packNamesList(pack);
+  if (!listed || !packAllNamesInCache(listed, cachedSet)) return false;
+  const prev = doneMap[pack.id];
+  const sameHash = prev && String(prev.sha256 || '') === String(pack.sha256 || '');
+  const sameNames = prev && Array.isArray(prev.names)
+    && prev.names.length === listed.length
+    && listed.every((n, i) => prev.names[i] === n);
+  if (sameHash && sameNames) return false;
+  doneMap[pack.id] = { sha256: pack.sha256 || '', names: listed };
+  return true;
+}
+
+function basenameFromCacheKey(key) {
+  const raw = String(key || '');
+  try {
+    const u = new URL(raw, typeof location !== 'undefined' ? location.href : 'https://example.invalid/');
+    const m = u.pathname.match(/\/(?:vid|img)\/([^/]+)$/i);
+    const file = m ? m[1] : (u.pathname.split('/').pop() || '');
+    try { return decodeURIComponent(file); } catch { return file; }
+  } catch {
+    const file = raw.split('/').pop() || raw;
+    try { return decodeURIComponent(file); } catch { return file; }
+  }
+}
+
+async function removeOfflineMediaNamed(namesToRemove) {
+  if (!namesToRemove || !namesToRemove.size) return;
+  const want = new Set();
+  for (const name of namesToRemove) {
+    const n = String(name || '');
+    if (!n) continue;
+    want.add(n);
+    want.add(n.toLowerCase());
+    try { want.add(decodeURIComponent(n)); } catch { /* keep raw */ }
+    try { want.add(decodeURIComponent(n).toLowerCase()); } catch { /* keep raw */ }
+  }
+  if (!want.size) return;
+
+  const cache = await openOfflineCache();
+  if (cache) {
+    try {
+      const keys = await cache.keys();
+      for (const req of keys) {
+        const base = basenameFromCacheKey(req.url);
+        if (want.has(base) || want.has(base.toLowerCase())) {
+          try { await cache.delete(req); } catch { /* keep going */ }
+        }
+      }
+    } catch { /* Cache Storage missing */ }
+  }
+  try {
+    const tails = await idbKeys();
+    for (const key of tails) {
+      const base = basenameFromCacheKey(key);
+      const file = String(key).split('/').pop() || '';
+      if (want.has(base) || want.has(base.toLowerCase())
+        || want.has(file) || want.has(file.toLowerCase())) {
+        try { await idbDelete(key); } catch { /* keep going */ }
+      }
+    }
+  } catch { /* IndexedDB unavailable */ }
+  invalidateOfflineMediaKeys();
+  notifyServiceWorkerOfflineMedia();
+}
+
+/** Drop files that used to belong to this category offline but are gone from needed. */
+async function pruneCategoryOfflineOrphans(orphanCandidates, neededUrls) {
+  const needed = mediaNamesFromUrls(neededUrls);
+  const toRemove = new Set();
+  for (const name of orphanCandidates || []) {
+    if (name && !needed.has(name)) toRemove.add(name);
+  }
+  await removeOfflineMediaNamed(toRemove);
 }
 
 function clamp01(n) {
@@ -1225,16 +1231,25 @@ export function combinedPackProgress(floorPct, packWeights, packIndex, downloadF
   return floor + ((100 - floor) * (doneW + curW * packFrac)) / totalW;
 }
 
-function finishCategoryDownload(categoryId, mediaUrls, cancelled, failed, stopped = false) {
+async function finishCategoryDownload(categoryId, mediaUrls, cancelled, failed, stopped = false, orphanCandidates = null) {
   const downloaded = getDownloadedCategories();
   const manifest = loadManifest();
-  if (!cancelled && failed === 0) downloaded.add(categoryId);
-  else downloaded.delete(categoryId);
-  if (!cancelled && failed === 0) manifest[categoryId] = mediaUrls;
-  else delete manifest[categoryId];
+  const previous = Array.isArray(manifest[categoryId]) ? manifest[categoryId] : [];
+  const orphans = new Set(orphanCandidates || []);
+  for (const name of mediaNamesFromUrls(previous)) orphans.add(name);
+  if (!cancelled && failed === 0) {
+    downloaded.add(categoryId);
+    manifest[categoryId] = mediaUrls;
+  } else {
+    downloaded.delete(categoryId);
+    delete manifest[categoryId];
+  }
   saveDownloaded(downloaded);
   saveManifest(manifest);
   if (!cancelled || stopped) clearInProgressOfflineCategory(categoryId);
+  if (!cancelled && failed === 0) {
+    await pruneCategoryOfflineOrphans(orphans, mediaUrls);
+  }
   notifyServiceWorkerOfflineMedia();
   return {
     success: !cancelled && failed === 0,
@@ -1283,10 +1298,24 @@ async function runPackDownload(categoryId, onProgress, signal) {
   if (!cache) throw attemptError('Cache Storage is not available', 'quota', '', false);
   const doneMap = loadPacksDone();
   const cached = await getCachedUrlSet();
+  let packsDoneDirty = false;
+  for (const pack of packs) {
+    if (syncPackDoneFromCache(pack, doneMap, cached)) packsDoneDirty = true;
+  }
+  if (packsDoneDirty) savePacksDone(doneMap);
+
+  const orphanCandidates = new Set(mediaNamesFromUrls(loadManifest()[categoryId] || []));
+  for (const id of packIds) {
+    const prev = doneMap[id];
+    if (prev && Array.isArray(prev.names)) {
+      for (const name of prev.names) orphanCandidates.add(name);
+    }
+  }
+
   const cov = coverageFromUrls(mediaUrls, cached);
   if (cov.pct >= 100) {
     onProgress?.(100, 100, { failed: 0, cancelled: false });
-    return { done: true, mediaUrls };
+    return { done: true, mediaUrls, orphanCandidates };
   }
 
   const pending = packs
@@ -1305,7 +1334,7 @@ async function runPackDownload(categoryId, onProgress, signal) {
   reportJob(0, 0, 0);
   if (!pending.length) {
     reportJob(0, 1, 1, true);
-    return { done: true, mediaUrls };
+    return { done: true, mediaUrls, orphanCandidates };
   }
 
   for (let packIndex = 0; packIndex < pending.length; packIndex++) {
@@ -1314,7 +1343,7 @@ async function runPackDownload(categoryId, onProgress, signal) {
     if (signal.aborted) throw attemptError('aborted', 'stall', pack.id, false);
     if (coverageFromUrls(mediaUrls, cached).pct >= 100) {
       reportJob(packIndex, 1, 1, true);
-      return { done: true, mediaUrls };
+      return { done: true, mediaUrls, orphanCandidates };
     }
     if (packFilesCached(pack, doneMap, cached)) {
       try { await deletePartial(pack.id); } catch { /* zip already unpacked */ }
@@ -1353,20 +1382,24 @@ async function runPackDownload(categoryId, onProgress, signal) {
     reportJob(packIndex, 1, 1);
   }
   reportJob(Math.max(0, pending.length - 1), 1, 1, true);
-  return { done: true, mediaUrls };
+  return { done: true, mediaUrls, orphanCandidates };
 }
 
 export async function downloadCategoryMediaFromPacks(categoryId, onProgress) {
   const resumeFails = new Map();
   let streak = 0;
   let mediaUrls = [];
+  let orphanCandidates = null;
   while (!userStop) {
     const controller = new AbortController();
     activeController = controller;
     try {
       const pass = await runPackDownload(categoryId, onProgress, controller.signal);
       mediaUrls = pass.mediaUrls;
-      if (pass.done) return finishCategoryDownload(categoryId, mediaUrls, false, 0, false);
+      orphanCandidates = pass.orphanCandidates || orphanCandidates;
+      if (pass.done) {
+        return finishCategoryDownload(categoryId, mediaUrls, false, 0, false, orphanCandidates);
+      }
     } catch (err) {
       if (userStop) break;
       if (isOfflineFailure(err)) {
@@ -1393,7 +1426,7 @@ export async function downloadCategoryMediaFromPacks(categoryId, onProgress) {
       if (activeController === controller) activeController = null;
     }
   }
-  return finishCategoryDownload(categoryId, mediaUrls, true, 0, true);
+  return finishCategoryDownload(categoryId, mediaUrls, true, 0, true, orphanCandidates);
 }
 
 function isSameOriginMediaUrl(url) {
@@ -1550,30 +1583,86 @@ export async function reconcileDownloadedCategories() {
 
   const cached = await getCachedUrlSet();
   let changed = false;
+  const inProgress = getInProgressOfflineCategory();
+  const tracked = new Set([...downloaded]);
+  if (inProgress) tracked.add(inProgress);
+  for (const id of Object.keys(manifest)) tracked.add(id);
+
+  let packsMan = null;
+  let doneMap = null;
+  if (OFFLINE_DOWNLOAD === 'packs') {
+    try {
+      packsMan = await fetchPacksManifest();
+      doneMap = loadPacksDone();
+      const knownPackIds = new Set(Object.keys(packsMan?.packs || {}));
+      let packsDirty = false;
+      for (const id of Object.keys(doneMap)) {
+        if (!knownPackIds.has(id)) {
+          delete doneMap[id];
+          packsDirty = true;
+          changed = true;
+        }
+      }
+      if (packsDirty) savePacksDone(doneMap);
+    } catch {
+      packsMan = null;
+      doneMap = loadPacksDone();
+    }
+  }
 
   for (const categoryId of ids) {
-    const listed = Array.isArray(manifest[categoryId]) ? manifest[categoryId] : null;
-    let mediaUrls = listed;
-    if (!mediaUrls) {
-      try {
-        mediaUrls = getCategoryMediaUrls(await fetchCategory(categoryId));
-      } catch {
-        continue;
+    const previousListed = Array.isArray(manifest[categoryId]) ? manifest[categoryId] : null;
+    let mediaUrls;
+    try {
+      mediaUrls = getCategoryMediaUrls(await fetchCategoryMediaList(categoryId));
+    } catch {
+      continue;
+    }
+
+    const orphanCandidates = new Set(mediaNamesFromUrls(previousListed || []));
+    if (packsMan && doneMap) {
+      const packIds = packsMan.categories?.[categoryId];
+      if (Array.isArray(packIds)) {
+        let packsDirty = false;
+        for (const packId of packIds) {
+          const pack = packsMan.packs?.[packId];
+          if (!pack) continue;
+          const prev = doneMap[packId];
+          if (prev && Array.isArray(prev.names)) {
+            for (const name of prev.names) orphanCandidates.add(name);
+          }
+          if (syncPackDoneFromCache(pack, doneMap, cached)) {
+            packsDirty = true;
+            changed = true;
+          }
+        }
+        if (packsDirty) savePacksDone(doneMap);
       }
     }
+
     const complete = coverageFromUrls(mediaUrls, cached).pct >= 100;
     const was = downloaded.has(categoryId);
     if (complete) {
       if (!was) changed = true;
       downloaded.add(categoryId);
-      if (!listed) {
+      const listedSame = previousListed
+        && previousListed.length === mediaUrls.length
+        && previousListed.every((u, i) => u === mediaUrls[i]);
+      if (!listedSame) {
         manifest[categoryId] = mediaUrls;
         changed = true;
       }
-    } else if (was || listed) {
+      if (tracked.has(categoryId) && orphanCandidates.size) {
+        await pruneCategoryOfflineOrphans(orphanCandidates, mediaUrls);
+      }
+    } else if (was || previousListed) {
       downloaded.delete(categoryId);
       delete manifest[categoryId];
       changed = true;
+      if (tracked.has(categoryId) && orphanCandidates.size) {
+        // Keep files still needed by the new JSON; drop only true orphans.
+        await pruneCategoryOfflineOrphans(orphanCandidates, mediaUrls);
+      }
     }
   }
 

@@ -236,12 +236,34 @@ test.describe('Category media access', () => {
   });
 
   test('a downloaded remote category stays available while others grey out', async ({ page }) => {
-    await page.addInitScript(() => {
-      localStorage.setItem('prawko_offline', JSON.stringify(['B']));
-      localStorage.setItem('prawko_offline_manifest', JSON.stringify({ B: [] }));
-    });
     await stubRemoteMedia(page);
-    await openCategories(page);
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    // Seed a full B cache so reconcile keeps the downloaded flag (empty list is cleared).
+    const seeded = await page.evaluate(async () => {
+      const { getMediaUrls, fetchCategoryMediaList } = await import(new URL('./js/data.js', location.href).href);
+      const list = await fetchCategoryMediaList('B');
+      const names = [...new Set((list.questions || []).map((q) => q.media).filter(Boolean))];
+      if (!names.length) return false;
+      const cache = await caches.open('prawko-offline-media-v1');
+      const allUrls = [];
+      for (const name of names) {
+        const kind = /\.mp4$/i.test(name) ? 'video' : 'image';
+        for (const url of getMediaUrls(name, kind)) {
+          allUrls.push(url);
+          await cache.put(
+            new Request(url, { mode: 'cors' }),
+            new Response(new Uint8Array([1]), { headers: { 'Content-Type': 'application/octet-stream' } }),
+          );
+        }
+      }
+      localStorage.setItem('prawko_offline', JSON.stringify(['B']));
+      localStorage.setItem('prawko_offline_manifest', JSON.stringify({ B: allUrls }));
+      return true;
+    });
+    expect(seeded).toBe(true);
+    await goToCategories(page);
+    await page.waitForSelector('.category-grid .category-card[data-category="B"] .offline-btn');
     await fakeOffline(page);
 
     const b = page.locator('.category-grid .category-card[data-category="B"]');
@@ -772,7 +794,8 @@ const TINY_MP4 = Buffer.from(
 );
 
 test.describe('Opportunistic viewed media cache', () => {
-  test('a CDN image is painted from the file URL and the page does not fetch it', async ({ page }) => {
+  // Page-owned fetch → storeMediaBlob (same on HTTP/HTTPS; suite blocks SW).
+  test('a CDN image is painted from one page fetch and then stored', async ({ page }) => {
     const imageHits = [];
     await page.route('**/local.json', async (route) => {
       await route.fulfill({
@@ -814,19 +837,18 @@ test.describe('Opportunistic viewed media cache', () => {
       }, document.querySelector('.question-card'));
     });
     const img = page.locator('#quiz .media-area img');
-    await expect(img).toHaveAttribute('src', /\/img\/one-get\.webp$/);
+    await expect(img).toHaveAttribute('src', /^blob:/);
     await expect.poll(() => imageHits.length).toBe(1);
     expect(imageHits[0]).toBe('');
     await expect(page.locator('#quiz .media-area')).not.toHaveClass(/loading/);
-    const stored = await page.evaluate(async () => {
+    await expect.poll(async () => page.evaluate(async () => {
       const { getStoredMediaBlob } = await import(new URL('./js/offline.js', location.href).href);
       const blob = await getStoredMediaBlob('one-get.webp', 'image');
       return blob ? blob.size : 0;
-    });
-    expect(stored).toBe(0);
+    }), { timeout: 5000 }).toBe(TINY_PNG.length);
   });
 
-  test('a viewed CDN image is stored once as a complete file', async ({ page }) => {
+  test('a stored CDN image replays from the local copy', async ({ page }) => {
     const imageHits = [];
     await page.route('**/local.json', async (route) => {
       await route.fulfill({
@@ -856,44 +878,37 @@ test.describe('Opportunistic viewed media cache', () => {
     });
     await page.goto('/');
     await page.waitForSelector('#home.active');
-    const result = await page.evaluate(async () => {
-      const { captureViewedImage, getStoredMediaBlob } = await import(new URL('./js/offline.js', location.href).href);
-      const { getMediaUrls } = await import(new URL('./js/data.js', location.href).href);
-      const url = getMediaUrls('viewed-once.webp', 'image')[0];
-      const playUrl = await captureViewedImage(url);
-      const deadline = Date.now() + 4000;
-      while (Date.now() < deadline) {
-        const stored = await getStoredMediaBlob('viewed-once.webp', 'image');
-        if (stored && stored.size > 0) break;
-        await new Promise((r) => setTimeout(r, 50));
-      }
+    const q = {
+      id: 9001,
+      q: 'Cache this image?',
+      media: 'viewed-once.webp',
+      mediaType: 'image',
+      type: 'basic',
+      correct: 'T',
+    };
+    await page.evaluate(async (question) => {
       const { renderQuestion } = await import(new URL('./js/ui.js', location.href).href);
-      renderQuestion({
-        id: 9001,
-        q: 'Cache this image?',
-        media: 'viewed-once.webp',
-        mediaType: 'image',
-        type: 'basic',
-        correct: 'T',
-      }, document.querySelector('.question-card'));
-      return {
-        url,
-        play: Boolean(playUrl && String(playUrl).startsWith('blob:')),
-      };
-    });
-    expect(result.url).toBe('https://f003.backblazeb2.com/file/prawko-maz/img/viewed-once.webp');
-    expect(result.play).toBe(true);
+      renderQuestion(question, document.querySelector('.question-card'));
+    }, q);
     await expect(page.locator('#quiz .media-area img')).toHaveAttribute('src', /^blob:/);
-    expect(imageHits.length).toBeGreaterThan(0);
-    expect(imageHits[0]).toBe('');
     await expect.poll(async () => page.evaluate(async () => {
       const { getStoredMediaBlob } = await import(new URL('./js/offline.js', location.href).href);
       const blob = await getStoredMediaBlob('viewed-once.webp', 'image');
       return blob ? blob.size : 0;
     }), { timeout: 5000 }).toBe(TINY_PNG.length);
+    const hitsAfterStore = imageHits.length;
+    expect(hitsAfterStore).toBe(1);
+    await page.evaluate(async (question) => {
+      const { renderQuestion } = await import(new URL('./js/ui.js', location.href).href);
+      const card = document.querySelector('.question-card');
+      renderQuestion(question, card);
+      renderQuestion(question, card);
+    }, q);
+    await expect(page.locator('#quiz .media-area img')).toHaveAttribute('src', /^blob:/);
+    expect(imageHits.length).toBe(hitsAfterStore);
   });
 
-  test('switching questions still paints the current image if the previous capture is slow', async ({ page }) => {
+  test('switching questions still paints the current image if the previous download is slow', async ({ page }) => {
     await page.route('**/local.json', async (route) => {
       await route.fulfill({
         status: 200,
@@ -936,7 +951,7 @@ test.describe('Opportunistic viewed media cache', () => {
       renderQuestion({ ...base, id: 2, q: 'Second', media: 'fast-second.webp' }, card);
     });
     const img = page.locator('#quiz .media-area img');
-    await expect(img).toHaveAttribute('src', /\/img\/fast-second\.webp$/, { timeout: 3000 });
+    await expect(img).toHaveAttribute('src', /^blob:/, { timeout: 3000 });
     await expect(page.locator('#quiz .question-text')).toHaveText('Second');
   });
 
@@ -949,6 +964,13 @@ test.describe('Opportunistic viewed media cache', () => {
       });
     });
     await page.route('https://f003.backblazeb2.com/file/prawko-maz/img/partial.webp', async (route) => {
+      if (route.request().method() === 'OPTIONS') {
+        await route.fulfill({
+          status: 204,
+          headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET' },
+        });
+        return;
+      }
       await route.fulfill({
         status: 206,
         contentType: 'image/webp',
@@ -961,60 +983,73 @@ test.describe('Opportunistic viewed media cache', () => {
     });
     await page.goto('/');
     await page.waitForSelector('#home.active');
-    const captured = await page.evaluate(async () => {
-      const { captureViewedImage, getStoredMediaBlob } = await import(new URL('./js/offline.js', location.href).href);
-      const url = 'https://f003.backblazeb2.com/file/prawko-maz/img/partial.webp';
-      const play = await captureViewedImage(url);
-      await new Promise((r) => setTimeout(r, 1600));
-      const blob = await getStoredMediaBlob('partial.webp', 'image');
-      if (play) URL.revokeObjectURL(play);
-      return { play: Boolean(play), stored: blob ? blob.size : 0 };
+    await page.evaluate(async () => {
+      const { renderQuestion } = await import(new URL('./js/ui.js', location.href).href);
+      renderQuestion({
+        id: 9010,
+        q: 'Partial?',
+        media: 'partial.webp',
+        mediaType: 'image',
+        type: 'basic',
+        correct: 'T',
+      }, document.querySelector('.question-card'));
     });
-    expect(captured.play).toBe(false);
-    expect(captured.stored).toBe(0);
+    await page.waitForTimeout(800);
+    const stored = await page.evaluate(async () => {
+      const { getStoredMediaBlob } = await import(new URL('./js/offline.js', location.href).href);
+      const blob = await getStoredMediaBlob('partial.webp', 'image');
+      return blob ? blob.size : 0;
+    });
+    expect(stored).toBe(0);
   });
 
   test('film play waits until remaining download fits in 75% of the film', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('#home.active');
     const result = await page.evaluate(async () => {
-      const { filmReadyToStart, filmPaceOk, FILM_PACE_FRACTION } = await import(
-        new URL('./js/film-feed.js', location.href).href
+      const { filmPaceOk, FILM_PACE_FRACTION, FILM_PACE_MIN_SAMPLE } = await import(
+        new URL('./js/media-feed.js', location.href).href
       );
       const total = 10000;
-      // Under 2% — no estimate yet.
-      const underSample = filmReadyToStart(199, total, 60, 20);
-      // Fast link: half the file in 50ms → remaining ~0.05s → start (no fixed delay).
-      const fast = filmReadyToStart(5000, total, 0.05, 20);
-      // 2% in 60s for a 20s film → 50 min whole file; still far too early.
-      const early = filmReadyToStart(200, total, 60, 20);
-      // Remaining download must be ≤ 15s (20s − 25%). At that rate, start near the end.
-      const readyAt = Math.ceil(total * (1 - 15 / 3000));
-      const ready = filmReadyToStart(readyAt, total, 60 * (readyAt / 200), 20);
-      const stillShort = filmReadyToStart(readyAt - 1, total, 60 * ((readyAt - 1) / 200), 20);
-      const complete = filmReadyToStart(total, total, 1, 20);
-      const noLength = filmReadyToStart(500, 0, 10, 20);
-      const same = filmPaceOk(readyAt, total, 60 * (readyAt / 200), 20);
+      // Under 30% — ignore an early burst even if the math looks fine.
+      const underSample = filmPaceOk(199, total, 60, 20);
+      const burstOnly = filmPaceOk(Math.floor(total * 0.1), total, 0.01, 20);
+      const justUnderFloor = filmPaceOk(2999, total, 60, 20);
+      // Fast link after the sample floor: half the file in 50ms → start.
+      const fast = filmPaceOk(5000, total, 0.05, 20);
+      // 30% in 60s for a 20s film → still far too early.
+      const early = filmPaceOk(3000, total, 60, 20);
+      // Remaining download must be ≤ 15s (20s − 25%). Same slow rate as early.
+      const rate = 60 / 3000;
+      const readyAt = Math.ceil(total - 15 / rate);
+      const ready = filmPaceOk(readyAt, total, rate * readyAt, 20);
+      const stillShort = filmPaceOk(readyAt - 1, total, rate * (readyAt - 1), 20);
+      const complete = filmPaceOk(total, total, 1, 20);
+      const noLength = filmPaceOk(500, 0, 10, 20);
       return {
         underSample,
+        burstOnly,
+        justUnderFloor,
         fast,
         early,
         ready,
         stillShort,
         complete,
         noLength,
-        same,
         readyAt,
         fraction: FILM_PACE_FRACTION,
+        minSample: FILM_PACE_MIN_SAMPLE,
       };
     });
     expect(result.fraction).toBe(0.75);
+    expect(result.minSample).toBe(0.3);
+    expect(result.justUnderFloor).toBe(false);
     expect(result.underSample).toBe(false);
+    expect(result.burstOnly).toBe(false);
     expect(result.fast).toBe(true);
     expect(result.early).toBe(false);
     expect(result.stillShort).toBe(false);
     expect(result.ready).toBe(true);
-    expect(result.same).toBe(true);
     expect(result.complete).toBe(true);
     expect(result.noLength).toBe(false);
   });
@@ -1039,12 +1074,12 @@ test.describe('Opportunistic viewed media cache', () => {
     await page.goto('/');
     await page.waitForSelector('#home.active');
     await page.evaluate(async () => {
-      const { startOwnedMedia } = await import(new URL('./js/film-feed.js', location.href).href);
+      const { startMediaFeed } = await import(new URL('./js/media-feed.js', location.href).href);
       const { storeMediaBlob } = await import(new URL('./js/offline.js', location.href).href);
       const video = document.createElement('video');
       video.autoplay = true;
       document.body.appendChild(video);
-      startOwnedMedia(video, new URL('media/vid/watched-lan.mp4', location.href).href, storeMediaBlob);
+      startMediaFeed(video, new URL('media/vid/watched-lan.mp4', location.href).href, storeMediaBlob);
     });
     await expect.poll(() => hits.length).toBe(1);
     expect(hits[0]).toBe('');
@@ -1086,16 +1121,16 @@ test.describe('Opportunistic viewed media cache', () => {
     await page.goto('/');
     await page.waitForSelector('#home.active');
     await page.evaluate(async () => {
-      const { startOwnedMedia } = await import(new URL('./js/film-feed.js', location.href).href);
+      const { startMediaFeed } = await import(new URL('./js/media-feed.js', location.href).href);
       const { storeMediaBlob } = await import(new URL('./js/offline.js', location.href).href);
       const video = document.createElement('video');
       document.body.appendChild(video);
-      startOwnedMedia(video, new URL('media/vid/leave-early.mp4', location.href).href, storeMediaBlob);
+      startMediaFeed(video, new URL('media/vid/leave-early.mp4', location.href).href, storeMediaBlob);
     });
     await expect.poll(() => hits.length).toBe(1);
     await page.evaluate(async () => {
-      const { abortOwnedMedia } = await import(new URL('./js/film-feed.js', location.href).href);
-      abortOwnedMedia();
+      const { abortMediaFeed } = await import(new URL('./js/media-feed.js', location.href).href);
+      abortMediaFeed();
     });
     release();
     await page.waitForTimeout(400);
@@ -1108,7 +1143,7 @@ test.describe('Opportunistic viewed media cache', () => {
     expect(hits.filter((hit) => hit === 'start')).toEqual(['start']);
   });
 
-  test('a viewed video is stored once as a complete file', async ({ page }) => {
+  test('a CDN video is painted from one page fetch and then stored', async ({ page }) => {
     const videoHits = [];
     await page.route('**/local.json', async (route) => {
       await route.fulfill({
@@ -1138,17 +1173,7 @@ test.describe('Opportunistic viewed media cache', () => {
     });
     await page.goto('/');
     await page.waitForSelector('#home.active');
-    const result = await page.evaluate(async () => {
-      const { captureViewedMedia, getStoredMediaBlob } = await import(new URL('./js/offline.js', location.href).href);
-      const { getMediaUrls } = await import(new URL('./js/data.js', location.href).href);
-      const url = getMediaUrls('viewed-once.mp4', 'video')[0];
-      const playUrl = await captureViewedMedia(url);
-      const deadline = Date.now() + 4000;
-      while (Date.now() < deadline) {
-        const stored = await getStoredMediaBlob('viewed-once.mp4', 'video');
-        if (stored && stored.size > 0) break;
-        await new Promise((r) => setTimeout(r, 50));
-      }
+    await page.evaluate(async () => {
       const { renderQuestion } = await import(new URL('./js/ui.js', location.href).href);
       renderQuestion({
         id: 9002,
@@ -1158,15 +1183,9 @@ test.describe('Opportunistic viewed media cache', () => {
         type: 'basic',
         correct: 'T',
       }, document.querySelector('#quiz .question-card') || document.querySelector('.question-card'));
-      return {
-        url,
-        play: Boolean(playUrl && String(playUrl).startsWith('blob:')),
-      };
     });
-    expect(result.url).toBe('https://f003.backblazeb2.com/file/prawko-maz/vid/viewed-once.mp4');
-    expect(result.play).toBe(true);
     await expect(page.locator('#quiz .media-area video')).toHaveAttribute('src', /^blob:/);
-    expect(videoHits.length).toBeGreaterThan(0);
+    await expect.poll(() => videoHits.length).toBe(1);
     expect(videoHits[0]).toBe('');
     await expect.poll(async () => page.evaluate(async () => {
       const { getStoredMediaBlob } = await import(new URL('./js/offline.js', location.href).href);
@@ -1175,8 +1194,8 @@ test.describe('Opportunistic viewed media cache', () => {
     }), { timeout: 5000 }).toBe(TINY_MP4.length);
   });
 
-  test('a stored same-origin video replays from the local copy', async ({ page }) => {
-    const videoHits = [];
+  test('same-origin local media paints with one element GET and is not copied', async ({ page }) => {
+    const imageHits = [];
     await page.route('**/local.json', async (route) => {
       await route.fulfill({
         status: 200,
@@ -1184,70 +1203,8 @@ test.describe('Opportunistic viewed media cache', () => {
         body: JSON.stringify({ mediaBase: 'media' }),
       });
     });
-    await page.route('**/media/vid/lan-view.mp4', async (route) => {
-      if (route.request().method() === 'OPTIONS') {
-        await route.fulfill({
-          status: 204,
-          headers: { 'Access-Control-Allow-Origin': '*' },
-        });
-        return;
-      }
-      videoHits.push(route.request().headers()['range'] || '');
-      await route.fulfill({
-        status: 200,
-        contentType: 'video/mp4',
-        headers: { 'Access-Control-Allow-Origin': '*' },
-        body: TINY_MP4,
-      });
-    });
-    await page.goto('/');
-    await page.waitForSelector('#home.active');
-    const first = await page.evaluate(async () => {
-      const { captureViewedMedia, getStoredMediaBlob } = await import(new URL('./js/offline.js', location.href).href);
-      const url = new URL('media/vid/lan-view.mp4', location.href).href;
-      const playUrl = await captureViewedMedia(url, { loopback: false });
-      const deadline = Date.now() + 4000;
-      while (Date.now() < deadline) {
-        const stored = await getStoredMediaBlob('lan-view.mp4', 'video');
-        if (stored && stored.size > 0) break;
-        await new Promise((r) => setTimeout(r, 50));
-      }
-      if (playUrl) URL.revokeObjectURL(playUrl);
-      const blob = await getStoredMediaBlob('lan-view.mp4', 'video');
-      return { size: blob ? blob.size : 0 };
-    });
-    expect(first.size).toBe(TINY_MP4.length);
-    const hitsAfterStore = videoHits.length;
-    expect(hitsAfterStore).toBeGreaterThan(0);
-    await page.evaluate(async () => {
-      const { renderQuestion } = await import(new URL('./js/ui.js', location.href).href);
-      const q = {
-        id: 9003,
-        q: 'Play from cache',
-        media: 'lan-view.mp4',
-        mediaType: 'video',
-        type: 'basic',
-        correct: 'T',
-      };
-      const card = document.querySelector('#quiz .question-card') || document.querySelector('.question-card');
-      renderQuestion(q, card);
-      renderQuestion(q, card);
-    });
-    await expect(page.locator('#quiz .media-area video')).toHaveAttribute('src', /^blob:/);
-    expect(videoHits.length).toBe(hitsAfterStore);
-  });
-
-  test('loopback local images are not copied into the offline cache', async ({ page }) => {
-    await page.route('**/local.json', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ mediaBase: 'media' }),
-      });
-    });
-    const hits = [];
     await page.route('**/media/img/keep-local.webp', async (route) => {
-      hits.push(route.request().url());
+      imageHits.push(route.request().resourceType());
       await route.fulfill({
         status: 200,
         contentType: 'image/webp',
@@ -1257,27 +1214,63 @@ test.describe('Opportunistic viewed media cache', () => {
     });
     await page.goto('/');
     await page.waitForSelector('#home.active');
-    const result = await page.evaluate(async () => {
-      const { captureViewedImage } = await import(new URL('./js/offline.js', location.href).href);
-      return captureViewedImage(new URL('media/img/keep-local.webp', location.href).href);
+    await page.evaluate(async () => {
+      const { renderQuestion } = await import(new URL('./js/ui.js', location.href).href);
+      renderQuestion({
+        id: 9011,
+        q: 'Keep on disk',
+        media: 'keep-local.webp',
+        mediaType: 'image',
+        type: 'basic',
+        correct: 'T',
+      }, document.querySelector('.question-card'));
     });
-    expect(result).toBeNull();
-    expect(hits).toEqual([]);
+    const img = page.locator('#quiz .media-area img');
+    await expect(img).toHaveAttribute('src', /media\/img\/keep-local\.webp/);
+    await expect(img).not.toHaveAttribute('src', /^blob:/);
+    await expect.poll(() => imageHits.length).toBe(1);
+    expect(imageHits[0]).toBe('image');
+    await page.waitForTimeout(400);
+    const stored = await page.evaluate(async () => {
+      const { getStoredMediaBlob } = await import(new URL('./js/offline.js', location.href).href);
+      const blob = await getStoredMediaBlob('keep-local.webp', 'image');
+      return blob ? blob.size : 0;
+    });
+    expect(stored).toBe(0);
   });
 
-  test('playback stores viewed media on every host except this computer disk', () => {
+  test('playback stores viewed media on every host except this origin disk', () => {
     const fs = require('fs');
     const path = require('path');
     const ui = fs.readFileSync(path.join(__dirname, '../src/js/ui.js'), 'utf8');
+    const offline = fs.readFileSync(path.join(__dirname, '../src/js/offline.js'), 'utf8');
+    const feed = fs.readFileSync(path.join(__dirname, '../src/js/media-feed.js'), 'utf8');
     const start = ui.indexOf('const nextPlayableUrl');
     const end = ui.indexOf('const showMediaFallback');
     const fn = ui.slice(start, end);
     expect(fn).not.toMatch(/captureViewedMedia/);
-    expect(ui).toMatch(/function assignPlayableSrc/);
-    expect(ui).toMatch(/if \(!remote && !workerStoresViewedMedia\(\) && !onThisDisk\) \{\s*startOwnedMedia\(el, url, storeMediaBlob\);/);
+    expect(offline).not.toMatch(/captureViewedMedia/);
+    expect(fn).toMatch(/resolvePlayableMediaUrl/);
+    expect(ui).toMatch(/function bindMediaElement/);
+    expect(ui).toMatch(/startMediaFeed\(el, url, storeMediaBlob\)/);
+    expect(ui).toMatch(/!remote && usesLocalMedia\(\) && isLoopbackHost\(\)/);
+    expect(ui).not.toMatch(/serviceWorker\?\.controller/);
+    expect(ui).not.toMatch(/workerStoresViewedMedia/);
     expect(ui).not.toMatch(/enqueueViewedMediaCopy/);
+    expect(feed).toMatch(/elementNetworkFallback/);
+    expect(feed).toMatch(/openMediaResponse/);
+    expect(feed).toMatch(/FILM_PACE_MIN_SAMPLE = 0\.3/);
+    const loadImage = feed.slice(feed.indexOf('async function loadImage'), feed.indexOf('async function loadFilm'));
+    expect(loadImage).toMatch(/elementNetworkFallback/);
+    expect(loadImage).toMatch(/store\(url, blob\)/);
+    expect(loadImage).toMatch(/createObjectURL/);
+    expect(loadImage).not.toMatch(/el\.src = url/);
     const sw = fs.readFileSync(path.join(__dirname, '../src/sw.js'), 'utf8');
     expect(sw).toMatch(/function viewedMediaStaysOnDisk/);
+    expect(sw).toMatch(/function isLoopbackHostName/);
+    expect(sw).toMatch(/isLoopbackHostName\(self\.location\.hostname\)/);
+    expect(sw).toMatch(/url\.origin === self\.location\.origin/);
+    expect(sw).toMatch(/fetchAndRememberMedia/);
     expect(sw).toMatch(/rememberPlayedMedia/);
   });
 
@@ -1289,9 +1282,7 @@ test.describe('Opportunistic viewed media cache', () => {
         body: JSON.stringify({ mediaBase: 'media' }),
       });
     });
-    const hits = [];
     await page.route('**/media/vid/keep-local.mp4', async (route) => {
-      hits.push(route.request().url());
       await route.fulfill({
         status: 200,
         contentType: 'video/mp4',
@@ -1301,12 +1292,25 @@ test.describe('Opportunistic viewed media cache', () => {
     });
     await page.goto('/');
     await page.waitForSelector('#home.active');
-    const result = await page.evaluate(async () => {
-      const { captureViewedMedia } = await import(new URL('./js/offline.js', location.href).href);
-      return captureViewedMedia(new URL('media/vid/keep-local.mp4', location.href).href);
+    await page.evaluate(async () => {
+      const { renderQuestion } = await import(new URL('./js/ui.js', location.href).href);
+      renderQuestion({
+        id: 9012,
+        q: 'Keep film on disk',
+        media: 'keep-local.mp4',
+        mediaType: 'video',
+        type: 'basic',
+        correct: 'T',
+      }, document.querySelector('#quiz .question-card') || document.querySelector('.question-card'));
     });
-    expect(result).toBeNull();
-    expect(hits).toEqual([]);
+    await expect(page.locator('#quiz .media-area video')).toHaveAttribute('src', /media\/vid\/keep-local\.mp4/);
+    await page.waitForTimeout(400);
+    const stored = await page.evaluate(async () => {
+      const { getStoredMediaBlob } = await import(new URL('./js/offline.js', location.href).href);
+      const blob = await getStoredMediaBlob('keep-local.mp4', 'video');
+      return blob ? blob.size : 0;
+    });
+    expect(stored).toBe(0);
   });
 
   test('a slow image shows a spinner until the file arrives', async ({ page }) => {
@@ -1592,5 +1596,133 @@ test.describe('Opportunistic viewed media cache', () => {
     expect(result.arc).toContain('conic-gradient');
     expect(result.alpha).toBeGreaterThan(0.3);
     expect(result.alpha).toBeLessThan(0.55);
+  });
+
+  test('reconcile drops downloaded when current JSON media is incomplete in cache', async ({ page }) => {
+    await stubRemoteMedia(page);
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    const result = await page.evaluate(async () => {
+      const { getMediaUrls, fetchCategoryMediaList } = await import(new URL('./js/data.js', location.href).href);
+      const {
+        reconcileDownloadedCategories,
+        getDownloadedCategories,
+        getCategoriesOfflineCoverage,
+      } = await import(new URL('./js/offline.js', location.href).href);
+      const list = await fetchCategoryMediaList('B');
+      const media = (list.questions || []).map((q) => q.media).filter(Boolean);
+      if (media.length < 2) return { ok: false, reason: 'need-media' };
+      const keep = media[0];
+      const cache = await caches.open('prawko-offline-media-v1');
+      for (const url of getMediaUrls(keep, 'image')) {
+        await cache.put(
+          new Request(url, { mode: 'cors' }),
+          new Response(new Uint8Array([1]), { headers: { 'Content-Type': 'image/webp' } }),
+        );
+      }
+      const allUrls = [];
+      for (const name of media) {
+        allUrls.push(...getMediaUrls(name, 'image'));
+      }
+      localStorage.setItem('prawko_offline', JSON.stringify(['B']));
+      localStorage.setItem('prawko_offline_manifest', JSON.stringify({ B: allUrls }));
+      const before = getDownloadedCategories().has('B');
+      const verified = await reconcileDownloadedCategories();
+      const cov = await getCategoriesOfflineCoverage(['B']);
+      return {
+        ok: true,
+        before,
+        after: verified.has('B'),
+        pct: cov.B?.pct,
+        manifest: localStorage.getItem('prawko_offline_manifest'),
+      };
+    });
+    expect(result.ok).toBe(true);
+    expect(result.before).toBe(true);
+    expect(result.after).toBe(false);
+    expect(result.pct).toBeLessThan(100);
+    expect(result.manifest).not.toMatch(/"B"/);
+  });
+
+  test('file download delta skips cached URLs and GCs orphan names from old manifest', async ({ page }) => {
+    await stubRemoteMedia(page);
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    const result = await page.evaluate(async () => {
+      const { getMediaUrls, fetchCategoryMediaList } = await import(new URL('./js/data.js', location.href).href);
+      const {
+        downloadCategoryMediaFromFiles,
+        getCachedUrlSet,
+        getCategoriesOfflineCoverage,
+      } = await import(new URL('./js/offline.js', location.href).href);
+      const list = await fetchCategoryMediaList('PT');
+      const names = [...new Set((list.questions || []).map((q) => q.media).filter(Boolean))];
+      if (names.length < 2) return { ok: false, reason: 'need-media' };
+      const cache = await caches.open('prawko-offline-media-v1');
+      const neededUrls = [];
+      for (const name of names) {
+        const kind = /\.mp4$/i.test(name) ? 'video' : 'image';
+        for (const url of getMediaUrls(name, kind)) neededUrls.push(url);
+      }
+      // Leave the first media out so coverage shows a one-file delta.
+      for (const name of names.slice(1)) {
+        const kind = /\.mp4$/i.test(name) ? 'video' : 'image';
+        for (const url of getMediaUrls(name, kind)) {
+          await cache.put(
+            new Request(url, { mode: 'cors' }),
+            new Response(new Uint8Array([9]), { headers: { 'Content-Type': 'application/octet-stream' } }),
+          );
+        }
+      }
+      const partial = await getCategoriesOfflineCoverage(['PT']);
+      // Seed the missing file so download is a no-op fetch, then GC the orphan.
+      const first = names[0];
+      const firstKind = /\.mp4$/i.test(first) ? 'video' : 'image';
+      for (const url of getMediaUrls(first, firstKind)) {
+        await cache.put(
+          new Request(url, { mode: 'cors' }),
+          new Response(new Uint8Array([8]), { headers: { 'Content-Type': 'application/octet-stream' } }),
+        );
+      }
+      const orphanUrls = getMediaUrls('orphan-sync-gc.webp', 'image');
+      for (const url of orphanUrls) {
+        await cache.put(
+          new Request(url, { mode: 'cors' }),
+          new Response(new Uint8Array([7]), { headers: { 'Content-Type': 'image/webp' } }),
+        );
+      }
+      localStorage.setItem('prawko_offline_manifest', JSON.stringify({
+        PT: [...neededUrls, ...orphanUrls],
+      }));
+      let fetches = 0;
+      const origFetch = window.fetch.bind(window);
+      window.fetch = (input, init) => {
+        const href = String(input?.url || input);
+        if (/\.(webp|mp4|webm|jpg|jpeg|png|gif)(\?|$)/i.test(href)) fetches += 1;
+        return origFetch(input, init);
+      };
+      let downloaded;
+      try {
+        downloaded = await downloadCategoryMediaFromFiles('PT');
+      } finally {
+        window.fetch = origFetch;
+      }
+      const cached = await getCachedUrlSet();
+      const orphanGone = ![...cached].some((k) => String(k).includes('orphan-sync-gc'));
+      return {
+        ok: true,
+        fetches,
+        success: downloaded.success,
+        partialHave: partial.PT?.have,
+        partialTotal: partial.PT?.total,
+        orphanGone,
+      };
+    });
+    expect(result.ok).toBe(true);
+    expect(result.partialTotal).toBeGreaterThan(1);
+    expect(result.partialHave).toBe(result.partialTotal - 1);
+    expect(result.success).toBe(true);
+    expect(result.fetches).toBe(0);
+    expect(result.orphanGone).toBe(true);
   });
 });

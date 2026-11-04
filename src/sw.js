@@ -1,4 +1,4 @@
-importScripts('./js/media-assemble.js');
+importScripts('./js/range-assemble.js');
 
 const CACHE_VERSION = 'prawko-v141';
 const APP_SHELL_CACHE = CACHE_VERSION + '-shell';
@@ -20,7 +20,7 @@ const APP_SHELL = [
   './js/profiles.js',
   './js/i18n.js',
   './js/offline.js',
-  './js/media-assemble.js',
+  './js/range-assemble.js',
   './js/category-pack.js',
   './js/zip.js',
   './js/scale.js',
@@ -64,8 +64,6 @@ self.addEventListener('install', (event) => {
   );
 });
 
-let activatedAt = Date.now();
-
 let offlineMediaUrls = new Set();
 let offlineMediaByTail = new Map();
 
@@ -98,7 +96,6 @@ async function rebuildOfflineMediaIndex() {
 }
 
 self.addEventListener('activate', (event) => {
-  activatedAt = Date.now();
   const currentCaches = [APP_SHELL_CACHE, DATA_CACHE, MEDIA_CACHE, OFFLINE_MEDIA_CACHE];
   event.waitUntil((async () => {
     await rebuildOfflineMediaIndex();
@@ -119,7 +116,7 @@ async function serveCachedMedia(cached, request) {
   const total = blob.size;
   const storedType = cached.headers.get('Content-Type') || blob.type || 'application/octet-stream';
   const range = request && request.headers ? request.headers.get('Range') : '';
-  const parsed = total > 0 ? self.PrawkoVideoAssemble.parseRequestRange(range, total) : null;
+  const parsed = total > 0 ? self.PrawkoRangeAssemble.parseRequestRange(range, total) : null;
   const headers = {
     'Content-Type': storedType,
     'Accept-Ranges': 'bytes',
@@ -158,8 +155,8 @@ function isLoopbackHostName(host) {
   return host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
 }
 
-// Files already on this computer. Every other host (LAN, GitHub, another
-// install) keeps a copy of what the player just received.
+// Loopback + same-origin /media/: files already on this computer — pass through.
+// LAN hostname (e.g. node-oczkowscy) and CDN: remember viewed responses.
 function viewedMediaStaysOnDisk(url) {
   return isLoopbackHostName(self.location.hostname)
     && url.origin === self.location.origin
@@ -178,7 +175,7 @@ function playedMediaKind(href, contentType) {
   return '';
 }
 
-const playedMediaAssembler = self.PrawkoVideoAssemble.createAssembler();
+const playedMediaAssembler = self.PrawkoRangeAssemble.createAssembler();
 
 async function storePlayedMedia(href, blob, mime) {
   const cache = await caches.open(OFFLINE_MEDIA_CACHE);
@@ -206,8 +203,8 @@ async function rememberPlayedMedia(href, response) {
   if (!response || response.type === 'opaque' || response.type === 'opaqueredirect') return;
   const kind = playedMediaKind(href, response.headers.get('Content-Type'));
   if (!kind) return;
-  const max = self.PrawkoVideoAssemble.MAX_VIDEO_ASM;
-  const min = kind === 'video' ? self.PrawkoVideoAssemble.MIN_VIDEO_BYTES : 32;
+  const max = self.PrawkoRangeAssemble.MAX_RANGE_ASM;
+  const min = kind === 'video' ? self.PrawkoRangeAssemble.MIN_RANGE_BYTES : 32;
   if (response.status === 200) {
     const blob = await response.blob();
     if (blob.size < min || blob.size > max) return;
@@ -216,7 +213,7 @@ async function rememberPlayedMedia(href, response) {
   }
   if (response.status !== 206 || kind !== 'video') return;
   const header = response.headers.get('Content-Range') || '';
-  const parsed = self.PrawkoVideoAssemble.parseContentRange(header);
+  const parsed = self.PrawkoRangeAssemble.parseContentRange(header);
   const buf = new Uint8Array(await response.arrayBuffer());
   if (parsed && parsed.start === 0 && parsed.total > 0 && buf.byteLength === parsed.total) {
     if (buf.byteLength < min || buf.byteLength > max) return;
@@ -259,9 +256,9 @@ self.addEventListener('fetch', (event) => {
   if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
   if (url.pathname.endsWith('/sw.js')) return;
   if (url.pathname.endsWith('/local.json')) return;
-  // Same path for CDN and /media/. A cache hit is sliced for the player.
-  // A miss is the player's own response: return it immediately and keep a copy.
-  // Loopback with the files on disk is not intercepted.
+  // CDN and /media/: cache hit for the player; miss returns the network
+  // response and keeps a copy (covers the no-CORS element fallback).
+  // Loopback disk files are not intercepted.
   if (isStationMediaUrl(url)) {
     if (!viewedMediaStaysOnDisk(url)) event.respondWith(fetchAndRememberMedia(event, url));
     return;

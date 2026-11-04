@@ -4,7 +4,50 @@ const TINY_MP4 = require('./tiny-mp4');
 const TRIM_MP4 = require('fs').readFileSync(require('path').join(__dirname, 'trim-1s.mp4'));
 
 // Helper: navigate to categories and start learn mode for category B
-async function startLearnMode(page, { localJson, category = 'B' } = {}) {
+const TINY_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64',
+);
+
+/** Page-owned fetch needs CORS; stub remote media so learn tests do not hit B2. */
+async function stubLearnRemoteMedia(page) {
+  const cors = { 'Access-Control-Allow-Origin': '*' };
+  await page.route(/\.(mp4|webm)(\?|$)/i, async (route) => {
+    if (route.request().method() === 'OPTIONS') {
+      await route.fulfill({
+        status: 204,
+        headers: { ...cors, 'Access-Control-Allow-Methods': 'GET' },
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'video/mp4',
+      headers: cors,
+      body: TINY_MP4,
+    });
+  });
+  await page.route(/\.(webp|png|jpe?g|gif)(\?|$)/i, async (route) => {
+    if (route.request().method() === 'OPTIONS') {
+      await route.fulfill({
+        status: 204,
+        headers: { ...cors, 'Access-Control-Allow-Methods': 'GET' },
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'image/png',
+      headers: cors,
+      body: TINY_PNG,
+    });
+  });
+}
+
+async function startLearnMode(page, { localJson, category = 'B', stubRemote = true } = {}) {
+  if (stubRemote && localJson && localJson.mediaBase === 'cdn') {
+    await stubLearnRemoteMedia(page);
+  }
   await page.route('**/local.json', async (route) => {
     if (localJson) {
       await route.fulfill({
@@ -31,27 +74,8 @@ async function setLearnQueue(page, kind, value) {
   await root.locator(`[role="option"][data-value="${value}"]`).click();
 }
 
-/** Player waits for captureViewedMedia; a hanging mp4 route never creates <video>. */
 async function stubLearnVideoFiles(page) {
-  const body = TINY_MP4;
-  await page.route(/\.(mp4|webm)(\?|$)/i, async (route) => {
-    if (route.request().method() === 'OPTIONS') {
-      await route.fulfill({
-        status: 204,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET',
-        },
-      });
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: 'video/mp4',
-      headers: { 'Access-Control-Allow-Origin': '*' },
-      body,
-    });
-  });
+  await stubLearnRemoteMedia(page);
 }
 
 // Helper: navigate to categories and start exam mode for category PT (smallest)
@@ -172,14 +196,15 @@ test.describe('Video autoplay', () => {
     await input.press('Enter');
     const video = page.locator('#quiz .media-area video');
     await expect(video).toHaveCount(1);
-    await expect(video).toHaveJSProperty('autoplay', true);
+    // Live media-feed download clears the autoplay flag; playback is kicked from media-feed.
+    await expect.poll(() => video.evaluate((el) => el.currentTime > 0.01 || !el.paused || el.ended)).toBe(true);
     const qid = await page.locator('.question-card').getAttribute('data-question-id');
 
     await page.locator('.btn-next').click();
     await expect(input).not.toHaveValue(String(pos));
     await page.locator('.btn-prev').click();
     await expect(input).toHaveValue(String(pos));
-    await expect(video).toHaveJSProperty('autoplay', true);
+    await expect.poll(() => video.evaluate((el) => el.currentTime > 0.01 || !el.paused || el.ended)).toBe(true);
 
     await page.locator('.answers .answer-btn').first().click();
     await page.locator('.btn-next').click();
@@ -252,7 +277,11 @@ test.describe('Video autoplay', () => {
         body,
       });
     });
-    await startLearnMode(page, { localJson: { mediaBase: 'cdn', learnQuestionJump: true } });
+    // Own route serves trim-1s.mp4; do not let startLearnMode stub every film as TINY_MP4.
+    await startLearnMode(page, {
+      localJson: { mediaBase: 'cdn', learnQuestionJump: true },
+      stubRemote: false,
+    });
     await page.evaluate(async () => {
       const { renderQuestion } = await import(new URL('./js/ui.js', location.href).href);
       const card = document.querySelector('#quiz .question-card') || document.querySelector('.question-card');
@@ -325,7 +354,7 @@ test.describe('Video autoplay', () => {
     await page.locator('.learn-qnum-input').press('Enter');
     const video = page.locator('#quiz .media-area video');
     await expect(video).toHaveCount(1);
-    await expect(video).toHaveJSProperty('autoplay', true);
+    await expect.poll(() => video.evaluate((el) => el.currentTime > 0.01 || !el.paused || el.ended)).toBe(true);
     await expect(page.locator('#quiz .media-area')).not.toHaveClass(/learn-video-hold/);
     await expect(page.locator('#quiz .learn-media-mark')).toHaveCount(0);
   });
@@ -611,7 +640,7 @@ test.describe('Unavailable CDN media', () => {
       await new Promise((resolve) => setTimeout(resolve, 20000));
       await route.abort();
     });
-    await startLearnMode(page, { localJson: { mediaBase: 'cdn' } });
+    await startLearnMode(page, { localJson: { mediaBase: 'cdn' }, stubRemote: false });
     await page.evaluate(async () => {
       const { renderQuestion } = await import(new URL('./js/ui.js', location.href).href);
       renderQuestion({

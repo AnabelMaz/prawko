@@ -13,20 +13,23 @@ function handlerBlock(marker, nextMarker) {
   return from.slice(0, end);
 }
 
-test('service worker stores the player response and does not copy this computer disk', () => {
+test('service worker serves stored media, remembers viewed misses, skips this computer disk', () => {
   expect(SW).toMatch(/function isStationMediaUrl\(url\)/);
   expect(SW).toMatch(/function viewedMediaStaysOnDisk\(url\)/);
   expect(SW).toMatch(/if \(isStationMediaUrl\(url\)\) \{/);
   expect(SW).toMatch(/if \(!viewedMediaStaysOnDisk\(url\)\) event\.respondWith\(fetchAndRememberMedia\(event, url\)\)/);
-  const remember = SW.slice(SW.indexOf('async function fetchAndRememberMedia'), SW.indexOf('function isStationMediaUrl'));
-  expect(remember).toMatch(/res\.clone\(\)/);
-  expect(remember).toMatch(/rememberPlayedMedia/);
-  expect(remember).toMatch(/return res/);
+  const pass = SW.slice(SW.indexOf('async function fetchAndRememberMedia'), SW.indexOf('function isStationMediaUrl'));
+  expect(pass).toMatch(/matchOfflineMedia/);
+  expect(pass).toMatch(/serveCachedMedia/);
+  expect(pass).toMatch(/rememberPlayedMedia/);
+  expect(pass).toMatch(/return res/);
+  expect(SW).toMatch(/function isLoopbackHostName\(host\)/);
   const disk = SW.slice(SW.indexOf('function viewedMediaStaysOnDisk'), SW.indexOf('function playedMediaKind'));
-  expect(disk).toMatch(/isLoopbackHostName/);
+  expect(disk).toMatch(/isLoopbackHostName\(self\.location\.hostname\)/);
+  expect(disk).toMatch(/url\.origin === self\.location\.origin/);
   expect(disk).toMatch(/\\\/media\\\//);
-  expect(SW).toMatch(/host === 'localhost'/);
-  expect(SW).not.toMatch(/passThroughAndAssemble/);
+  expect(SW).toMatch(/rememberPlayedMedia/);
+  expect(SW).toMatch(/playedMediaAssembler/);
 });
 
 test('service worker answers player Range from a cached full video', () => {

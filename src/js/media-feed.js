@@ -10,33 +10,34 @@
 /** Leftover download must fit in this fraction of the film length to start. */
 export const FILM_PACE_FRACTION = 0.75;
 
-/** True when leftover download time fits in durationSec with 25% headroom.
- *  Needs 2% of the file first so the rate is a real sample — no fixed delay. */
+/**
+ * Ignore an early TCP/CDN burst: rate-based start only after this share of the
+ * file has arrived (complete file always starts).
+ */
+export const FILM_PACE_MIN_SAMPLE = 0.3;
+
+/** True when leftover download time fits in durationSec with 25% headroom. */
 export function filmPaceOk(received, total, elapsedSec, durationSec) {
   if (total > 0 && received >= total) return true;
   if (!(total > 0) || !(durationSec > 0) || !(received > 0) || !(elapsedSec > 0)) {
     return false;
   }
-  if (received / total < 0.02) return false;
+  if (received / total < FILM_PACE_MIN_SAMPLE) return false;
   const remainSec = ((total - received) * elapsedSec) / received;
   return remainSec <= durationSec * FILM_PACE_FRACTION;
 }
 
-export function filmReadyToStart(received, total, elapsedSec, durationSec) {
-  return filmPaceOk(received, total, elapsedSec, durationSec);
-}
-
 let owned = null;
 
-export function abortOwnedMedia() {
+export function abortMediaFeed() {
   if (!owned) return;
   const current = owned;
   owned = null;
   current.abort();
 }
 
-export function startOwnedMedia(el, url, store) {
-  abortOwnedMedia();
+export function startMediaFeed(el, url, store) {
+  abortMediaFeed();
   const ctrl = new AbortController();
   let revoked = '';
   const generation = {};
@@ -66,13 +67,40 @@ export function startOwnedMedia(el, url, store) {
   });
 }
 
-async function loadImage(el, url, signal, store, still, rememberUrl) {
+/** One network GET by the element when page fetch cannot read the body. */
+function elementNetworkFallback(el, url, wantPlay) {
+  el.dataset.byteSource = 'live';
+  el.src = url;
+  if (wantPlay && el.tagName === 'VIDEO') {
+    const pending = el.play();
+    if (pending && typeof pending.catch === 'function') pending.catch(() => {});
+  }
+}
+
+async function openMediaResponse(url, signal) {
   const res = await fetch(url, { credentials: 'omit', signal });
-  if (!res.ok || res.status !== 200) throw new Error('image');
+  if (!res.ok || res.status !== 200 || !res.body) throw new Error('media');
+  return res;
+}
+
+async function loadImage(el, url, signal, store, still, rememberUrl) {
+  // One readable fetch → store → paint from those bytes (same I/O as film).
+  // Do not set el.src to the network URL after fetch — that triggers a second GET.
+  let res;
+  try {
+    res = await openMediaResponse(url, signal);
+  } catch (err) {
+    if (err && err.name === 'AbortError') return;
+    if (!still()) return;
+    elementNetworkFallback(el, url, false);
+    return;
+  }
   const bytes = new Uint8Array(await res.arrayBuffer());
   const type = imageType(url, res.headers.get('Content-Type'));
   const blob = new Blob([bytes], { type });
-  await store(url, blob);
+  try {
+    await store(url, blob);
+  } catch { /* still paint from this body */ }
   if (!still()) return;
   const objectUrl = URL.createObjectURL(blob);
   rememberUrl(objectUrl);
@@ -81,14 +109,19 @@ async function loadImage(el, url, signal, store, still, rememberUrl) {
 }
 
 async function loadFilm(video, url, signal, store, still, rememberUrl) {
-  const res = await fetch(url, { credentials: 'omit', signal });
-  if (!res.ok || res.status !== 200 || !res.body) throw new Error('film');
-  const total = Number(res.headers.get('Content-Length')) || 0;
-  const startedAt = performance.now();
-  // Keep the caller's intent, but clear the attribute so the browser does not
-  // start as soon as the first MSE fragment lands — only our pace check may.
   const wantPlay = video.autoplay === true;
   video.autoplay = false;
+  let res;
+  try {
+    res = await openMediaResponse(url, signal);
+  } catch (err) {
+    if (err && err.name === 'AbortError') return;
+    if (!still()) return;
+    elementNetworkFallback(video, url, wantPlay);
+    return;
+  }
+  const total = Number(res.headers.get('Content-Length')) || 0;
+  const startedAt = performance.now();
   const chunks = [];
   let received = 0;
   const reader = res.body.getReader();
@@ -100,12 +133,12 @@ async function loadFilm(video, url, signal, store, still, rememberUrl) {
       if (pace.done) return true;
       const durationSec = index && index.duration > 0 ? index.duration : 0;
       const elapsedSec = (performance.now() - startedAt) / 1000;
-      return filmReadyToStart(received, total, elapsedSec, durationSec);
+      return filmPaceOk(received, total, elapsedSec, durationSec);
     },
   };
   const pump = () => {
     if (!index) {
-      index = indexFaststart(mergedPrefix(chunks, received));
+      index = indexFaststart(sliceChunks(chunks, 0, Math.min(received, 512 * 1024)));
     }
     if (!index || !session) return;
     session.push(chunks, received, index);
@@ -130,9 +163,11 @@ async function loadFilm(video, url, signal, store, still, rememberUrl) {
     throw err;
   }
   pace.done = true;
-  const bytes = concatChunks(chunks, received);
+  const bytes = sliceChunks(chunks, 0, received);
   const blob = new Blob([bytes], { type: 'video/mp4' });
-  await store(url, blob);
+  try {
+    await store(url, blob);
+  } catch { /* playback can continue without a durable copy */ }
   if (!still()) return;
   video.dataset.byteSource = 'stored';
   if (!index) index = indexFaststart(bytes);
@@ -157,15 +192,6 @@ function imageType(url, header) {
   if (/\.jpe?g(\?|$)/i.test(url)) return 'image/jpeg';
   if (/\.gif(\?|$)/i.test(url)) return 'image/gif';
   return 'image/webp';
-}
-
-function mergedPrefix(chunks, received) {
-  const take = Math.min(received, 512 * 1024);
-  return sliceChunks(chunks, 0, take);
-}
-
-function concatChunks(chunks, received) {
-  return sliceChunks(chunks, 0, received);
 }
 
 function sliceChunks(chunks, start, end) {
@@ -319,7 +345,7 @@ function mediaSegment(batch) {
   ]);
 }
 
-export function indexFaststart(u8) {
+function indexFaststart(u8) {
   if (!u8 || u8.length < 16) return null;
   let moov = null;
   for (const box of listBoxes(u8, 0, u8.length)) {
