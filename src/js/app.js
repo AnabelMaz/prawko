@@ -2,10 +2,10 @@
 
 import { fetchMeta, fetchCategory, fetchUniqueQuestionCount, loadLocalConfig, firstScreenLocalConfig, warmQuestionBank, isQuestionBankWarm } from './data.js';
 import { startExam, setupExamListeners, cleanupExam, getLastExamCategory, refreshExamQuestion } from './exam.js';
-import { startLearn, setupLearnListeners, cleanupLearn, refreshLearnQuestion, loadLearnLocalFlags } from './learn.js';
+import { startLearn, setupLearnListeners, cleanupLearn, refreshLearnQuestion, refreshLearnFilter, loadLearnLocalFlags } from './learn.js';
 import { showScreen, renderCategories, applyLanguage, renderHistory, renderLearnProgress, renderResults, showConfirmModal, refreshOfflineCoverage, formatOfflineRunningLabel, setCategoryCardsBankPending } from './ui.js';
 import { setLang, getLang, loadQuestionTranslations, nextLang, LANG_LABELS, t, readStoredLang } from './i18n.js';
-import { downloadCategoryMedia, getDownloadedCategories, reconcileDownloadedCategories, offlineCoverageHue, getInProgressOfflineCategory, getActiveDownloadProgress, getActiveDownloadCategory, stopDownload } from './offline.js';
+import { downloadCategoryMedia, getDownloadedCategories, reconcileDownloadedCategories, offlineCoverageHue, getInProgressOfflineCategory, getActiveDownloadProgress, getActiveDownloadCategory, clearInProgressOfflineCategory, isAppOnline, stopDownload } from './offline.js';
 import { getProfileSummary, loadHistory, loadLastResult, clearHistory, clearLearnProgress, packLearnForExport, unpackLearnFromImport, packExamHistoryForExport, unpackExamHistoryFromImport } from './stats.js';
 import { setupUiFitScale, refitUiScale, revealUiScale, layoutCategoryGrid, applyUiFitScale } from './scale.js';
 import {
@@ -15,6 +15,7 @@ import {
   deleteProfile,
   formatProfileName,
   getActiveProfileId,
+  getLearnForgetEnabled,
   getPracticeExamEnabled,
   importProfileSnapshot,
   listProfiles,
@@ -23,6 +24,7 @@ import {
   renameProfile,
   snapshotActiveProfile,
   setActiveProfile,
+  setLearnForgetEnabled,
   setPracticeExamEnabled,
 } from './profiles.js';
 
@@ -385,9 +387,15 @@ async function startOfflineDownload(dlBtn) {
 function resumeOfflineDownloadIfNeeded() {
   const catId = getInProgressOfflineCategory();
   if (!catId || !meta) return;
-  if (getActiveDownloadProgress(catId)) return;
+  // Keep the flag offline; resume when the network is back.
+  if (!isAppOnline()) return;
+  if (getActiveDownloadCategory()) return;
   const dlBtn = document.querySelector(`.category-grid .offline-btn[data-category="${CSS.escape(catId)}"]`);
-  if (!dlBtn || dlBtn.classList.contains('downloaded')) return;
+  if (!dlBtn) return;
+  if (dlBtn.classList.contains('downloaded')) {
+    clearInProgressOfflineCategory(catId);
+    return;
+  }
   startOfflineDownload(dlBtn);
 }
 
@@ -399,6 +407,7 @@ function updateLanguageButtons(lang) {
   btn.textContent = LANG_LABELS[lang] || lang.toUpperCase();
   btn.classList.add('active');
   btn.setAttribute('aria-label', t('langToggle'));
+  btn.title = t('profileLangHint');
 }
 
 const THEME_CYCLE = ['light', 'dark', 'system'];
@@ -441,7 +450,7 @@ function applyTheme(theme, themeIcon, themeBtn) {
     themeBtn.setAttribute('aria-pressed', pressed);
     const label = themeChoiceLabel(choice);
     themeBtn.setAttribute('aria-label', label);
-    themeBtn.title = label;
+    themeBtn.title = t('profileThemeHint');
   }
 }
 
@@ -484,6 +493,7 @@ function applyExamSkin(skin) {
     btn.textContent = label;
     btn.setAttribute('aria-pressed', next === 'panel' ? 'true' : 'false');
     btn.setAttribute('aria-label', `${t('examSkinToggle')}: ${label}`);
+    btn.title = t('profileSkinHint');
   }
   refitUiScale();
 }
@@ -566,15 +576,19 @@ function fillProfilePanel() {
   const summary = getProfileSummary();
   if (learnEl) {
     const learnText = t('profileLearn').replace('{known}', String(summary.learnKnown));
+    const learnHint = t('profileLearnHint');
     learnEl.textContent = learnText;
-    learnEl.setAttribute('aria-label', `${learnText}. ${t('learnProgress')}`);
+    learnEl.title = learnHint;
+    learnEl.setAttribute('aria-label', `${learnText}. ${learnHint}`);
   }
   if (examsEl) {
     const examsText = t('profileExams')
       .replace('{n}', String(summary.exams))
       .replace('{passed}', String(summary.examsPassed));
+    const examsHint = t('profileExamsHint');
     examsEl.textContent = examsText;
-    examsEl.setAttribute('aria-label', `${examsText}. ${t('examHistory')}`);
+    examsEl.title = examsHint;
+    examsEl.setAttribute('aria-label', `${examsText}. ${examsHint}`);
   }
   if (deleteBtn) {
     const label = profiles.length <= 1 ? t('profileReset') : t('profileDelete');
@@ -583,6 +597,20 @@ function fillProfilePanel() {
   }
   const practiceBox = document.querySelector('.profile-practice-exam');
   if (practiceBox) practiceBox.checked = getPracticeExamEnabled();
+  const practiceLabel = document.querySelector('label[for="profile-practice-exam"]');
+  if (practiceLabel) {
+    const practiceHint = t('profilePracticeExamHint');
+    practiceLabel.title = practiceHint;
+    practiceLabel.setAttribute('aria-label', `${t('profilePracticeExam')}. ${practiceHint}`);
+  }
+  const forgetBox = document.querySelector('.profile-learn-forget');
+  if (forgetBox) forgetBox.checked = getLearnForgetEnabled();
+  const forgetLabel = document.querySelector('label[for="profile-learn-forget"]');
+  if (forgetLabel) {
+    const forgetHint = t('profileLearnForgetHint');
+    forgetLabel.title = forgetHint;
+    forgetLabel.setAttribute('aria-label', `${t('profileLearnForget')}. ${forgetHint}`);
+  }
 }
 
 let committingNewProfile = false;
@@ -884,6 +912,14 @@ function setupProfileSwitcher() {
   panel.querySelector('.profile-practice-exam')?.addEventListener('change', (e) => {
     setPracticeExamEnabled(Boolean(e.target.checked));
   });
+  panel.querySelector('.profile-learn-forget')?.addEventListener('change', (e) => {
+    setLearnForgetEnabled(Boolean(e.target.checked));
+    fillProfilePanel();
+    refreshLearnFilter();
+    if (document.getElementById('learn-progress')?.classList.contains('active') && meta) {
+      renderLearnProgress(meta);
+    }
+  });
 
   const importInput = panel.querySelector('.profile-import-file');
   panel.addEventListener('click', (e) => {
@@ -1064,19 +1100,29 @@ async function init() {
       renderRecentCategories();
       if (!isQuestionBankWarm()) setCategoryCardsBankPending(true);
     });
-    reconcileDownloadedCategories()
-      .then(async (verifiedSet) => {
-        if (meta) {
-          renderCategories(meta, verifiedSet);
-          await refreshOfflineCoverage(meta, verifiedSet);
+    if (isAppOnline()) {
+      reconcileDownloadedCategories()
+        .then(async (verifiedSet) => {
+          if (meta) {
+            renderCategories(meta, verifiedSet);
+            await refreshOfflineCoverage(meta, verifiedSet);
+            syncCategoryCardVisibility();
+            renderRecentCategories();
+            applyCategorySearch();
+            if (!isQuestionBankWarm()) setCategoryCardsBankPending(true);
+          }
+          resumeOfflineDownloadIfNeeded();
+        })
+        .catch(() => {});
+    } else if (meta) {
+      refreshOfflineCoverage(meta, getDownloadedCategories())
+        .then(() => {
           syncCategoryCardVisibility();
           renderRecentCategories();
           applyCategorySearch();
-          if (!isQuestionBankWarm()) setCategoryCardsBankPending(true);
-        }
-        resumeOfflineDownloadIfNeeded();
-      })
-      .catch(() => {});
+        })
+        .catch(() => {});
+    }
     if (spinner) spinner.classList.add('hidden');
   } catch {
     if (spinner) spinner.classList.add('hidden');

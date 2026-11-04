@@ -410,16 +410,9 @@ export function coverageFromUrls(neededUrls, cachedSet) {
   if (total === 0) return { have: 0, total: 0, pct: 100 };
   let have = 0;
   for (const url of neededUrls) {
-    const keys = new Set();
-    addMediaCacheKeys(keys, url);
-    let hit = false;
-    for (const key of keys) {
-      if (cachedSet.has(key)) {
-        hit = true;
-        break;
-      }
-    }
-    if (hit) have++;
+    const name = mediaFileNameFromUrl(url);
+    // Basename first so media/ vs CDN needed URLs match the same IDB/cache tails.
+    if ((name && nameInCachedSet(name, cachedSet)) || urlIsCached(url, cachedSet)) have++;
   }
   return { have, total, pct: Math.round((100 * have) / total) };
 }
@@ -596,7 +589,7 @@ function setInProgressOfflineCategory(categoryId) {
   } catch {}
 }
 
-function clearInProgressOfflineCategory(categoryId) {
+export function clearInProgressOfflineCategory(categoryId) {
   if (!categoryId) return;
   if (getInProgressOfflineCategory() === categoryId) setInProgressOfflineCategory(null);
 }

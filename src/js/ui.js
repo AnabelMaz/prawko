@@ -242,9 +242,11 @@ export function formatOfflineRunningLabel(pct) {
 function paintOfflineButton(dlBtn, access, coverage, known) {
   if (!dlBtn) return;
   const mine = dlBtn.dataset.category;
-  const jobId = getActiveDownloadCategory() || getInProgressOfflineCategory();
+  // Przerwij only for a live job. IN_PROGRESS alone is a pending resume flag.
+  const activeId = getActiveDownloadCategory();
+  const pendingId = getInProgressOfflineCategory();
   const active = getActiveDownloadProgress(mine);
-  if (active || jobId === mine) {
+  if (activeId === mine) {
     dlBtn.classList.remove('coverage-pending');
     dlBtn.removeAttribute('aria-busy');
     const pct = active
@@ -270,7 +272,7 @@ function paintOfflineButton(dlBtn, access, coverage, known) {
   dlBtn.classList.remove('coverage-pending');
   dlBtn.removeAttribute('aria-busy');
   dlBtn.classList.remove('downloading');
-  dlBtn.classList.toggle('download-locked', Boolean(jobId));
+  dlBtn.classList.toggle('download-locked', Boolean(activeId || pendingId));
   const pct = clampCoveragePct(coverage?.pct);
   // A few saved files in a large category round to 0%. That is still offline
   // progress: "Pobierz offline" would look like nothing was stored.
@@ -419,8 +421,8 @@ export function renderCategories(meta, downloadedSet = new Set()) {
 }
 
 
-// Times come from media-trim.json via the question. Missing fields keep the
-// old playback: start at 0, stop on the file's real last frame.
+// Times come from questions.json (mediaIn/mediaOut on the fact). Missing
+// fields keep the old playback: start at 0, stop on the file's real last frame.
 export function mediaClipStart(video) {
   const t = Number(video?.dataset?.mediaIn);
   return Number.isFinite(t) && t > 0.04 ? t : 0;
@@ -1598,6 +1600,9 @@ export function applyLanguage() {
   });
   document.querySelectorAll('[data-i18n-aria]').forEach(el => {
     el.setAttribute('aria-label', t(el.getAttribute('data-i18n-aria')));
+  });
+  document.querySelectorAll('[data-i18n-title]').forEach((el) => {
+    el.setAttribute('title', t(el.getAttribute('data-i18n-title')));
   });
   ensureCategorySearchUi();
   ensureQuizModeUi();
