@@ -1,12 +1,14 @@
 # Prawko
 
-Aplikacja PWA do nauki i symulacji egzaminu teoretycznego na prawo jazdy w Polsce. To **fork** [szkocot/prawko](https://github.com/szkocot/prawko): układ stacji WORD, skórki Panel/Stacja, profile lokalne i przebudowana nauka. Małe łatki mogą iść upstream; pełna wersja na **Windows**, **macOS** i **Linux** zostaje tutaj.
+Prawko służy do nauki i symulacji egzaminu teoretycznego na prawo jazdy w Polsce. To fork [szkocot/prawko](https://github.com/szkocot/prawko) z układem jak na stacji WORD, skórkami Panel i Stacja, lokalnymi profilami oraz przebudowaną nauką. Drobne poprawki mogą wracać upstream; pełna wersja na **Windows**, **macOS** i **Linux** zostaje w tym repozytorium.
 
-Do użytku **nie trzeba lokalnej instalacji**. Wejdź na [anabelmaz.github.io/prawko](https://anabelmaz.github.io/prawko/): to pełna aplikacja. Możesz dodać ją do ekranu głównego (PWA), w kategorii kliknąć **Pobierz offline** i uczyć się bez sieci. Przez limity Backblaze **zdjęcia i filmy bywają puste, dopóki nie ściągniesz paczki** na to urządzenie; po pobraniu działają lokalnie (zipy z Cloudflare R2).
+Najprościej zacząć **bez instalacji**. Wejdź na [anabelmaz.github.io/prawko](https://anabelmaz.github.io/prawko/) — to już pełna aplikacja w przeglądarce. Możesz dodać ją do ekranu głównego jak PWA, a w wybranej kategorii kliknąć **Pobierz offline**, żeby uczyć się bez sieci. Zdjęcia i filmy bywają na początku puste (limity publicznego hostingu mediów); dopiero po ściągnięciu paczki na to urządzenie odtwarzają się lokalnie.
 
-Własny serwer stawiaj tylko gdy chcesz trzymać aplikację u siebie albo **wgrać nowszy katalog pytań i mediów z ministerstwa** — publiczne zasoby mogą być starsze niż aktualny Excel na [gov.pl](https://www.gov.pl/web/infrastruktura/prawo-jazdy).
+Własny serwer ma sens dopiero wtedy, gdy chcesz trzymać aplikację u siebie — na tym komputerze albo w sieci — albo gdy potrzebujesz **świeższego katalogu pytań i mediów** z ministerstwa niż to, co jest publicznie. Pliki na github.io i CDN potrafią zostać w tyle względem aktualnego Excela na [gov.pl](https://www.gov.pl/web/infrastruktura/prawo-jazdy).
 
-Baza w repozytorium to JSON z tego katalogu (**3518** unikalnych pytań, **lipiec 2026**, `KATALOG_dla_kandydatów_na_kierowców_072026.xlsx`). Oglądanie mediów: Backblaze; **„Pobierz offline”**: zipy z R2.
+Na Windowsie, macOS i Linuxie instalacja to jeden skrypt: bez przełączników dostajesz lokalną usługę i stronę na porcie **5173** (pytania z repozytorium, media z internetu). Na tej maszynie otwierasz `localhost`; z innych stacji w LAN — nazwę hosta albo adres IP. Ten sam instalator Windows działa na PC (**Windows 10** i **11**) i na **Windows Server 2016, 2019, 2022** oraz **2025** — nie ma osobnej wersji „pod serwer”. Gdy usługa już stoi, możesz opcjonalnie dociągnąć lokalny katalog z gov.pl (`-SyncGov` / `--sync-gov`; kilka gigabajtów, bez tłumaczeń migowych), przenieść instalację na inny komputer paczką Export/Import, albo przy rozwoju kodu sklonować repozytorium (`-Dev` / `--dev`) i wgrywać zmiany na działający serwer (`-Patch` / `--patch`). Szczegóły są w sekcjach instalacji poniżej.
+
+W repozytorium leży obecnie baza **3518** unikalnych pytań (**lipiec 2026**, `KATALOG_dla_kandydatów_na_kierowców_072026.xlsx`).
 
 [Polski](#instalacja-na-windows) · [macOS](#instalacja-na-macos) · [Linux](#instalacja-na-linuxie) · [English](#install-on-windows)
 
@@ -14,33 +16,32 @@ Baza w repozytorium to JSON z tego katalogu (**3518** unikalnych pytań, **lipie
 
 ## Instalacja na Windows
 
-Instalator Windows to **`Install_Prawko.windows.ps1`** (ten sam schemat nazw co `Install_Prawko.macos.sh` i `Install_Prawko.linux.sh`).
+Żeby postawić serwer u siebie, ściągasz jeden plik: **`Install_Prawko.windows.ps1`**. Na macOS i Linuxie jest ten sam pomysł, tylko inne skrypty (sekcje niżej). Pythona nie potrzebujesz — ani do instalacji, ani do skryptów danych na Windowsie.
 
-Docelowe środowisko to **Windows 10/11**. Python nie jest potrzebny — ani do instalacji, ani do skryptów danych.
+Działa to zarówno na zwykłym PC z **Windows 10** albo **11**, jak i na **Windows Server 2016, 2019, 2022** albo **2025**. Ten sam skrypt rejestruje usługę Windows i kładzie pliki w `C:\ProgramData\prawko`; nie ma osobnego instalatora „server”.
 
 ### Wymagania
 
 | | |
 |---|---|
-| System | Windows 10 lub 11 |
+| System | Windows 10, Windows 11, albo Windows Server 2016 / 2019 / 2022 / 2025 |
 | Powłoka | Windows PowerShell 5.1 albo nowszy |
-| Uprawnienia | Pierwsza instalacja wymaga **administratora** (Node.js, NSSM, usługa Windows) |
-| Sieć | GitHub (ZIP aplikacji i narzędzia). Oglądanie z Backblaze, paczki offline z Cloudflare; lokalna paczka MI jest opcjonalna |
+| Uprawnienia | Pierwsza instalacja wymaga **administratora** (Node.js, pomocnik usługi NSSM, usługa Windows) |
+| Sieć | Dostęp do GitHuba (ZIP aplikacji i narzędzia). Media online z Backblaze, paczki offline z Cloudflare; lokalna paczka z gov.pl jest opcjonalna |
 | Git | **Nie** — tylko przy `-Dev` |
 | Python | **Nie** |
 
-Instalator sam doinstaluje brakujące **Node.js** i **NSSM**. Gita nie rusza, chyba że podasz `-Dev`.
+Jeśli brakuje Node.js albo NSSM, instalator doinstaluje je sam. Gita rusza wyłącznie przy `-Dev`.
 
 ### Szybki start
 
-1. Ściągnij [`Install_Prawko.windows.ps1`](https://github.com/AnabelMaz/prawko/blob/main/Install_Prawko.windows.ps1) (**Raw** → Zapisz jako) — Pulpit, Pobrane albo pendrive. **Nie musisz** klonować repozytorium ręcznie.
-2. W PowerShellu, w folderze z plikiem:
+Najpierw zapisz skrypt na dysk — Pulpit, Pobrane albo pendrive wystarczy. **Nie musisz** klonować repozytorium. Najwygodniej: na GitHubie otwórz [`Install_Prawko.windows.ps1`](https://github.com/AnabelMaz/prawko/blob/main/Install_Prawko.windows.ps1), **Raw** → Zapisz jako. Nie wklejaj treści ze strony do Notatnika: Windows PowerShell 5.1 wymaga UTF-8 z BOM, a taki zapis często go gubi.
+
+Potem w PowerShellu, w folderze z plikiem:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1
 ```
-
-Ściągaj plik na dysk (`-OutFile` albo Raw → Zapisz jako). Nie wklejaj treści ze strony do Notatnika — Windows PowerShell 5.1 wymaga UTF-8 z BOM.
 
 Albo bez przeglądarki, jednym ciągiem:
 
@@ -49,22 +50,15 @@ Invoke-WebRequest -Uri https://raw.githubusercontent.com/AnabelMaz/prawko/main/I
 powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1
 ```
 
-3. Otwórz [http://localhost:5173](http://localhost:5173).
+Gdy skrypt skończy pracę, otwórz [http://localhost:5173](http://localhost:5173). Z innych komputerów w sieci — `http://nazwa-albo-ip:5173` (firewall musi przepuszczać ten port).
 
 Jeśli Windows zablokuje skrypt (SmartScreen / ExecutionPolicy), zostaw `-ExecutionPolicy Bypass` jak wyżej — dotyczy tylko tego procesu, nie całego systemu. Pełna lista przełączników: `Install_Prawko.windows.ps1 -Help`.
 
 ### Co instalator robi (tryb domyślny)
 
-Bez przełączników instalator:
+Bez przełączników instalator najpierw uzupełnia brakujące Node.js i NSSM, potem ściąga ZIP [AnabelMaz/prawko](https://github.com/AnabelMaz/prawko) (`main`) do `C:\ProgramData\prawko` (**bez** klonowania Gita), rejestruje usługę **PrawkoWORDService** i serwuje aplikację na porcie **5173**. Pytania biorą się z JSON w paczce; zdjęcia i filmy lecą z publicznego Backblaze (`prawko-maz`), a „Pobierz offline” — z zipów na Cloudflare R2. Gdy usługa już stoi, ponowne odpalenie **bez przełączników nic nie nadpisuje**.
 
-- doinstalowuje Node.js i NSSM, jeśli ich nie ma,
-- ściąga ZIP [AnabelMaz/prawko](https://github.com/AnabelMaz/prawko) (`main`) do `C:\ProgramData\prawko` (**bez Gita**),
-- stawia usługę Windows **PrawkoWORDService**,
-- serwuje aplikację na porcie **5173**. `-Https` dodaje TLS na **5174** i 302 z każdego URL-a HTTP.
-
-Pytania pochodzą z JSON w repozytorium. Oglądanie zdjęć i filmów: kubeł Backblaze `prawko-maz`. „Pobierz offline”: zipy z Cloudflare R2. Gdy usługa już stoi, ponowne odpalenie **bez przełączników nic nie nadpisuje**.
-
-Po wgraniu nowszej wersji kodu w otwartej karcie (ten sam komputer, inna stacja, github.io) pojawia się baner „Dostępna aktualizacja” — **Odśwież**, bez Ctrl+F5. Na HTTP poza loopbackiem nie ma service workera; aplikacja i tak porównuje `CACHE_VERSION` w `sw.js`.
+Opcjonalnie `-Https` dokłada TLS na **5174** i przekierowuje każdy adres HTTP na ten sam host po HTTPS (szczegóły w podsekcji HTTPS). Po wgraniu nowszej wersji kodu otwarta karta zwykle pokazuje baner „Dostępna aktualizacja” — wystarczy **Odśwież**, bez Ctrl+F5.
 
 ### Gdzie lądują pliki
 
@@ -525,67 +519,61 @@ Kod aplikacji jest na [ISC](LICENSE) (tak jak w `package.json` źródła). Przy 
 
 # Prawko — Polish driving licence exam
 
-A PWA for learning and simulating the Polish theoretical driving test. This is a **fork** of [szkocot/prawko](https://github.com/szkocot/prawko): WORD station layout, Panel/Station skins, local profiles, and a rebuilt learn mode. Small fixes can still go upstream; the full **Windows**, **macOS**, and **Linux** product stays here.
+Prawko is for learning and simulating the Polish theoretical driving test. It is a fork of [szkocot/prawko](https://github.com/szkocot/prawko) with a WORD-station layout, Panel and Station skins, local profiles, and a rebuilt learn mode. Small fixes can still go upstream; the full **Windows**, **macOS**, and **Linux** product stays in this repository.
 
-You do **not** need a local install to use it. Open [anabelmaz.github.io/prawko](https://anabelmaz.github.io/prawko/): that is the full app. You can install it as a PWA, tap **Download offline** on a category, and study without a network. Because of Backblaze limits, **photos and films may stay empty until you download the pack** on that device; after that they run locally (zip packs from Cloudflare R2).
+The simplest path needs **no install**. Open [anabelmaz.github.io/prawko](https://anabelmaz.github.io/prawko/) — that is already the full app in the browser. You can add it to the home screen as a PWA, and on a category tap **Download offline** to study without a network. Photos and films may be empty at first (limits on the public media host); after you download the pack on that device, they play locally.
 
-Run your own server only if you want the app on your machine or need to **load a newer ministry question and media catalogue** — the public files can lag behind the current Excel on [gov.pl](https://www.gov.pl/web/infrastruktura/prawo-jazdy).
+A server of your own makes sense when you want to keep the app on your machine or on the LAN, or when you need a **newer ministry question and media catalogue** than the public files. github.io and the CDN can lag behind the current Excel on [gov.pl](https://www.gov.pl/web/infrastruktura/prawo-jazdy).
 
-The repo JSON is that catalogue (**3518** unique questions, **July 2026**, `KATALOG_dla_kandydatów_na_kierowców_072026.xlsx`). Playback is Backblaze; **Download offline** is R2 zips.
+On Windows, macOS, and Linux the install is one script: with no switches you get a local service and the app on port **5173** (repo questions, media from the internet). On that machine open `localhost`; from other LAN clients use the host name or IP. The same Windows installer runs on a PC (**Windows 10** and **11**) and on **Windows Server 2016, 2019, 2022**, and **2025** — there is no separate “server” package. Once the service is up, you can optionally pull a local ministry pack (`-SyncGov` / `--sync-gov`; several GB, no sign-language ZIPs), move the install to another computer with Export/Import, or when developing clone the repo (`-Dev` / `--dev`) and overlay changes onto the running service (`-Patch` / `--patch`). Details are in the install sections below.
+
+The repository currently ships **3518** unique questions (**July 2026**, `KATALOG_dla_kandydatów_na_kierowców_072026.xlsx`).
 
 ## Install on Windows
 
-The Windows installer is **`Install_Prawko.windows.ps1`** (same naming scheme as `Install_Prawko.macos.sh` and `Install_Prawko.linux.sh`).
+To run your own server, download one file: **`Install_Prawko.windows.ps1`**. macOS and Linux follow the same idea with different scripts (sections below). You do not need Python — not for install, and not for the Windows data scripts.
 
-**Windows 10/11** is the supported PC target. Python is not required for install or for the Windows data pipeline.
+It works on a normal PC with **Windows 10** or **11**, and on **Windows Server 2016, 2019, 2022**, or **2025**. The same script registers a Windows service and places files under `C:\ProgramData\prawko`; there is no separate “server” installer.
 
 ### Requirements
 
 | | |
 |---|---|
-| OS | Windows 10 or 11 |
+| OS | Windows 10, Windows 11, or Windows Server 2016 / 2019 / 2022 / 2025 |
 | Shell | Windows PowerShell 5.1 or later |
-| Privileges | First install needs **Administrator** (Node.js, NSSM, Windows service) |
-| Network | GitHub (app ZIP and tools). Playback from Backblaze, offline packs from Cloudflare; the local ministry pack is optional |
+| Privileges | First install needs **Administrator** (Node.js, NSSM service helper, Windows service) |
+| Network | Access to GitHub (app ZIP and tools). Online media from Backblaze, offline packs from Cloudflare; a local gov.pl pack is optional |
 | Git | **No** — only with `-Dev` |
 | Python | **Not used** |
 
-The installer installs **Node.js** and **NSSM** if they are missing. It does not install Git unless you pass `-Dev`.
+If Node.js or NSSM is missing, the installer installs it. Git is touched only with `-Dev`.
 
 ### Quick start
 
-1. Download [`Install_Prawko.windows.ps1`](https://github.com/AnabelMaz/prawko/blob/main/Install_Prawko.windows.ps1) (**Raw**, then Save as) anywhere. You do **not** need to clone the repo first.
-2. In PowerShell, in that folder:
+First save the script to disk — Desktop, Downloads, or a USB stick is fine. You do **not** need to clone the repository. Easiest path: on GitHub open [`Install_Prawko.windows.ps1`](https://github.com/AnabelMaz/prawko/blob/main/Install_Prawko.windows.ps1), **Raw** → Save as. Do not paste the page into Notepad: Windows PowerShell 5.1 needs UTF-8 with a BOM, and that paste often drops it.
+
+Then in PowerShell, in the folder with the file:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1
 ```
 
-Download the file to disk (`-OutFile` or Raw → Save as). Do not paste it into Notepad — Windows PowerShell 5.1 needs UTF-8 with a BOM.
-
-Or without a browser:
+Or without a browser, in one go:
 
 ```powershell
 Invoke-WebRequest -Uri https://raw.githubusercontent.com/AnabelMaz/prawko/main/Install_Prawko.windows.ps1 -OutFile Install_Prawko.windows.ps1
 powershell -ExecutionPolicy Bypass -File .\Install_Prawko.windows.ps1
 ```
 
-3. Open [http://localhost:5173](http://localhost:5173).
+When the script finishes, open [http://localhost:5173](http://localhost:5173). From other computers on the network use `http://hostname-or-ip:5173` (the firewall must allow that port).
 
-If Windows blocks the script, keep `-ExecutionPolicy Bypass` as above — it applies to this process only. All switches: `Install_Prawko.windows.ps1 -Help`.
+If Windows blocks the script (SmartScreen / ExecutionPolicy), keep `-ExecutionPolicy Bypass` as above — it applies to this process only. All switches: `Install_Prawko.windows.ps1 -Help`.
 
 ### What the default install does
 
-With no switches the installer:
+With no switches the installer first fills in missing Node.js and NSSM, then downloads the [AnabelMaz/prawko](https://github.com/AnabelMaz/prawko) (`main`) ZIP into `C:\ProgramData\prawko` (**without** cloning Git), registers the **PrawkoWORDService** service, and serves the app on port **5173**. Questions come from the JSON in that pack; photos and films stream from the public Backblaze bucket `prawko-maz`, and “Download offline” uses Cloudflare R2 zips. If the service is already running, a second run **with no switches does not overwrite** it.
 
-- installs Node.js and NSSM if needed,
-- downloads the [AnabelMaz/prawko](https://github.com/AnabelMaz/prawko) (`main`) ZIP into `C:\ProgramData\prawko` (**no Git**),
-- registers the **PrawkoWORDService** Windows service,
-- serves the app on port **5173**. `-Https` adds TLS on **5174** and a 302 from every HTTP URL.
-
-Questions come from the repo JSON. Photos and films stream from the public Backblaze bucket `prawko-maz`. “Download offline” pulls zip packs from Cloudflare R2. If the service is already running, a second run **with no switches does not overwrite** it.
-
-After a code overlay, an open tab (this computer, another station, or github.io) shows an "Update available" banner — **Refresh**, no Ctrl+F5. HTTP off loopback has no service worker; the app still compares `CACHE_VERSION` in `sw.js`.
+Optional `-Https` adds TLS on **5174** and redirects every HTTP URL to the same host over HTTPS (see the HTTPS subsection). After a newer code overlay, an open tab usually shows an “Update available” banner — **Refresh** is enough, no Ctrl+F5.
 
 ### Where files land
 
