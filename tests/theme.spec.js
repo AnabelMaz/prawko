@@ -128,9 +128,11 @@ test.describe('Warm & Soft Theme', () => {
       btn: getComputedStyle(document.querySelector('.theme-btn')).cursor,
       rest: getComputedStyle(document.documentElement).getPropertyValue('--cursor-rest'),
       click: getComputedStyle(document.documentElement).getPropertyValue('--cursor-click'),
+      unavailable: getComputedStyle(document.documentElement).getPropertyValue('--cursor-unavailable'),
     }));
     expect(light.rest).toMatch(/cursor-black\.png/);
     expect(light.click).toMatch(/cursor-pointer-black\.png/);
+    expect(light.unavailable).toMatch(/cursor-unavailable-black\.png/);
     expect(light.body).toMatch(/cursor-black\.png/);
     expect(light.btn).toMatch(/cursor-pointer-black\.png/);
 
@@ -142,9 +144,11 @@ test.describe('Warm & Soft Theme', () => {
       btn: getComputedStyle(document.querySelector('.theme-btn')).cursor,
       rest: getComputedStyle(document.documentElement).getPropertyValue('--cursor-rest'),
       click: getComputedStyle(document.documentElement).getPropertyValue('--cursor-click'),
+      unavailable: getComputedStyle(document.documentElement).getPropertyValue('--cursor-unavailable'),
     }));
     expect(dark.rest).toMatch(/cursor-white\.png/);
     expect(dark.click).toMatch(/cursor-pointer-white\.png/);
+    expect(dark.unavailable).toMatch(/cursor-unavailable-white\.png/);
     expect(dark.body).toMatch(/cursor-white\.png/);
     expect(dark.btn).toMatch(/cursor-pointer-white\.png/);
   });
@@ -201,7 +205,9 @@ test.describe('Warm & Soft Theme', () => {
     const blackArrow = pngInfo('cursor-black.png');
     const whiteHand = pngInfo('cursor-pointer-white.png');
     const blackHand = pngInfo('cursor-pointer-black.png');
-    for (const info of [whiteArrow, blackArrow, whiteHand, blackHand]) {
+    const whiteNo = pngInfo('cursor-unavailable-white.png');
+    const blackNo = pngInfo('cursor-unavailable-black.png');
+    for (const info of [whiteArrow, blackArrow, whiteHand, blackHand, whiteNo, blackNo]) {
       expect(info.w).toBe(32);
       expect(info.h).toBe(32);
       expect(info.opaque).toBeGreaterThan(80);

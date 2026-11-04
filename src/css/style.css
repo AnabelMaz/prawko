@@ -62,6 +62,8 @@
   --text: #18181b;
   --text-secondary: #71717a;
   --border: #e4e4e7;
+  /* Empty film slot while the first frame has not arrived. A step darker than the page. */
+  --media-wait-bg: color-mix(in srgb, #18181b 10%, var(--bg));
 
   /* Shadows */
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.04);
@@ -88,6 +90,7 @@
   /* Windows 11 aero_arrow / aero_link, Black style on light UI. */
   --cursor-rest: url("../icons/cursor-black.png") 0 0, auto;
   --cursor-click: url("../icons/cursor-pointer-black.png") 6 0, pointer;
+  --cursor-unavailable: url("../icons/cursor-unavailable-black.png") 10 10, not-allowed;
 }
 
 :root[data-theme="dark"] {
@@ -102,11 +105,14 @@
   --text: #fafafa;
   --text-secondary: #a1a1aa;
   --border: #27272a;
+  /* Empty film slot on the dark page: still nearly black, a step lighter than the page. */
+  --media-wait-bg: color-mix(in srgb, #fafafa 8%, var(--bg));
   --shadow: 0 1px 3px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
   --shadow-lg: 0 4px 6px rgba(0, 0, 0, 0.5), 0 10px 24px rgba(0, 0, 0, 0.4);
   --shadow-primary: 0 4px 14px rgba(129, 140, 248, 0.2);
   --cursor-rest: url("../icons/cursor-white.png") 0 0, auto;
   --cursor-click: url("../icons/cursor-pointer-white.png") 6 0, pointer;
+  --cursor-unavailable: url("../icons/cursor-unavailable-white.png") 10 10, not-allowed;
 }
 
 :root[data-theme="dark"] .hero {
@@ -1553,7 +1559,7 @@ footer a {
 
 .offline-btn.downloading {
   --offline-hue: 0;
-  cursor: wait;
+  cursor: var(--cursor-click);
   color: hsl(var(--offline-hue), 72%, 28%);
   border-color: hsl(var(--offline-hue), 65%, 42%);
   background: linear-gradient(
@@ -1561,6 +1567,18 @@ footer a {
     hsl(var(--offline-hue), 65%, 82%) calc(var(--dl-progress, 0) * 1%),
     hsl(var(--offline-hue), 70%, 94%) calc(var(--dl-progress, 0) * 1%)
   );
+}
+
+.offline-btn.download-locked {
+  opacity: 0.55;
+}
+
+.offline-btn.coverage-pending,
+.offline-btn.coverage-pending:hover {
+  color: var(--text-secondary);
+  background: var(--bg);
+  cursor: var(--cursor-unavailable);
+  opacity: 0.55;
 }
 
 .offline-btn.downloaded {
@@ -1624,14 +1642,10 @@ footer a {
   );
 }
 
-.offline-btn.unavailable.partial {
-  cursor: not-allowed;
-}
-
 .category-card.category-unavailable {
   opacity: 0.45;
   filter: grayscale(0.55);
-  cursor: not-allowed;
+  cursor: var(--cursor-unavailable);
 }
 
 .category-card.category-unavailable:hover {
@@ -1646,12 +1660,48 @@ footer a {
 .offline-btn.unavailable {
   color: var(--text-secondary);
   border-style: dashed;
-  cursor: not-allowed;
 }
 
 .offline-btn.unavailable:hover {
   color: var(--text-secondary);
   background: var(--bg);
+}
+
+.offline-btn.download-locked,
+.offline-btn.partial.download-locked,
+.offline-btn.unavailable,
+.offline-btn.unavailable.partial,
+.category-card.category-unavailable {
+  cursor: var(--cursor-unavailable);
+}
+
+.offline-btn.download-locked {
+  --locked-color: var(--text-secondary);
+  --locked-bg: var(--bg);
+  --locked-border: var(--border);
+}
+
+.offline-btn.partial.download-locked {
+  --locked-color: hsl(var(--offline-hue), 72%, 28%);
+  --locked-bg: hsl(var(--offline-hue), 70%, 94%);
+  --locked-border: hsl(var(--offline-hue), 65%, 42%);
+  color: var(--locked-color);
+  background: var(--locked-bg);
+  border-color: var(--locked-border);
+}
+
+:root[data-theme="dark"] .offline-btn.partial.download-locked {
+  --locked-color: hsl(var(--offline-hue), 68%, 78%);
+  --locked-bg: hsl(var(--offline-hue), 35%, 16%);
+  --locked-border: hsl(var(--offline-hue), 55%, 40%);
+}
+
+.offline-btn.download-locked:hover,
+.offline-btn.partial.download-locked:hover,
+:root[data-theme="dark"] .offline-btn.partial.download-locked:hover {
+  color: var(--locked-color);
+  background: var(--locked-bg);
+  border-color: var(--locked-border);
 }
 
 /* ==========================================================================
@@ -1897,6 +1947,10 @@ footer a {
   user-select: none;
 }
 
+.media-area.has-learn-video {
+  cursor: var(--cursor-click);
+}
+
 .media-area.has-learn-video video {
   pointer-events: none;
 }
@@ -1924,7 +1978,9 @@ footer a {
   height: 44px;
   border-radius: 50%;
   border: 2px solid var(--border);
-  background: var(--bg-card);
+  background: color-mix(in srgb, var(--bg-card) 34%, transparent);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
   color: var(--text);
   cursor: var(--cursor-click);
   display: none;
@@ -3522,6 +3578,10 @@ html[data-ui-mode="fit"] #categories.active .category-grid .offline-btn {
   max-width: 100%;
 }
 
+html[data-ui-mode="fit"] #categories.active .category-grid .offline-btn.downloading {
+  white-space: normal;
+}
+
 html[data-ui-mode="fit"] #categories.active.categories-compact .mode-description,
 html[data-ui-mode="fit"] #categories.active.categories-compact .categories-extra,
 html[data-ui-mode="fit"] #categories.active.categories-compact .recent-categories {
@@ -4949,11 +5009,6 @@ html[data-ui-mode="fit"] #quiz.active:not(.exam-active) .learn-nav button {
 /* ==========================================================================
    New Animations
    ========================================================================== */
-@keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
-
 @keyframes scoreEntrance {
   from { opacity: 0; transform: scale(0.8); }
   to { opacity: 1; transform: scale(1); }
@@ -5047,11 +5102,47 @@ html[data-ui-mode="fit"] #quiz.active:not(.exam-active) .learn-nav button {
   white-space: nowrap;
 }
 
-/* Media loading skeleton */
-.media-area.loading {
-  background: linear-gradient(90deg, var(--border) 25%, var(--bg) 50%, var(--border) 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.5s ease-in-out infinite;
+/* Dim a frame that is already on screen. Before the first pixel, the slot is a solid plate. */
+.media-area.loading::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  background: rgb(0 0 0 / 0.42);
+  pointer-events: none;
+}
+
+.media-area.loading.awaiting-frame,
+.media-area.loading.awaiting-frame::before {
+  background: var(--media-wait-bg);
+}
+
+/* An empty video paints a one-pixel strip before its first frame. */
+.media-area.loading.awaiting-frame > video,
+.media-area.loading.awaiting-frame > img {
+  visibility: hidden;
+}
+
+.media-area.loading::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 5;
+  width: clamp(76px, 24%, 128px);
+  aspect-ratio: 1;
+  translate: -50% -50%;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 210deg,
+    rgb(255 255 255 / 0.22) 0 40%,
+    #fff 78%,
+    var(--primary) 100%
+  );
+  -webkit-mask: radial-gradient(farthest-side, transparent 64%, #000 71%);
+  mask: radial-gradient(farthest-side, transparent 64%, #000 71%);
+  animation: spin 0.8s linear infinite;
+  pointer-events: none;
 }
 
 /* Answer button hover scale (desktop only) */
@@ -6687,6 +6778,16 @@ html[data-ui-orient="portrait"] .features {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+
+  /* A frozen ring looks like a decoration. This one says the file is still coming. */
+  .media-area.loading::after,
+  .loading-spinner::after {
+    animation-name: spin !important;
+    animation-duration: 0.8s !important;
+    animation-timing-function: linear !important;
+    animation-iteration-count: infinite !important;
+    animation-play-state: running !important;
   }
 }
 
