@@ -415,6 +415,7 @@ def write_zips(
             "id": pid,
             "file": f"{pid}.zip" if media_dir else None,
             "files": block.n(),
+            "names": list(block.files),
             "support": sorted(block.support, key=cat_key),
             "missing": missing,
         }

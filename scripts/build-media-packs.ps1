@@ -479,6 +479,7 @@ function Write-PackFiles($named, $mediaDir, [string]$outDir, $kinds, [bool]$make
             id      = $packId
             file    = $zipName
             files   = $block.N
+            names   = @($block.Files)
             support = @(ConvertFrom-SupportKey $block.Support)
             missing = @($missing)
             sha256  = $sha

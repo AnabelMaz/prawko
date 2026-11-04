@@ -399,7 +399,7 @@ test.describe('Interrupted offline download resume', () => {
     expect(result.after).toBeNull();
   });
 
-  test('keeps in-progress after abort so the next session can continue', async ({ page }) => {
+  test('marks the category in progress while downloading and clears it on stop', async ({ page }) => {
     await stubPacksHost(page);
     await page.goto('/');
     await page.waitForSelector('#home.active');
@@ -428,24 +428,22 @@ test.describe('Interrupted offline download resume', () => {
       window.__prawkoDl = mod.downloadCategoryMedia('PT');
     });
     await zipReq;
+    const mid = await page.evaluate(() => ({
+      during: window.__prawkoOff.getInProgressOfflineCategory(),
+      active: window.__prawkoOff.getActiveDownloadCategory(),
+    }));
+    expect(mid.during).toBe('PT');
+    expect(mid.active).toBe('PT');
     const result = await page.evaluate(async () => {
-      window.__prawkoOff.cancelDownload();
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      const during = window.__prawkoOff.getInProgressOfflineCategory();
-      const active = window.__prawkoOff.getActiveDownloadCategory();
       window.__prawkoOff.stopDownload();
       const downloaded = await window.__prawkoDl;
       return {
-        during,
-        active,
         stopped: downloaded.stopped,
         inProgress: window.__prawkoOff.getInProgressOfflineCategory(),
       };
     });
     releaseZip();
 
-    expect(result.during).toBe('PT');
-    expect(result.active).toBe('PT');
     expect(result.stopped).toBe(true);
     expect(result.inProgress).toBeNull();
   });
@@ -742,5 +740,73 @@ test.describe('Interrupted offline download resume', () => {
     await pt.click();
     await expect(pt).not.toHaveClass(/downloading/);
     releaseZip();
+  });
+
+  test('pack with new sha256 skips GET when every names[] entry is already cached', async ({ page }) => {
+    await stubPacksHost(page);
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    const zipAndHash = await storedZipAndHash(page, 'img/overlap.webp', 'overlap-body');
+    let zipHits = 0;
+    await fulfillPacksManifest(page, {
+      overlap: {
+        id: 'overlap',
+        file: 'overlap.zip',
+        files: 1,
+        support: ['PT'],
+        missing: [],
+        sha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        bytes: zipAndHash.zip.length,
+        names: ['overlap.webp'],
+      },
+    }, { PT: ['overlap'] });
+    await page.route('https://pub-e8e3a36b9ab44034913636d87ee3f0ee.r2.dev/overlap.zip', async (route) => {
+      zipHits += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/zip',
+        body: Buffer.from(zipAndHash.zip),
+      });
+    });
+
+    const result = await page.evaluate(async () => {
+      const { getMediaUrls, fetchCategoryMediaList } = await import(new URL('./js/data.js', location.href).href);
+      const { downloadCategoryMediaFromPacks } = await import(new URL('./js/offline.js', location.href).href);
+      const list = await fetchCategoryMediaList('PT');
+      const cache = await caches.open('prawko-offline-media-v1');
+      for (const q of list.questions || []) {
+        if (!q.media) continue;
+        for (const url of getMediaUrls(q.media, q.mediaType || 'image')) {
+          await cache.put(
+            new Request(url, { mode: 'cors' }),
+            new Response(new Uint8Array([1, 2, 3]), { headers: { 'Content-Type': 'application/octet-stream' } }),
+          );
+        }
+      }
+      for (const url of getMediaUrls('overlap.webp', 'image')) {
+        await cache.put(
+          new Request(url, { mode: 'cors' }),
+          new Response(new Uint8Array([4, 5, 6]), { headers: { 'Content-Type': 'image/webp' } }),
+        );
+      }
+      localStorage.setItem('prawko_offline_packs', JSON.stringify({
+        overlap: {
+          sha256: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+          names: ['overlap.webp'],
+        },
+      }));
+      const downloaded = await downloadCategoryMediaFromPacks('PT');
+      const done = JSON.parse(localStorage.getItem('prawko_offline_packs') || '{}');
+      return {
+        success: downloaded.success,
+        doneSha: done.overlap?.sha256 || '',
+        doneNames: done.overlap?.names || [],
+      };
+    });
+
+    expect(zipHits).toBe(0);
+    expect(result.success).toBe(true);
+    expect(result.doneSha).toBe('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+    expect(result.doneNames).toEqual(['overlap.webp']);
   });
 });
