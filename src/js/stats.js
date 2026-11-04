@@ -1,11 +1,15 @@
 // stats.js — Exam history & learning progress persistence in localStorage
 
 import { fetchCategory } from './data.js';
-import { profileGet, profileSet, profileRemove, getProfileEpoch } from './profiles.js';
+import { profileGet, profileSet, profileRemove, getProfileEpoch, getLearnForgetEnabled } from './profiles.js';
 
 const STORAGE_KEY = 'prawko_stats';
 const LEARN_KEY = 'prawko_learn';
 const DAY_MS = 24 * 60 * 60 * 1000;
+/** With forget on: known answers older than this act like a single correct streak. */
+const LEARN_FORGET_HALF_DAYS = 30;
+/** With forget on: known answers older than this act like never answered. */
+const LEARN_FORGET_FULL_DAYS = 60;
 
 const LAST_RESULT_KEY = 'prawko_last_result';
 
@@ -194,9 +198,29 @@ function learnEntry(category, questionId) {
   return entryFromData(loadLearnData(), category, questionId);
 }
 
-function statusFromEntry(entry, question, answerOverride) {
-  const answer = answerOverride !== undefined ? answerOverride : entry.answer;
+/**
+ * When forget is on, a known streak ages out: after 30 days like streak 1,
+ * after 60 days like no answer. Storage is unchanged; only the effective view.
+ */
+function effectiveLearnEntry(entry, now = Date.now()) {
+  if (!getLearnForgetEnabled()) return entry;
   const streak = entry.streak || 0;
+  if (streak < LEARN_KNOWN_STREAK) return entry;
+  if (!Number.isFinite(entry.answeredAt)) return entry;
+  const ageMs = now - entry.answeredAt;
+  if (ageMs >= LEARN_FORGET_FULL_DAYS * DAY_MS) {
+    return { ...entry, answer: null, streak: 0 };
+  }
+  if (ageMs >= LEARN_FORGET_HALF_DAYS * DAY_MS) {
+    return { ...entry, streak: 1 };
+  }
+  return entry;
+}
+
+function statusFromEntry(entry, question, answerOverride) {
+  const view = effectiveLearnEntry(entry);
+  const answer = answerOverride !== undefined ? answerOverride : view.answer;
+  const streak = view.streak || 0;
   if (answer !== null && answer !== question.correct) return 'wrong';
   if (answer === question.correct && streak >= LEARN_KNOWN_STREAK) return 'known';
   if (answer === null) return 'new';
@@ -204,8 +228,14 @@ function statusFromEntry(entry, question, answerOverride) {
 }
 
 function hardFromEntry(entry, question, answerOverride) {
-  if ((entry.misses || 0) < LEARN_HARD_MISSES) return false;
+  const view = effectiveLearnEntry(entry);
+  if ((view.misses || 0) < LEARN_HARD_MISSES) return false;
   return statusFromEntry(entry, question, answerOverride) !== 'known';
+}
+
+function isKnownStreak(entry, now = Date.now()) {
+  const view = effectiveLearnEntry(entry, now);
+  return (view.streak || 0) >= LEARN_KNOWN_STREAK;
 }
 
 export function getProfileSummary() {
@@ -222,7 +252,7 @@ export function getProfileSummary() {
     if (typeof cat === 'object') {
       Object.entries(cat).forEach(([id, raw]) => {
         ids.add(id);
-        if (normalizeLearnEntry(raw).streak >= LEARN_KNOWN_STREAK) learnKnown += 1;
+        if (isKnownStreak(normalizeLearnEntry(raw))) learnKnown += 1;
       });
     }
   });

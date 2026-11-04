@@ -900,6 +900,23 @@ test.describe('Learn queue filter', () => {
     await expect(page.locator('.learn-filter-select .learn-queue-select')).toHaveText('Do nauki');
   });
 
+  test('learn filter options show short hints on hover', async ({ page }) => {
+    await startLearnMode(page);
+    await page.click('.learn-filter-select .learn-queue-select');
+    const unknown = page.locator('.learn-filter-select [data-value="unknown"]');
+    const hard = page.locator('.learn-filter-select [data-value="hard"]');
+    const known = page.locator('.learn-filter-select [data-value="known"]');
+    const all = page.locator('.learn-filter-select [data-value="all"]');
+    await expect(unknown).toHaveAttribute('data-hint', /Umiem|nowe|błędne/i);
+    await expect(hard).toHaveAttribute('data-hint', /dwa błędy|Umiem/i);
+    await expect(known).toHaveAttribute('data-hint', /Dwie poprawne/i);
+    await expect(all).toHaveAttribute('data-hint', /Cała kategoria/i);
+    await unknown.dispatchEvent('mouseenter');
+    const tip = page.locator('.learn-filter-hint');
+    await expect(tip).toBeVisible();
+    await expect(tip).toContainText(/Umiem|nowe/i);
+  });
+
   test('learn queue menus stay square in both exam skins', async ({ page }) => {
     await startLearnMode(page);
     await page.click('.learn-filter-select .learn-queue-select');
@@ -2127,9 +2144,33 @@ test.describe('Local profiles', () => {
     await expect(page.locator('.profile-appearance .theme-btn')).toBeVisible();
     await expect(page.locator('.profile-appearance .skin-btn')).toBeVisible();
     await expect(page.locator('.profile-appearance .lang-cycle')).toBeVisible();
+    await expect(page.locator('.profile-appearance .theme-btn')).toHaveAttribute('title', /jasny|ciemny|systemie/i);
+    await expect(page.locator('.profile-appearance .skin-btn')).toHaveAttribute('title', /Panel|Stacja/i);
+    await expect(page.locator('.profile-appearance .lang-cycle')).toHaveAttribute('title', /PL.*EN.*DE.*UK/i);
     await expect(page.locator('.top-controls > .theme-btn')).toHaveCount(0);
     await expect(page.locator('.profile-stat-learn')).toContainText('Nauka:');
     await expect(page.locator('.profile-stat-exams')).toContainText('Egzaminy:');
+    const learnRow = page.locator('.profile-stat-row').filter({ has: page.locator('.profile-stat-learn') });
+    const examsRow = page.locator('.profile-stat-row').filter({ has: page.locator('.profile-stat-exams') });
+    await expect(page.locator('.profile-stat-block')).toBeVisible();
+    await expect(learnRow.locator('.profile-learn-forget')).toBeVisible();
+    await expect(learnRow.locator('.profile-learn-forget')).not.toBeChecked();
+    await expect(learnRow.locator('.profile-pref-inline span')).toHaveText('Zapominanie');
+    await expect(examsRow.locator('.profile-practice-exam')).toBeVisible();
+    await expect(examsRow.locator('.profile-pref-inline span')).toHaveText('Próbny');
+    await expect(page.locator('.profile-stat-learn')).toHaveAttribute('title', /postęp nauki|Umiem/i);
+    await expect(page.locator('.profile-stat-exams')).toHaveAttribute('title', /historię egzaminów|podejścia/i);
+    await expect(learnRow.locator('.profile-pref-inline')).toHaveAttribute('title', /30 dniach|60 dniach|zapomniane/i);
+    await expect(examsRow.locator('.profile-pref-inline')).toHaveAttribute('title', /rozgrzewkę|bez punktów/i);
+    const learnStat = await page.locator('.profile-stat-learn').boundingBox();
+    const forgetBox = await learnRow.locator('.profile-pref-inline').boundingBox();
+    const examsStat = await page.locator('.profile-stat-exams').boundingBox();
+    const practiceBox = await examsRow.locator('.profile-pref-inline').boundingBox();
+    expect(forgetBox.x).toBeGreaterThan(learnStat.x + learnStat.width + 6);
+    expect(practiceBox.x).toBeGreaterThan(examsStat.x + examsStat.width + 6);
+    expect(Math.abs(forgetBox.x - practiceBox.x)).toBeLessThan(2);
+    expect(Math.abs(forgetBox.y - learnStat.y)).toBeLessThan(12);
+    expect(Math.abs(practiceBox.y - examsStat.y)).toBeLessThan(12);
     await expect(page.locator('.profile-action-history')).toHaveCount(0);
     await expect(page.locator('.profile-action-rename')).toHaveCount(0);
     await expect(page.locator('.profile-action-new')).toHaveCount(0);

@@ -318,6 +318,12 @@ function rebuildFilter(filter, { keepPlace = true } = {}) {
   return true;
 }
 
+/** Re-run the current filter (e.g. after the forget toggle changes effective status). */
+export function refreshLearnFilter() {
+  if (!state) return false;
+  return rebuildFilter(state.filter, { keepPlace: true });
+}
+
 function setFilter(filter) {
   if (!state) return false;
   if (filter === state.filter) return true;
@@ -498,11 +504,18 @@ function updateLearnStats() {
   incorrect.textContent = `\u2717 ${state.incorrectCount}`;
   filterSelect.querySelector('.learn-queue-select').setAttribute('aria-label', t('learnFilterLabel'));
   orderSelect.querySelector('.learn-queue-select').setAttribute('aria-label', t('learnOrderLabel'));
-  syncQueueDropdown(filterSelect, filterOptions, state.filter);
+  const filterHints = {
+    unknown: t('learnFilterHintUnknown'),
+    hard: t('learnFilterHintHard'),
+    known: t('learnFilterHintKnown'),
+    all: t('learnFilterHintAll'),
+  };
+  syncQueueDropdown(filterSelect, filterOptions, state.filter, filterHints);
   syncQueueDropdown(orderSelect, orderOptions, state.order);
 }
 
 function closeQueueMenus() {
+  hideLearnFilterHint();
   document.querySelectorAll('.learn-queue-dropdown.is-open').forEach((el) => {
     el.classList.remove('is-open');
     el.querySelector('.learn-queue-select')?.setAttribute('aria-expanded', 'false');
@@ -513,6 +526,108 @@ document.addEventListener('click', closeQueueMenus);
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') closeQueueMenus();
 });
+
+const LEARN_HINT_LONG_MS = 450;
+let learnFilterHintEl = null;
+let learnHintLongTimer = 0;
+let learnHintFromLongPress = false;
+
+function ensureLearnFilterHint() {
+  if (learnFilterHintEl) return learnFilterHintEl;
+  learnFilterHintEl = document.createElement('div');
+  learnFilterHintEl.className = 'learn-filter-hint';
+  learnFilterHintEl.hidden = true;
+  learnFilterHintEl.setAttribute('role', 'tooltip');
+  document.body.appendChild(learnFilterHintEl);
+  return learnFilterHintEl;
+}
+
+function hideLearnFilterHint() {
+  if (learnHintLongTimer) {
+    clearTimeout(learnHintLongTimer);
+    learnHintLongTimer = 0;
+  }
+  if (!learnFilterHintEl) return;
+  learnFilterHintEl.hidden = true;
+  learnFilterHintEl.textContent = '';
+}
+
+function showLearnFilterHint(anchor, text) {
+  if (!text) return;
+  const tip = ensureLearnFilterHint();
+  tip.textContent = text;
+  tip.hidden = false;
+  tip.style.left = '0px';
+  tip.style.top = '0px';
+  const rect = anchor.getBoundingClientRect();
+  const tipW = tip.offsetWidth;
+  const tipH = tip.offsetHeight;
+  let left = rect.left;
+  let top = rect.bottom + 6;
+  if (left + tipW > window.innerWidth - 8) {
+    left = Math.max(8, window.innerWidth - tipW - 8);
+  }
+  if (top + tipH > window.innerHeight - 8) {
+    top = Math.max(8, rect.top - tipH - 6);
+  }
+  tip.style.left = `${Math.round(left)}px`;
+  tip.style.top = `${Math.round(top)}px`;
+}
+
+function isHandsetUi() {
+  return document.documentElement.hasAttribute('data-handset');
+}
+
+function bindLearnFilterOptionHint(li, hint) {
+  if (!hint) return;
+  li.dataset.hint = hint;
+  li.addEventListener('mouseenter', () => {
+    showLearnFilterHint(li, hint);
+  });
+  li.addEventListener('mouseleave', () => {
+    hideLearnFilterHint();
+  });
+  li.addEventListener('contextmenu', (e) => {
+    if (isHandsetUi()) e.preventDefault();
+  });
+  li.addEventListener('touchstart', (e) => {
+    if (!isHandsetUi()) return;
+    learnHintFromLongPress = false;
+    if (learnHintLongTimer) clearTimeout(learnHintLongTimer);
+    const touch = e.changedTouches?.[0];
+    const startX = touch?.clientX ?? 0;
+    const startY = touch?.clientY ?? 0;
+    learnHintLongTimer = window.setTimeout(() => {
+      learnHintLongTimer = 0;
+      learnHintFromLongPress = true;
+      showLearnFilterHint(li, hint);
+    }, LEARN_HINT_LONG_MS);
+    const cancel = (ev) => {
+      const t = ev.changedTouches?.[0];
+      if (t && (Math.abs(t.clientX - startX) > 12 || Math.abs(t.clientY - startY) > 12)) {
+        if (learnHintLongTimer) {
+          clearTimeout(learnHintLongTimer);
+          learnHintLongTimer = 0;
+        }
+      }
+    };
+    li.addEventListener('touchmove', cancel, { once: true });
+  }, { passive: true });
+  li.addEventListener('touchend', () => {
+    if (learnHintLongTimer) {
+      clearTimeout(learnHintLongTimer);
+      learnHintLongTimer = 0;
+    }
+  });
+  li.addEventListener('touchcancel', () => {
+    if (learnHintLongTimer) {
+      clearTimeout(learnHintLongTimer);
+      learnHintLongTimer = 0;
+    }
+    hideLearnFilterHint();
+    learnHintFromLongPress = false;
+  });
+}
 
 function createQueueDropdown(extraClass, onPick) {
   const root = document.createElement('div');
@@ -539,7 +654,7 @@ function createQueueDropdown(extraClass, onPick) {
   return root;
 }
 
-function syncQueueDropdown(root, options, value) {
+function syncQueueDropdown(root, options, value, hints = null) {
   const btn = root.querySelector('.learn-queue-select');
   const menu = root.querySelector('.learn-queue-menu');
   menu.replaceChildren(...options.map(([optValue, label]) => {
@@ -548,8 +663,14 @@ function syncQueueDropdown(root, options, value) {
     li.dataset.value = optValue;
     li.textContent = label;
     if (optValue === value) li.setAttribute('aria-selected', 'true');
+    if (hints && hints[optValue]) bindLearnFilterOptionHint(li, hints[optValue]);
     li.addEventListener('click', (e) => {
       e.stopPropagation();
+      if (learnHintFromLongPress) {
+        learnHintFromLongPress = false;
+        hideLearnFilterHint();
+        return;
+      }
       closeQueueMenus();
       root._onPick(optValue);
     });

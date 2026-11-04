@@ -233,6 +233,7 @@ export function profileRemove(legacyKey) {
 }
 
 const PRACTICE_EXAM_KEY = 'prawko_practice_exam';
+const LEARN_FORGET_KEY = 'prawko_learn_forget';
 
 export function getPracticeExamEnabled() {
   return profileGet(PRACTICE_EXAM_KEY) === '1';
@@ -240,6 +241,14 @@ export function getPracticeExamEnabled() {
 
 export function setPracticeExamEnabled(enabled) {
   return profileSet(PRACTICE_EXAM_KEY, enabled ? '1' : '0');
+}
+
+export function getLearnForgetEnabled() {
+  return profileGet(LEARN_FORGET_KEY) === '1';
+}
+
+export function setLearnForgetEnabled(enabled) {
+  return profileSet(LEARN_FORGET_KEY, enabled ? '1' : '0');
 }
 
 export function setActiveProfile(id) {
