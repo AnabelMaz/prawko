@@ -1,11 +1,11 @@
 // app.js — Router, initialization, and event wiring
 
-import { fetchMeta, fetchCategory, fetchUniqueQuestionCount, loadLocalConfig } from './data.js';
+import { fetchMeta, fetchCategory, fetchUniqueQuestionCount, loadLocalConfig, firstScreenLocalConfig } from './data.js';
 import { startExam, setupExamListeners, cleanupExam, getLastExamCategory, refreshExamQuestion } from './exam.js';
 import { startLearn, setupLearnListeners, cleanupLearn, refreshLearnQuestion, loadLearnLocalFlags } from './learn.js';
-import { showScreen, renderCategories, applyLanguage, renderHistory, renderLearnProgress, renderResults, showConfirmModal, refreshOfflineCoverage } from './ui.js';
+import { showScreen, renderCategories, applyLanguage, renderHistory, renderLearnProgress, renderResults, showConfirmModal, refreshOfflineCoverage, formatOfflineRunningLabel } from './ui.js';
 import { setLang, getLang, loadQuestionTranslations, nextLang, LANG_LABELS, t, readStoredLang } from './i18n.js';
-import { downloadCategoryMedia, getDownloadedCategories, reconcileDownloadedCategories, offlineCoverageHue, getInProgressOfflineCategory, getActiveDownloadProgress } from './offline.js';
+import { downloadCategoryMedia, getDownloadedCategories, reconcileDownloadedCategories, offlineCoverageHue, getInProgressOfflineCategory, getActiveDownloadProgress, getActiveDownloadCategory, stopDownload } from './offline.js';
 import { getProfileSummary, loadHistory, loadLastResult, clearHistory, clearLearnProgress, packLearnForExport, unpackLearnFromImport, packExamHistoryForExport, unpackExamHistoryFromImport } from './stats.js';
 import { setupUiFitScale, refitUiScale, revealUiScale, layoutCategoryGrid, applyUiFitScale } from './scale.js';
 import {
@@ -293,23 +293,36 @@ function handleCategorySelect(categoryId) {
 
 async function startOfflineDownload(dlBtn) {
   if (!dlBtn) return;
+  if (dlBtn.classList.contains('coverage-pending')) return;
   const catId = dlBtn.dataset.category;
   if (!catId) return;
-  if (dlBtn.classList.contains('downloaded') || dlBtn.classList.contains('downloading') || dlBtn.classList.contains('unavailable')) return;
+  if (dlBtn.classList.contains('downloaded')) return;
+  const activeId = getActiveDownloadCategory();
+  if (activeId) {
+    if (activeId === catId) stopDownload();
+    return;
+  }
+  const pendingId = getInProgressOfflineCategory();
+  if (pendingId && pendingId !== catId) return;
 
   dlBtn.classList.add('downloading');
+  dlBtn.classList.remove('unavailable', 'download-locked');
+  document.querySelectorAll('.category-grid .offline-btn[data-category]').forEach((btn) => {
+    if (btn !== dlBtn) btn.classList.add('download-locked');
+  });
   const startPct = Number(dlBtn.dataset.offlinePct);
   const initial = Number.isFinite(startPct) && startPct > 0 ? Math.min(99, Math.round(startPct)) : 0;
-  dlBtn.textContent = `\u2193 ${initial}%`;
+  dlBtn.textContent = formatOfflineRunningLabel(initial);
   dlBtn.style.setProperty('--dl-progress', String(initial));
   dlBtn.style.setProperty('--offline-hue', String(offlineCoverageHue(initial)));
 
   try {
     const result = await downloadCategoryMedia(catId, (done, total) => {
-      const pct = Math.round((done / total) * 100);
+      const pct = Math.max(0, Math.min(99, Math.round((done / Math.max(1, total)) * 100)));
       const btn = document.querySelector(`.category-grid .offline-btn[data-category="${CSS.escape(catId)}"]`) || dlBtn;
       btn.classList.add('downloading');
-      btn.textContent = `\u2193 ${pct}%`;
+      btn.classList.remove('unavailable', 'download-locked');
+      btn.textContent = formatOfflineRunningLabel(pct);
       btn.style.setProperty('--dl-progress', String(pct));
       btn.style.setProperty('--offline-hue', String(offlineCoverageHue(pct)));
     });
@@ -346,7 +359,7 @@ function resumeOfflineDownloadIfNeeded() {
   if (!catId || !meta) return;
   if (getActiveDownloadProgress(catId)) return;
   const dlBtn = document.querySelector(`.category-grid .offline-btn[data-category="${CSS.escape(catId)}"]`);
-  if (!dlBtn || dlBtn.classList.contains('unavailable') || dlBtn.classList.contains('downloaded')) return;
+  if (!dlBtn || dlBtn.classList.contains('downloaded')) return;
   startOfflineDownload(dlBtn);
 }
 
@@ -1003,8 +1016,9 @@ async function applyAppUpdate(registration) {
 async function init() {
   setupUiFitScale();
   const metaP = fetchMeta();
-  await loadLocalConfig();
-  await loadLearnLocalFlags();
+  const localP = loadLocalConfig();
+  await firstScreenLocalConfig();
+  void loadLearnLocalFlags();
   const spinner = document.getElementById('home-spinner');
   try {
     meta = await metaP;
@@ -1013,6 +1027,12 @@ async function init() {
     renderCategories(meta, getDownloadedCategories());
     syncCategoryCardVisibility();
     renderRecentCategories();
+    void localP.then(() => {
+      if (!meta) return;
+      renderCategories(meta, getDownloadedCategories());
+      syncCategoryCardVisibility();
+      renderRecentCategories();
+    });
     reconcileDownloadedCategories()
       .then((verifiedSet) => {
         if (meta) {
@@ -1242,6 +1262,7 @@ async function init() {
       syncCategoryCardVisibility();
       renderRecentCategories();
       applyCategorySearch();
+      resumeOfflineDownloadIfNeeded();
     }
     applyUiFitScale();
   }
@@ -1250,7 +1271,6 @@ async function init() {
   updateOnlineStatus();
   await revealUiScale();
 
-  // Preload category data on hover
   document.querySelectorAll('.category-card').forEach(card => {
     card.addEventListener('mouseenter', () => {
       fetchCategory(card.dataset.category).catch(() => {});

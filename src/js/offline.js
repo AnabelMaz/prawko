@@ -1,6 +1,6 @@
 // offline.js — Offline download management
 
-import { fetchMeta, fetchCategory, getMediaUrls, usesLocalMedia, isLoopbackHost, PACKS_BASE, OFFLINE_DOWNLOAD } from './data.js';
+import { fetchMeta, fetchCategory, fetchCategoryMediaList, getMediaUrls, usesLocalMedia, isLoopbackHost, PACKS_BASE, OFFLINE_DOWNLOAD, loadLocalConfig } from './data.js';
 import { forEachZipFile } from './zip.js';
 
 const DOWNLOAD_KEY = 'prawko_offline';
@@ -435,7 +435,29 @@ function scheduleRememberViewedMedia(url, blob) {
   else setTimeout(run, 0);
 }
 
-/** Full GET of a viewed image or video. Skip only when this computer already has the files (loopback + mediaBase media). */
+/** True when this browser already has a complete copy. Does not read the body. */
+async function offlineMediaAlreadyStored(name, kind) {
+  const cache = await openOfflineCache();
+  if (cache) {
+    try {
+      const hit = await matchCachedMediaResponse(cache, name, kind);
+      if (hit && hit.ok && hit.status === 200 && !hit.headers.get('Content-Range')) return true;
+    } catch { /* a failed lookup still fetches */ }
+  }
+  try {
+    const keys = await listIdbMediaKeys();
+    const want = name.toLowerCase();
+    for (const key of keys) {
+      const file = String(key).split('/').pop() || '';
+      let decoded = file;
+      try { decoded = decodeURIComponent(file); } catch { /* keep the raw key */ }
+      if (file.toLowerCase() === want || decoded.toLowerCase() === want) return true;
+    }
+  } catch { /* a failed lookup still fetches */ }
+  return false;
+}
+
+/** Full GET of a viewed image or video. Skip only when this computer already has the files (loopback + mediaBase media), or this browser already stored that file. */
 export async function captureViewedMedia(url, options = {}) {
   if (!url || /^(blob|data):/i.test(url)) return null;
   const kind = viewedMediaKind(url);
@@ -451,7 +473,9 @@ export async function captureViewedMedia(url, options = {}) {
   const loopback = options.loopback ?? isLoopbackHost();
   if (!remote && localMedia && loopback) return null;
   try {
-    const res = await fetch(abs.href, { mode: 'cors', credentials: 'omit' });
+    const name = decodeURIComponent((abs.pathname.split('/').pop() || '').split('?')[0]);
+    if (name && await offlineMediaAlreadyStored(name, kind)) return null;
+    const res = await fetch(abs.href, { mode: 'cors', credentials: 'omit', priority: 'low', signal: options.signal });
     if (!isCompleteMediaResponse(res)) return null;
     const listed = Number(res.headers.get('Content-Length'));
     if (Number.isFinite(listed) && listed > MAX_VIEWED_MEDIA) return null;
@@ -467,7 +491,8 @@ export async function captureViewedMedia(url, options = {}) {
     const body = blob.type === type ? blob : new Blob([blob], { type });
     scheduleRememberViewedMedia(abs.href, body);
     return URL.createObjectURL(body);
-  } catch {
+  } catch (err) {
+    if (err && err.name === 'AbortError') throw err;
     return null;
   }
 }
@@ -512,6 +537,7 @@ export async function getCachedUrlSet() {
 }
 
 export async function getCategoriesOfflineCoverage(categoryIds) {
+  await loadLocalConfig();
   const ids = Array.isArray(categoryIds) ? categoryIds : [];
   const map = {};
   if (usesLocalMedia() && isLoopbackHost()) {
@@ -521,7 +547,7 @@ export async function getCategoriesOfflineCoverage(categoryIds) {
   const cached = await getCachedUrlSet();
   await Promise.all(ids.map(async (id) => {
     try {
-      const data = await fetchCategory(id);
+      const data = await fetchCategoryMediaList(id);
       map[id] = coverageFromUrls(getCategoryMediaUrls(data), cached);
     } catch {
       map[id] = { have: 0, total: 1, pct: 0 };
@@ -570,8 +596,23 @@ function getCategoryMediaUrls(categoryData) {
 
 let activeController = null;
 let activeDownload = null;
+let userStop = false;
 
+export function getActiveDownloadCategory() {
+  return activeDownload?.categoryId || null;
+}
+
+/** Abort the current socket. The job stays in progress and tries again. */
 export function cancelDownload() {
+  if (activeController) {
+    activeController.abort();
+    activeController = null;
+  }
+}
+
+/** User asked to stop. Keeps bytes already stored and ends the job. */
+export function stopDownload() {
+  userStop = true;
   if (activeController) {
     activeController.abort();
     activeController = null;
@@ -601,11 +642,14 @@ function emitDownloadProgress(done, total, extra) {
 }
 
 export async function downloadCategoryMedia(categoryId, onProgress) {
-  if (activeDownload?.promise && activeDownload.categoryId === categoryId) {
-    attachDownloadProgress(categoryId, onProgress);
-    return activeDownload.promise;
+  if (activeDownload?.promise) {
+    if (activeDownload.categoryId === categoryId) {
+      attachDownloadProgress(categoryId, onProgress);
+      return activeDownload.promise;
+    }
+    return { success: false, busy: true, cancelled: false, stopped: false, total: 0, failed: 0 };
   }
-  cancelDownload();
+  userStop = false;
   setInProgressOfflineCategory(categoryId);
   activeDownload = {
     categoryId,
@@ -687,27 +731,421 @@ async function fetchPacksManifest(signal) {
   return res.json();
 }
 
-async function fetchZipBytes(url, signal, onBytes) {
-  const res = await fetch(url, { signal, mode: 'cors', cache: 'no-store' });
-  if (!res.ok) throw new Error(`Pack ${res.status} ${url}`);
-  if (!res.body || !onBytes) return res.arrayBuffer();
-  const reader = res.body.getReader();
-  const chunks = [];
-  let loaded = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    chunks.push(value);
-    loaded += value.byteLength;
-    onBytes(loaded);
+// One committed chunk. Resume steps back this far and checks those bytes
+// before keeping anything new, same idea as a download-manager piece
+// (typical piece sizes sit between 128 KiB and 1 MiB). 256 KiB covers a
+// torn last write without re-fetching a meaningful part of a pack.
+const RESUME_REWIND_BYTES = 256 * 1024;
+const STALL_MS = 30000;
+const REAL_ERRORS_BEFORE_RESTART = 3;
+const QUICK_RETRY_MS = 400;
+const RETRY_BASE_MS = 2000;
+const RETRY_MAX_MS = 30000;
+const PARTIAL_DB = 'prawko-pack-partial';
+const PARTIAL_STORE = 'chunks';
+
+function attemptError(message, kind, packId, progressed) {
+  const err = new Error(message);
+  err.name = 'DownloadAttemptError';
+  err.kind = kind;
+  err.packId = packId || '';
+  err.progressed = Boolean(progressed);
+  return err;
+}
+
+function asBytes(value) {
+  if (value instanceof Uint8Array) return value;
+  if (value instanceof ArrayBuffer) return new Uint8Array(value);
+  return new Uint8Array(0);
+}
+
+let partialDbPromise = null;
+
+function openPartialDb() {
+  if (partialDbPromise) return partialDbPromise;
+  partialDbPromise = new Promise((resolve, reject) => {
+    if (typeof indexedDB === 'undefined') {
+      reject(new Error('IndexedDB is not available'));
+      return;
+    }
+    const req = indexedDB.open(PARTIAL_DB, 1);
+    req.onupgradeneeded = () => {
+      if (!req.result.objectStoreNames.contains(PARTIAL_STORE)) {
+        req.result.createObjectStore(PARTIAL_STORE);
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error || new Error('partial store open failed'));
+  }).catch((err) => {
+    partialDbPromise = null;
+    throw err;
+  });
+  return partialDbPromise;
+}
+
+function partialGet(key) {
+  return openPartialDb().then((db) => new Promise((resolve, reject) => {
+    const tx = db.transaction(PARTIAL_STORE, 'readonly');
+    const req = tx.objectStore(PARTIAL_STORE).get(key);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  }));
+}
+
+function partialKeys() {
+  return openPartialDb().then((db) => new Promise((resolve, reject) => {
+    const tx = db.transaction(PARTIAL_STORE, 'readonly');
+    const req = tx.objectStore(PARTIAL_STORE).getAllKeys();
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = () => reject(req.error);
+  }));
+}
+
+function partialLength(packId) {
+  return partialGet(`${packId}::len`).then((value) => {
+    const n = Number(value);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  });
+}
+
+async function setPartialLength(packId, n) {
+  const next = Math.max(0, Number(n) || 0);
+  const keys = await partialKeys();
+  const db = await openPartialDb();
+  const mark = `${packId}::c::`;
+  const lastKeep = next > 0 ? Math.floor((next - 1) / RESUME_REWIND_BYTES) : -1;
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction(PARTIAL_STORE, 'readwrite');
+    const store = tx.objectStore(PARTIAL_STORE);
+    store.put(next, `${packId}::len`);
+    for (const key of keys) {
+      const text = String(key);
+      if (!text.startsWith(mark)) continue;
+      const index = Number(text.slice(mark.length));
+      if (index > lastKeep) store.delete(key);
+    }
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error || new Error('partial truncate failed'));
+    tx.onabort = () => reject(tx.error || new Error('partial truncate aborted'));
+  });
+}
+
+async function deletePartial(packId) {
+  const keys = await partialKeys();
+  const prefix = `${packId}::`;
+  const doomed = keys.filter((key) => String(key).startsWith(prefix));
+  if (!doomed.length) return;
+  const db = await openPartialDb();
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction(PARTIAL_STORE, 'readwrite');
+    const store = tx.objectStore(PARTIAL_STORE);
+    for (const key of doomed) store.delete(key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error || new Error('partial delete failed'));
+    tx.onabort = () => reject(tx.error || new Error('partial delete aborted'));
+  });
+}
+
+async function readPartial(packId, start, end) {
+  const from = Math.max(0, start);
+  const to = Math.max(from, end);
+  const out = new Uint8Array(to - from);
+  let filled = 0;
+  while (filled < out.length) {
+    const abs = from + filled;
+    const index = Math.floor(abs / RESUME_REWIND_BYTES);
+    const chunk = asBytes(await partialGet(`${packId}::c::${index}`));
+    const within = abs - index * RESUME_REWIND_BYTES;
+    if (within >= chunk.length) break;
+    const n = Math.min(out.length - filled, chunk.length - within);
+    out.set(chunk.subarray(within, within + n), filled);
+    filled += n;
   }
-  const out = new Uint8Array(loaded);
+  return filled === out.length ? out : out.subarray(0, filled);
+}
+
+async function readAllPartial(packId) {
+  const n = await partialLength(packId);
+  const bytes = await readPartial(packId, 0, n);
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+}
+
+async function writeSlice(packId, offset, data) {
+  if (!data?.length) return;
+  const prev = await partialLength(packId);
+  const db = await openPartialDb();
+  const indexes = [];
+  for (let pos = 0; pos < data.length;) {
+    const index = Math.floor((offset + pos) / RESUME_REWIND_BYTES);
+    indexes.push(index);
+    const within = offset + pos - index * RESUME_REWIND_BYTES;
+    pos += Math.min(data.length - pos, RESUME_REWIND_BYTES - within);
+  }
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction(PARTIAL_STORE, 'readwrite');
+    const store = tx.objectStore(PARTIAL_STORE);
+    const got = new Map();
+    let pending = indexes.length;
+    const fail = (err) => reject(err || new Error('partial write failed'));
+    const commit = () => {
+      try {
+        let pos = 0;
+        while (pos < data.length) {
+          const index = Math.floor((offset + pos) / RESUME_REWIND_BYTES);
+          const within = offset + pos - index * RESUME_REWIND_BYTES;
+          const n = Math.min(data.length - pos, RESUME_REWIND_BYTES - within);
+          const existing = got.get(index) || new Uint8Array(0);
+          const mergedLen = Math.max(existing.length, within + n);
+          const merged = new Uint8Array(mergedLen);
+          if (existing.length) merged.set(existing.subarray(0, Math.min(existing.length, mergedLen)));
+          merged.set(data.subarray(pos, pos + n), within);
+          got.set(index, merged);
+          store.put(merged, `${packId}::c::${index}`);
+          pos += n;
+        }
+        const end = offset + data.length;
+        if (end > prev) store.put(end, `${packId}::len`);
+      } catch (err) {
+        fail(err);
+      }
+    };
+    for (const index of indexes) {
+      const req = store.get(`${packId}::c::${index}`);
+      req.onsuccess = () => {
+        got.set(index, asBytes(req.result));
+        pending -= 1;
+        if (pending === 0) commit();
+      };
+      req.onerror = () => fail(req.error);
+    }
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => fail(tx.error);
+    tx.onabort = () => fail(tx.error || new Error('partial write aborted'));
+  });
+}
+
+function sleepMs(ms, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted || userStop) {
+      reject(new DOMException('Aborted', 'AbortError'));
+      return;
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new DOMException('Aborted', 'AbortError'));
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+function waitUntilOnline(signal) {
+  if (typeof navigator === 'undefined' || navigator.onLine !== false) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const finish = () => {
+      cleanup();
+      resolve();
+    };
+    const onAbort = () => {
+      cleanup();
+      reject(new DOMException('Aborted', 'AbortError'));
+    };
+    const onOnline = () => {
+      if (typeof navigator === 'undefined' || navigator.onLine !== false) finish();
+    };
+    const poll = setInterval(onOnline, 1000);
+    function cleanup() {
+      clearInterval(poll);
+      window.removeEventListener('online', onOnline);
+      signal?.removeEventListener('abort', onAbort);
+    }
+    window.addEventListener('online', onOnline);
+    if (signal?.aborted || userStop) {
+      onAbort();
+      return;
+    }
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+function readWithStall(reader, signal) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reader.cancel().catch(() => {});
+      const kind = (typeof navigator !== 'undefined' && navigator.onLine === false) ? 'offline' : 'stall';
+      reject(attemptError('stalled', kind));
+    }, STALL_MS);
+    const onAbort = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reader.cancel().catch(() => {});
+      reject(signal.reason || new DOMException('Aborted', 'AbortError'));
+    };
+    if (signal?.aborted) {
+      onAbort();
+      return;
+    }
+    signal?.addEventListener('abort', onAbort, { once: true });
+    reader.read().then((result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+      resolve(result);
+    }, (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+      reject(err);
+    });
+  });
+}
+
+function concatBytes(parts, length) {
+  const out = new Uint8Array(length);
   let offset = 0;
-  for (const chunk of chunks) {
-    out.set(chunk, offset);
-    offset += chunk.byteLength;
+  for (const part of parts) {
+    out.set(part, offset);
+    offset += part.length;
   }
-  return out.buffer;
+  return out;
+}
+
+function announcedTotal(res) {
+  const range = res.headers.get('Content-Range') || '';
+  const match = /\/(\d+)\s*$/.exec(range);
+  if (match) {
+    const total = Number(match[1]);
+    if (total > 0) return total;
+  }
+  if (res.status === 200) {
+    const length = Number(res.headers.get('Content-Length'));
+    if (Number.isFinite(length) && length > 0) return length;
+  }
+  return 0;
+}
+
+function partialExpected(packId) {
+  return partialGet(`${packId}::expect`).then((value) => {
+    const n = Number(value);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  });
+}
+
+async function setPartialExpected(packId, n) {
+  if (!(n > 0)) return;
+  const db = await openPartialDb();
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction(PARTIAL_STORE, 'readwrite');
+    tx.objectStore(PARTIAL_STORE).put(n, `${packId}::expect`);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error || new Error('partial expect failed'));
+    tx.onabort = () => reject(tx.error || new Error('partial expect aborted'));
+  });
+}
+
+async function storePackBody(packId, url, expectedBytes, signal, onBytes) {
+  let expected = expectedBytes > 0 ? expectedBytes : await partialExpected(packId);
+  let size = await partialLength(packId);
+  if (expected > 0 && size > expected) {
+    await setPartialLength(packId, 0);
+    size = 0;
+  }
+  if (expected > 0 && size === expected) {
+    onBytes?.(size, expected);
+    return;
+  }
+  const rewind = size > 0 ? Math.min(RESUME_REWIND_BYTES, size) : 0;
+  let start = size - rewind;
+  const headers = {};
+  if (start > 0) headers.Range = `bytes=${start}-`;
+  let res;
+  try {
+    res = await fetch(url, { signal, mode: 'cors', cache: 'no-store', headers });
+  } catch (err) {
+    if (err?.name === 'AbortError') throw err;
+    const kind = (typeof navigator !== 'undefined' && navigator.onLine === false) ? 'offline' : 'http';
+    throw attemptError(err?.message || 'pack fetch failed', kind, packId, false);
+  }
+  if (start > 0 && res.status === 200) {
+    await setPartialLength(packId, 0);
+    start = 0;
+  } else if (start > 0 && res.status === 416) {
+    throw attemptError('range not satisfiable', 'resume', packId, false);
+  } else if (start > 0 && res.status !== 206) {
+    throw attemptError(`pack ${res.status}`, res.ok ? 'resume' : 'http', packId, false);
+  } else if (!res.ok) {
+    throw attemptError(`pack ${res.status}`, 'http', packId, false);
+  }
+  if (!res.body) throw attemptError('pack has no body', 'http', packId, false);
+  if (!(expectedBytes > 0)) {
+    const announced = announcedTotal(res);
+    if (announced > 0 && announced !== expected) {
+      if (expected > 0 && start > 0) {
+        throw attemptError('size changed', 'resume', packId, false);
+      }
+      expected = announced;
+      await setPartialExpected(packId, announced);
+    }
+  }
+  const overlap = start > 0 ? await readPartial(packId, start, size) : null;
+  const reader = res.body.getReader();
+  const pending = [];
+  let pendingLen = 0;
+  let confirmed = !overlap;
+  let filePos = start;
+  const sizeAtStart = size;
+  try {
+    while (true) {
+      if (userStop) throw new DOMException('Aborted', 'AbortError');
+      const { done, value } = await readWithStall(reader, signal);
+      if (done) break;
+      if (!value?.length) continue;
+      if (!confirmed) {
+        pending.push(value);
+        pendingLen += value.length;
+        if (overlap && pendingLen < overlap.length) continue;
+        const all = concatBytes(pending, pendingLen);
+        for (let i = 0; i < overlap.length; i++) {
+          if (all[i] !== overlap[i]) {
+            throw attemptError('resume overlap mismatch', 'resume', packId, false);
+          }
+        }
+        await writeSlice(packId, start, all);
+        filePos = start + all.length;
+        confirmed = true;
+        pending.length = 0;
+      } else {
+        await writeSlice(packId, filePos, value);
+        filePos += value.length;
+      }
+      onBytes?.(filePos, expected);
+    }
+  } catch (err) {
+    if (err?.name === 'DownloadAttemptError' && !err.packId) err.packId = packId;
+    if (err?.name === 'QuotaExceededError') {
+      throw attemptError(err.message || 'disk full', 'quota', packId, filePos > sizeAtStart);
+    }
+    if (err?.progressed == null && filePos > sizeAtStart) err.progressed = true;
+    throw err;
+  }
+  if (!confirmed) {
+    throw attemptError('truncated before resume check', 'stall', packId, false);
+  }
+  if (expected > 0 && filePos !== expected) {
+    if (filePos > expected) await setPartialLength(packId, 0);
+    throw attemptError('truncated pack', 'stall', packId, filePos > sizeAtStart && filePos <= expected);
+  }
+  const prev = await partialLength(packId);
+  if (filePos < prev) await setPartialLength(packId, filePos);
 }
 
 async function cacheZipEntry(cache, entryName, fileBytes, cachedSet) {
@@ -787,7 +1225,7 @@ export function combinedPackProgress(floorPct, packWeights, packIndex, downloadF
   return floor + ((100 - floor) * (doneW + curW * packFrac)) / totalW;
 }
 
-function finishCategoryDownload(categoryId, mediaUrls, cancelled, failed) {
+function finishCategoryDownload(categoryId, mediaUrls, cancelled, failed, stopped = false) {
   const downloaded = getDownloadedCategories();
   const manifest = loadManifest();
   if (!cancelled && failed === 0) downloaded.add(categoryId);
@@ -796,183 +1234,296 @@ function finishCategoryDownload(categoryId, mediaUrls, cancelled, failed) {
   else delete manifest[categoryId];
   saveDownloaded(downloaded);
   saveManifest(manifest);
-  if (!cancelled) clearInProgressOfflineCategory(categoryId);
+  if (!cancelled || stopped) clearInProgressOfflineCategory(categoryId);
   notifyServiceWorkerOfflineMedia();
-  return { success: !cancelled && failed === 0, total: mediaUrls.length, failed, cancelled };
+  return {
+    success: !cancelled && failed === 0,
+    total: mediaUrls.length,
+    failed,
+    cancelled,
+    stopped,
+  };
+}
+
+function retryDelay(err, streak) {
+  if (err?.progressed) return QUICK_RETRY_MS;
+  return Math.min(RETRY_MAX_MS, RETRY_BASE_MS * (2 ** Math.min(streak, 4)));
+}
+
+function isOfflineFailure(err) {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
+  return err?.kind === 'offline';
+}
+
+async function runPackDownload(categoryId, onProgress, signal) {
+  await loadLocalConfig();
+  const data = await fetchCategoryMediaList(categoryId);
+  const mediaUrls = getCategoryMediaUrls(data);
+  if (mediaUrls.length === 0) {
+    onProgress?.(1, 1);
+    return { done: true, mediaUrls };
+  }
+
+  let man;
+  try {
+    man = await fetchPacksManifest(signal);
+  } catch (err) {
+    if (err?.name === 'AbortError') throw err;
+    const kind = (typeof navigator !== 'undefined' && navigator.onLine === false) ? 'offline' : 'http';
+    throw attemptError(err?.message || 'manifest failed', kind, '', false);
+  }
+  const packIds = man.categories?.[categoryId];
+  if (!Array.isArray(packIds) || packIds.length === 0) {
+    throw attemptError(`No packs listed for ${categoryId}`, 'http', '', false);
+  }
+  const packs = packIds.map((id) => man.packs?.[id]).filter(Boolean);
+  if (!packs.length) throw attemptError(`Pack metadata missing for ${categoryId}`, 'http', '', false);
+
+  const cache = typeof caches !== 'undefined' ? await caches.open(OFFLINE_CACHE) : null;
+  if (!cache) throw attemptError('Cache Storage is not available', 'quota', '', false);
+  const doneMap = loadPacksDone();
+  const cached = await getCachedUrlSet();
+  const cov = coverageFromUrls(mediaUrls, cached);
+  if (cov.pct >= 100) {
+    onProgress?.(100, 100, { failed: 0, cancelled: false });
+    return { done: true, mediaUrls };
+  }
+
+  const pending = packs
+    .filter((pack) => !packFilesCached(pack, doneMap, cached))
+    .sort((a, b) => (Number(a.bytes) || 0) - (Number(b.bytes) || 0));
+  const packWeights = pending.map((pack) => Number(pack.bytes) || 0);
+  const floorPct = cov.pct;
+  const reportJob = (packIndex, downloadFrac, unpackFrac, finished = false) => {
+    let pct = combinedPackProgress(floorPct, packWeights, packIndex, downloadFrac, unpackFrac);
+    if (finished) pct = 100;
+    let n = Math.round(pct);
+    n = Math.max(0, Math.min(100, n));
+    if (!finished && n >= 100) n = 99;
+    onProgress?.(n, 100, { failed: 0, cancelled: false });
+  };
+  reportJob(0, 0, 0);
+  if (!pending.length) {
+    reportJob(0, 1, 1, true);
+    return { done: true, mediaUrls };
+  }
+
+  for (let packIndex = 0; packIndex < pending.length; packIndex++) {
+    const pack = pending[packIndex];
+    if (userStop) throw new DOMException('Aborted', 'AbortError');
+    if (signal.aborted) throw attemptError('aborted', 'stall', pack.id, false);
+    if (coverageFromUrls(mediaUrls, cached).pct >= 100) {
+      reportJob(packIndex, 1, 1, true);
+      return { done: true, mediaUrls };
+    }
+    if (packFilesCached(pack, doneMap, cached)) {
+      try { await deletePartial(pack.id); } catch { /* zip already unpacked */ }
+      continue;
+    }
+    const zipUrl = `${packsBaseUrl()}/${pack.file || `${pack.id}.zip`}`;
+    const expectedBytes = Math.max(Number(pack.bytes) || 0, 1);
+    try {
+      await storePackBody(pack.id, zipUrl, expectedBytes, signal, (loaded) => {
+        reportJob(packIndex, loaded / expectedBytes, 0);
+      });
+    } catch (err) {
+      if (err && !err.packId) err.packId = pack.id;
+      throw err;
+    }
+    reportJob(packIndex, 1, 0);
+    const buffer = await readAllPartial(pack.id);
+    if (pack.sha256) {
+      const hex = await sha256hex(buffer);
+      if (hex !== String(pack.sha256).toLowerCase()) {
+        throw attemptError(`Pack hash mismatch ${pack.file}`, 'hash', pack.id, false);
+      }
+    }
+    const names = [];
+    await forEachZipFile(buffer, async (entryName, fileBytes) => {
+      if (userStop) throw new DOMException('Aborted', 'AbortError');
+      const stored = await cacheZipEntry(cache, entryName, fileBytes, cached);
+      if (stored) names.push(stored);
+    }, (done, total) => {
+      reportJob(packIndex, 1, total > 0 ? done / total : 1);
+    });
+    if (userStop) throw new DOMException('Aborted', 'AbortError');
+    doneMap[pack.id] = { sha256: pack.sha256 || '', names };
+    savePacksDone(doneMap);
+    try { await deletePartial(pack.id); } catch { /* unpacked copy is the one that matters */ }
+    reportJob(packIndex, 1, 1);
+  }
+  reportJob(Math.max(0, pending.length - 1), 1, 1, true);
+  return { done: true, mediaUrls };
 }
 
 export async function downloadCategoryMediaFromPacks(categoryId, onProgress) {
-  cancelDownload();
-  const controller = new AbortController();
-  activeController = controller;
-
-  const data = await fetchCategory(categoryId);
-  const mediaUrls = getCategoryMediaUrls(data);
-  if (mediaUrls.length === 0) {
-    activeController = null;
-    onProgress?.(1, 1);
-    return finishCategoryDownload(categoryId, [], false, 0);
-  }
-
-  let cancelled = false;
-  let failed = 0;
-  let lastErr = null;
-  try {
-    const man = await fetchPacksManifest(controller.signal);
-    const packIds = man.categories?.[categoryId];
-    if (!Array.isArray(packIds) || packIds.length === 0) {
-      throw new Error(`No packs listed for ${categoryId}`);
-    }
-    const packs = packIds.map((id) => man.packs?.[id]).filter(Boolean);
-    if (!packs.length) throw new Error(`Pack metadata missing for ${categoryId}`);
-
-    const cache = typeof caches !== 'undefined' ? await caches.open(OFFLINE_CACHE) : null;
-    if (!cache) throw new Error('Cache Storage is not available');
-    const doneMap = loadPacksDone();
-    const cached = await getCachedUrlSet();
-    const cov = coverageFromUrls(mediaUrls, cached);
-    if (cov.pct >= 100) {
-      onProgress?.(100, 100, { failed, cancelled });
-      return finishCategoryDownload(categoryId, mediaUrls, false, 0);
-    }
-
-    const pending = packs
-      .filter((pack) => !packFilesCached(pack, doneMap, cached))
-      .sort((a, b) => (Number(a.bytes) || 0) - (Number(b.bytes) || 0));
-    const packWeights = pending.map((pack) => Number(pack.bytes) || 0);
-    const floorPct = cov.pct;
-    const reportJob = (packIndex, downloadFrac, unpackFrac, finished = false) => {
-      let pct = combinedPackProgress(floorPct, packWeights, packIndex, downloadFrac, unpackFrac);
-      if (finished) pct = 100;
-      let n = Math.round(pct);
-      n = Math.max(0, Math.min(100, n));
-      if (!finished && n >= 100) n = 99;
-      onProgress?.(n, 100, { failed, cancelled });
-    };
-    reportJob(0, 0, 0);
-
-    for (let packIndex = 0; packIndex < pending.length; packIndex++) {
-      const pack = pending[packIndex];
-      if (controller.signal.aborted) {
-        cancelled = true;
-        break;
+  const resumeFails = new Map();
+  let streak = 0;
+  let mediaUrls = [];
+  while (!userStop) {
+    const controller = new AbortController();
+    activeController = controller;
+    try {
+      const pass = await runPackDownload(categoryId, onProgress, controller.signal);
+      mediaUrls = pass.mediaUrls;
+      if (pass.done) return finishCategoryDownload(categoryId, mediaUrls, false, 0, false);
+    } catch (err) {
+      if (userStop) break;
+      if (isOfflineFailure(err)) {
+        try { await waitUntilOnline(controller.signal); }
+        catch { if (userStop) break; }
+        continue;
       }
-      if (coverageFromUrls(mediaUrls, cached).pct >= 100) {
-        reportJob(packIndex, 1, 1, true);
-        break;
-      }
-      const zipUrl = `${packsBaseUrl()}/${pack.file || `${pack.id}.zip`}`;
-      const expectedBytes = Math.max(Number(pack.bytes) || 0, 1);
-      const buffer = await fetchZipBytes(zipUrl, controller.signal, (loaded) => {
-        reportJob(packIndex, loaded / expectedBytes, 0);
-      });
-      reportJob(packIndex, 1, 0);
-      if (pack.sha256) {
-        const hex = await sha256hex(buffer);
-        if (hex !== String(pack.sha256).toLowerCase()) {
-          throw new Error(`Pack hash mismatch ${pack.file}`);
+      if (err?.kind === 'resume' && err.packId) {
+        const n = (resumeFails.get(err.packId) || 0) + 1;
+        resumeFails.set(err.packId, n);
+        if (n >= REAL_ERRORS_BEFORE_RESTART) {
+          try { await deletePartial(err.packId); } catch { /* next pass starts clean */ }
+          resumeFails.set(err.packId, 0);
         }
+      } else if (err?.kind === 'hash' && err.packId) {
+        try { await deletePartial(err.packId); } catch { /* next pass starts clean */ }
       }
-      const names = [];
-      await forEachZipFile(buffer, async (entryName, fileBytes) => {
-        if (controller.signal.aborted) return;
-        const stored = await cacheZipEntry(cache, entryName, fileBytes, cached);
-        if (stored) names.push(stored);
-      }, (done, total) => {
-        reportJob(packIndex, 1, total > 0 ? done / total : 1);
-      });
-      reportJob(packIndex, 1, 1);
-      if (controller.signal.aborted) {
-        cancelled = true;
-        break;
-      }
-      doneMap[pack.id] = { sha256: pack.sha256 || '', names };
-      savePacksDone(doneMap);
+      const delay = retryDelay(err, streak);
+      if (err?.progressed) streak = 0;
+      else streak += 1;
+      try { await sleepMs(delay, controller.signal); }
+      catch { if (userStop) break; }
+    } finally {
+      if (activeController === controller) activeController = null;
     }
-    if (!cancelled) reportJob(Math.max(0, pending.length - 1), 1, 1, true);
-  } catch (err) {
-    if (err?.name === 'AbortError') cancelled = true;
-    else {
-      failed = 1;
-      lastErr = err;
-    }
-  } finally {
-    if (activeController === controller) activeController = null;
   }
-
-  const result = finishCategoryDownload(categoryId, mediaUrls, cancelled, failed);
-  if (lastErr) throw lastErr;
-  return result;
+  return finishCategoryDownload(categoryId, mediaUrls, true, 0, true);
 }
 
-export async function downloadCategoryMediaFromFiles(categoryId, onProgress) {
-  cancelDownload();
-  const controller = new AbortController();
-  activeController = controller;
+function isSameOriginMediaUrl(url) {
+  try {
+    const abs = new URL(url, typeof location !== 'undefined' ? location.href : undefined);
+    return typeof location !== 'undefined' && abs.origin === location.origin;
+  } catch {
+    return false;
+  }
+}
 
-  const data = await fetchCategory(categoryId);
+function mediaPartialKey(url) {
+  let path = String(url || '');
+  try {
+    path = new URL(url, typeof location !== 'undefined' ? location.href : 'https://example.invalid/').pathname;
+  } catch { /* keep the raw string */ }
+  return `file_${path.replace(/[^a-zA-Z0-9._-]+/g, '_').replace(/^_+/, '')}`;
+}
+
+async function storeResumableMedia(url, signal, onFraction) {
+  const key = mediaPartialKey(url);
+  const href = new URL(url, location.href).href;
+  await storePackBody(key, href, 0, signal, (loaded, known) => {
+    const frac = known > 0 ? Math.min(0.999, loaded / known) : 0;
+    onFraction?.(frac);
+  });
+  const bytes = await readAllPartial(key);
+  const type = mediaMime(href);
+  await storeMediaBlob(href, new Blob([bytes], { type }));
+  try { await deletePartial(key); } catch { /* playback copy is already stored */ }
+}
+
+async function storeWholeMedia(url, signal) {
+  const request = getMediaRequest(url);
+  const response = await fetchMediaResponse(request, signal);
+  if (response.type === 'opaque') {
+    if (!mediaCacheIsPersistent()) throw attemptError('opaque media needs a secure origin', 'http', '', false);
+    const cache = await openOfflineCache();
+    if (!cache) throw attemptError('opaque media needs Cache Storage', 'quota', '', false);
+    await cache.put(request, response.clone());
+    invalidateOfflineMediaKeys();
+    return request.url;
+  }
+  if (!response.ok) {
+    const kind = (typeof navigator !== 'undefined' && navigator.onLine === false) ? 'offline' : 'http';
+    throw attemptError(`media ${response.status}`, kind, '', false);
+  }
+  const blob = await response.blob();
+  await storeMediaBlob(url, blob);
+  return request.url;
+}
+
+async function runFileDownload(categoryId, onProgress, signal) {
+  await loadLocalConfig();
+  const data = await fetchCategoryMediaList(categoryId);
   const mediaUrls = getCategoryMediaUrls(data);
-
   const total = mediaUrls.length;
   if (total === 0) {
-    activeController = null;
     onProgress?.(1, 1);
-    return finishCategoryDownload(categoryId, [], false, 0);
+    return { done: true, mediaUrls };
   }
-
   const cached = await getCachedUrlSet();
   const pending = mediaUrls.filter((url) => !urlIsCached(url, cached));
   let completed = total - pending.length;
-  let failed = 0;
-  let cancelled = false;
-  onProgress?.(completed, total, { failed, cancelled });
+  onProgress?.(completed, total, { failed: 0, cancelled: false });
 
-  for (let i = 0; i < pending.length; i += BATCH_SIZE) {
-    if (controller.signal.aborted) {
-      cancelled = true;
-      break;
-    }
-
-    const batch = pending.slice(i, i + BATCH_SIZE);
-    const results = await Promise.allSettled(batch.map(async (url) => {
-      const request = getMediaRequest(url);
-      const response = await fetchMediaResponse(request, controller.signal);
-      if (response.type === 'opaque') {
-        if (!mediaCacheIsPersistent()) throw new Error('opaque media needs a secure origin');
-        const cache = await openOfflineCache();
-        if (!cache) throw new Error('opaque media needs Cache Storage');
-        await cache.put(request, response.clone());
-        invalidateOfflineMediaKeys();
-      } else {
-        if (!response.ok) throw new Error(`media ${response.status}`);
-        const blob = await response.blob();
-        await storeMediaBlob(url, blob);
-      }
+  for (let i = 0; i < pending.length;) {
+    if (userStop) throw new DOMException('Aborted', 'AbortError');
+    if (signal.aborted) throw attemptError('aborted', 'stall', '', completed > 0);
+    const url = pending[i];
+    if (isSameOriginMediaUrl(url)) {
+      await storeResumableMedia(url, signal, (frac) => {
+        onProgress?.(completed + frac, total, { failed: 0, cancelled: false });
+      });
       addMediaCacheKeys(cached, url);
-      addMediaCacheKeys(cached, request.url);
-    }));
-
-    for (const r of results) {
-      if (r.status === 'fulfilled') {
-        completed++;
-      } else if (r.reason?.name === 'AbortError' && controller.signal.aborted) {
-        cancelled = true;
-      } else {
-        failed++;
-        completed++;
-      }
+      addMediaCacheKeys(cached, new URL(url, location.href).href);
+      completed += 1;
+      i += 1;
+      onProgress?.(completed, total, { failed: 0, cancelled: false });
+      continue;
     }
-
-    onProgress?.(completed, total, { failed, cancelled });
-
-    if (cancelled) break;
+    const batch = pending.slice(i, i + BATCH_SIZE).filter((item) => !isSameOriginMediaUrl(item));
+    await Promise.all(batch.map(async (item) => {
+      const storedUrl = await storeWholeMedia(item, signal);
+      addMediaCacheKeys(cached, item);
+      addMediaCacheKeys(cached, storedUrl);
+    }));
+    completed += batch.length;
+    i += batch.length;
+    onProgress?.(completed, total, { failed: 0, cancelled: false });
   }
+  return { done: true, mediaUrls };
+}
 
-  if (activeController === controller) {
-    activeController = null;
+export async function downloadCategoryMediaFromFiles(categoryId, onProgress) {
+  const resumeFails = new Map();
+  let mediaUrls = [];
+  let streak = 0;
+  while (!userStop) {
+    const controller = new AbortController();
+    activeController = controller;
+    try {
+      const pass = await runFileDownload(categoryId, onProgress, controller.signal);
+      mediaUrls = pass.mediaUrls;
+      if (pass.done) return finishCategoryDownload(categoryId, mediaUrls, false, 0, false);
+    } catch (err) {
+      if (userStop) break;
+      if (isOfflineFailure(err)) {
+        try { await waitUntilOnline(controller.signal); }
+        catch { if (userStop) break; }
+        continue;
+      }
+      if (err?.kind === 'resume' && err.packId) {
+        const n = (resumeFails.get(err.packId) || 0) + 1;
+        resumeFails.set(err.packId, n);
+        if (n >= REAL_ERRORS_BEFORE_RESTART) {
+          try { await deletePartial(err.packId); } catch { /* next pass starts clean */ }
+          resumeFails.set(err.packId, 0);
+        }
+      }
+      const delay = retryDelay(err, streak);
+      if (err?.progressed) streak = 0;
+      else streak += 1;
+      try { await sleepMs(delay, controller.signal); }
+      catch { if (userStop) break; }
+    } finally {
+      if (activeController === controller) activeController = null;
+    }
   }
-
-  return finishCategoryDownload(categoryId, mediaUrls, cancelled, failed);
+  return finishCategoryDownload(categoryId, mediaUrls, true, 0, true);
 }
 
 async function categoryIdsForReconcile() {
@@ -989,6 +1540,7 @@ async function categoryIdsForReconcile() {
 }
 
 export async function reconcileDownloadedCategories() {
+  await loadLocalConfig();
   const downloaded = getDownloadedCategories();
   const manifest = loadManifest();
   if (usesLocalMedia() && isLoopbackHost()) return downloaded;

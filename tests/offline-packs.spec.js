@@ -430,19 +430,27 @@ test.describe('Interrupted offline download resume', () => {
     await zipReq;
     const result = await page.evaluate(async () => {
       window.__prawkoOff.cancelDownload();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const during = window.__prawkoOff.getInProgressOfflineCategory();
+      const active = window.__prawkoOff.getActiveDownloadCategory();
+      window.__prawkoOff.stopDownload();
       const downloaded = await window.__prawkoDl;
       return {
-        cancelled: downloaded.cancelled,
+        during,
+        active,
+        stopped: downloaded.stopped,
         inProgress: window.__prawkoOff.getInProgressOfflineCategory(),
       };
     });
     releaseZip();
 
-    expect(result.cancelled).toBe(true);
-    expect(result.inProgress).toBe('PT');
+    expect(result.during).toBe('PT');
+    expect(result.active).toBe('PT');
+    expect(result.stopped).toBe(true);
+    expect(result.inProgress).toBeNull();
   });
 
-  test('clears in-progress after a failed pack download', async ({ page }) => {
+  test('keeps trying after a failed pack response until the user stops', async ({ page }) => {
     await stubPacksHost(page);
     await page.goto('/');
     await page.waitForSelector('#home.active');
@@ -457,22 +465,31 @@ test.describe('Interrupted offline download resume', () => {
         bytes: 10,
       },
     }, { PT: ['tiny'] });
+    let hits = 0;
     await page.route('https://pub-e8e3a36b9ab44034913636d87ee3f0ee.r2.dev/tiny.zip', async (route) => {
+      hits += 1;
       await route.fulfill({ status: 500, contentType: 'text/plain', body: 'nope' });
     });
 
-    const result = await page.evaluate(async () => {
+    await page.evaluate(async () => {
       const mod = await import(new URL('./js/offline.js', location.href).href);
-      let threw = false;
-      try {
-        await mod.downloadCategoryMedia('PT');
-      } catch {
-        threw = true;
-      }
-      return { threw, inProgress: mod.getInProgressOfflineCategory() };
+      window.__prawkoOff = mod;
+      window.__prawkoDl = mod.downloadCategoryMedia('PT');
+    });
+    await expect.poll(() => hits, { timeout: 10000 }).toBeGreaterThan(1);
+    const result = await page.evaluate(async () => {
+      const during = window.__prawkoOff.getInProgressOfflineCategory();
+      window.__prawkoOff.stopDownload();
+      const downloaded = await window.__prawkoDl;
+      return {
+        during,
+        stopped: downloaded.stopped,
+        inProgress: window.__prawkoOff.getInProgressOfflineCategory(),
+      };
     });
 
-    expect(result.threw).toBe(true);
+    expect(result.during).toBe('PT');
+    expect(result.stopped).toBe(true);
     expect(result.inProgress).toBeNull();
   });
 
@@ -571,20 +588,159 @@ test.describe('Interrupted offline download resume', () => {
       );
     }, { sha256: skipZip.sha256 });
 
-    const result = await page.evaluate(async () => {
+    await page.evaluate(async () => {
       const mod = await import(new URL('./js/offline.js', location.href).href);
-      let threw = false;
-      try {
-        await mod.downloadCategoryMedia('PT');
-      } catch {
-        threw = true;
-      }
-      return { threw, inProgress: mod.getInProgressOfflineCategory() };
+      window.__prawkoOff = mod;
+      window.__prawkoDl = mod.downloadCategoryMedia('PT');
+    });
+    await expect.poll(() => hits.wait).toBeGreaterThan(0);
+    const result = await page.evaluate(async () => {
+      const during = window.__prawkoOff.getInProgressOfflineCategory();
+      window.__prawkoOff.stopDownload();
+      const downloaded = await window.__prawkoDl;
+      return {
+        during,
+        stopped: downloaded.stopped,
+        inProgress: window.__prawkoOff.getInProgressOfflineCategory(),
+      };
     });
 
     expect(hits.skip).toBe(0);
     expect(hits.wait).toBeGreaterThan(0);
-    expect(result.threw).toBe(true);
+    expect(result.during).toBe('PT');
+    expect(result.stopped).toBe(true);
     expect(result.inProgress).toBeNull();
+  });
+
+  test('resumes a pack from the bytes already stored, rewound by one chunk', async ({ page }) => {
+    await stubPacksHost(page);
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    const payload = 'a'.repeat(300 * 1024);
+    const zipAndHash = await storedZipAndHash(page, 'img/pack-test.webp', payload);
+    const zip = Buffer.from(zipAndHash.zip);
+    const rewind = 256 * 1024;
+    const first = rewind + 32 * 1024;
+    expect(zip.length).toBeGreaterThan(first);
+    const ranges = [];
+    await fulfillPacksManifest(page, {
+      tiny: {
+        id: 'tiny',
+        file: 'tiny.zip',
+        files: 1,
+        support: ['PT'],
+        missing: [],
+        sha256: zipAndHash.sha256,
+        bytes: zip.length,
+      },
+    }, { PT: ['tiny'] });
+    await page.route('https://pub-e8e3a36b9ab44034913636d87ee3f0ee.r2.dev/tiny.zip', async (route) => {
+      const range = route.request().headers().range || '';
+      ranges.push(range);
+      if (!range) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/zip',
+          headers: { 'Content-Length': String(first) },
+          body: zip.subarray(0, first),
+        });
+        return;
+      }
+      const start = Number((/bytes=(\d+)-/i.exec(range) || [])[1]);
+      await route.fulfill({
+        status: 206,
+        contentType: 'application/zip',
+        headers: {
+          'Content-Range': `bytes ${start}-${zip.length - 1}/${zip.length}`,
+          'Content-Length': String(zip.length - start),
+        },
+        body: zip.subarray(start),
+      });
+    });
+
+    const result = await page.evaluate(async () => {
+      const mod = await import(new URL('./js/offline.js', location.href).href);
+      const downloaded = await mod.downloadCategoryMedia('PT');
+      return { success: downloaded.success };
+    });
+
+    expect(result.success).toBe(true);
+    expect(ranges[0] || '').toBe('');
+    expect(ranges[1]).toBe(`bytes=${first - rewind}-`);
+  });
+
+  test('a running download blocks other categories until Stop', async ({ page }) => {
+    await stubPacksHost(page);
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    const zipAndHash = await storedZipAndHash(page, 'img/pack-test.webp', 'hold-ui');
+    await fulfillPacksManifest(page, {
+      tiny: {
+        id: 'tiny',
+        file: 'tiny.zip',
+        files: 1,
+        support: ['PT'],
+        missing: [],
+        sha256: zipAndHash.sha256,
+        bytes: zipAndHash.zip.length,
+      },
+    }, { PT: ['tiny'] });
+    let releaseZip;
+    const zipHeld = new Promise((resolve) => { releaseZip = resolve; });
+    let otherHits = 0;
+    await page.route('https://pub-e8e3a36b9ab44034913636d87ee3f0ee.r2.dev/tiny.zip', async (route) => {
+      await zipHeld;
+      try {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/zip',
+          body: Buffer.from(zipAndHash.zip),
+        });
+      } catch { /* stopped */ }
+    });
+    await page.route('https://pub-e8e3a36b9ab44034913636d87ee3f0ee.r2.dev/other.zip', async (route) => {
+      otherHits += 1;
+      await route.abort();
+    });
+    await page.locator('#home [data-navigate="categories"]').first().click();
+    await page.waitForSelector('#categories.active');
+    const pt = page.locator('.category-grid .category-card[data-category="PT"] .offline-btn');
+    const b = page.locator('.category-grid .category-card[data-category="B"] .offline-btn');
+    const ptCursor = await pt.evaluate((el) => getComputedStyle(el).cursor);
+    expect(ptCursor).toMatch(/cursor-pointer-black\.png/);
+    await pt.click();
+    await expect(pt).toHaveClass(/downloading/);
+    await expect(pt).toContainText(/Przerwij|Stop|Stoppen|Зупинити/);
+    await expect(b).toHaveClass(/download-locked/);
+    const locked = await b.evaluate((el) => {
+      const plain = getComputedStyle(el).cursor;
+      el.style.transition = 'none';
+      el.classList.add('partial');
+      el.style.setProperty('--offline-hue', '30');
+      return {
+        plain,
+        partial: getComputedStyle(el).cursor,
+        color: getComputedStyle(el).color,
+        bg: getComputedStyle(el).backgroundColor,
+      };
+    });
+    expect(locked.plain).toMatch(/cursor-unavailable-black\.png/);
+    expect(locked.partial).toMatch(/cursor-unavailable-black\.png/);
+    expect(locked.partial).not.toMatch(/cursor-pointer/);
+    await b.hover();
+    const hovered = await b.evaluate((el) => ({
+      cursor: getComputedStyle(el).cursor,
+      color: getComputedStyle(el).color,
+      bg: getComputedStyle(el).backgroundColor,
+    }));
+    expect(hovered.cursor).toMatch(/cursor-unavailable-black\.png/);
+    expect(hovered.color).toBe(locked.color);
+    expect(hovered.bg).toBe(locked.bg);
+    await b.click();
+    await expect(b).not.toHaveClass(/downloading/);
+    expect(otherHits).toBe(0);
+    await pt.click();
+    await expect(pt).not.toHaveClass(/downloading/);
+    releaseZip();
   });
 });
