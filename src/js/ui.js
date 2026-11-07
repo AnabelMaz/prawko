@@ -1116,11 +1116,42 @@ function waitForVideoPlayable(video, timeoutMs = 15000) {
   });
 }
 
+function videoHasPlayableSrc(video) {
+  return Boolean(video?.currentSrc || video?.getAttribute('src'));
+}
+
+/** Media-feed may still be fetching; src appears only after the first bytes land. */
+function waitForVideoSrc(video, timeoutMs = 15000) {
+  if (videoHasPlayableSrc(video)) return Promise.resolve();
+  if (video.dataset.byteSource !== 'live') return Promise.reject(new Error('no-src'));
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      clearInterval(poll);
+      video.removeEventListener('loadeddata', onReady);
+      video.removeEventListener('canplay', onReady);
+      video.removeEventListener('error', onErr);
+      if (err) reject(err);
+      else resolve();
+    };
+    const onReady = () => {
+      if (videoHasPlayableSrc(video)) finish();
+    };
+    const onErr = () => finish(new Error('error'));
+    const timer = setTimeout(() => finish(new Error('timeout')), timeoutMs);
+    const poll = setInterval(onReady, 50);
+    video.addEventListener('loadeddata', onReady);
+    video.addEventListener('canplay', onReady);
+    video.addEventListener('error', onErr);
+    onReady();
+  });
+}
+
 export function playExamVideo(container) {
   const mediaArea = container.querySelector('.media-area');
-  mediaArea?.classList.remove('exam-film-pending');
-  mediaArea?.querySelector('.exam-film-placeholder')?.remove();
-  mediaArea?.querySelector('.exam-media-start')?.remove();
   const video = mediaArea?.querySelector('video');
   if (!video) return Promise.resolve(false);
   const pending = video.dataset.pendingSrc;
@@ -1129,9 +1160,15 @@ export function playExamVideo(container) {
     video.src = pending;
     delete video.dataset.pendingSrc;
   }
-  if (!video.currentSrc && !video.src) return Promise.resolve(false);
 
   delete video.dataset.examEnded;
+  const revealFilm = () => {
+    // Keep the placeholder until bytes are ready — removing it early collapses
+    // the media slot while media-feed is still fetching (layout jump).
+    mediaArea?.classList.remove('exam-film-pending');
+    mediaArea?.querySelector('.exam-film-placeholder')?.remove();
+    mediaArea?.querySelector('.exam-media-start')?.remove();
+  };
   const attempt = () => {
     try {
       const start = mediaClipStart(video);
@@ -1143,9 +1180,15 @@ export function playExamVideo(container) {
     return video.play();
   };
 
-  return waitForVideoPlayable(video)
-    .then(attempt)
+  return waitForVideoSrc(video)
+    .then(() => waitForVideoPlayable(video))
+    .then(() => {
+      revealFilm();
+      return attempt();
+    })
     .catch(() => {
+      if (!videoHasPlayableSrc(video)) return Promise.reject(new Error('no-src'));
+      revealFilm();
       video.muted = true;
       return attempt();
     })
