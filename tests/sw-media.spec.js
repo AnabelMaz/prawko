@@ -49,6 +49,10 @@ test('service worker matches cached video by URL, not the player Range request',
   const block = SW.slice(start, SW.indexOf('self.addEventListener(\'fetch\'', start));
   expect(block).toMatch(/videoAssemblyKey/);
   expect(block).not.toMatch(/cache\.match\(request/);
+  // Exact URL match only — skipping query on match is an O(N) scan on large caches in Chrome.
+  expect(block).not.toMatch(/ignoreSearch\s*:/);
+  expect(block).not.toMatch(/ignoreVary\s*:/);
+  expect(block).toMatch(/cache\.match\(url\)/);
 });
 
 test('service worker treats CDN and /media/ as one cached-media path', () => {
@@ -65,14 +69,22 @@ test('service worker treats CDN and /media/ as one cached-media path', () => {
 test('service worker precaches the local Noto mark font and cache-firsts /fonts/', () => {
   expect(SW).toMatch(/\.\/fonts\/NotoSansSymbols-Regular\.ttf/);
   expect(SW).toMatch(/url\.pathname\.includes\('\/fonts\/'\)/);
+  expect(SW).toMatch(/url\.pathname\.includes\('\/icons\/'\)/);
+  // Offline miss must not reject (no ERR_INTERNET_DISCONNECTED spam for cursors).
+  const iconsBlock = SW.slice(
+    SW.indexOf("url.pathname.includes('/icons/')"),
+    SW.indexOf('// App shell — online:'),
+  );
+  expect(iconsBlock).toMatch(/catch\s*\{/);
+  expect(iconsBlock).toMatch(/status: 404/);
 });
 
-test('service worker clones the app-shell response before opening the cache', () => {
+test('service worker serves app shell from cache when offline without fetch', () => {
   const block = handlerBlock(
-    '// App shell — network first',
+    '// App shell — online:',
     "self.addEventListener('message'"
   );
-  expect(block).toMatch(/const copy = response\.clone\(\);/);
-  expect(block).toMatch(/safeCachePut\(cache, event\.request, copy\)/);
-  expect(block).not.toMatch(/caches\.open\(APP_SHELL_CACHE\)\.then\(\(cache\) => \{\s*safeCachePut\(cache, event\.request, response\.clone\(\)/);
+  expect(block).toMatch(/navigator\.onLine === false/);
+  expect(block).toMatch(/safeCachePut\(cache, event\.request, response\.clone\(\)/);
+  expect(block).toMatch(/await fetch\(event\.request\)/);
 });

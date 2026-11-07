@@ -755,6 +755,50 @@ test.describe('Category media access', () => {
     expect(result.blobUrl).toBe(true);
   });
 
+  test('insecure origin media-feed paints from IDB without a network GET', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    const result = await page.evaluate(async () => {
+      Object.defineProperty(window, 'isSecureContext', { configurable: true, get: () => false });
+      const { storeMediaBlob, canUseOfflineMediaCache } = await import(new URL('./js/offline.js', location.href).href);
+      const { startMediaFeed, abortMediaFeed } = await import(new URL('./js/media-feed.js', location.href).href);
+      const payload = new Uint8Array(64).fill(42);
+      const name = 'idb-feed-direct.webp';
+      await storeMediaBlob(`media/img/${name}`, new Blob([payload], { type: 'image/webp' }));
+      let networkHits = 0;
+      const origFetch = window.fetch.bind(window);
+      window.fetch = async (input, init) => {
+        const href = String(typeof input === 'string' ? input : input?.url || '');
+        if (href.includes(name)) networkHits += 1;
+        return origFetch(input, init);
+      };
+      try {
+        const img = document.createElement('img');
+        document.body.appendChild(img);
+        startMediaFeed(img, new URL(`media/img/${name}`, location.href).href, storeMediaBlob);
+        const deadline = performance.now() + 3000;
+        while (performance.now() < deadline) {
+          if (String(img.src || '').startsWith('blob:') || img.dataset.byteSource === 'stored') break;
+          await new Promise((r) => setTimeout(r, 20));
+        }
+        const objectUrl = img.src;
+        abortMediaFeed();
+        img.remove();
+        return {
+          canCache: canUseOfflineMediaCache(),
+          networkHits,
+          blobUrl: objectUrl.startsWith('blob:'),
+          byteSource: img.dataset.byteSource || '',
+        };
+      } finally {
+        window.fetch = origFetch;
+      }
+    });
+    expect(result.canCache).toBe(false);
+    expect(result.networkHits).toBe(0);
+    expect(result.blobUrl).toBe(true);
+  });
+
   test('file download stores a 200 blob instead of a raw 206 video response', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('#home.active');
@@ -839,14 +883,14 @@ test.describe('Category media access', () => {
     expect(result.blobUrl).toBe(true);
   });
 
-  test('offline quiz plays IndexedDB media and never requests /media/', async ({ page }) => {
+  test('offline quiz plays Cache Storage media and never requests /media/', async ({ page }) => {
     const mediaHits = [];
-    await page.addInitScript(() => {
-      const origOpen = caches.open.bind(caches);
-      caches.open = (name) => {
-        if (name === 'prawko-offline-media-v1') return Promise.reject(new Error('insecure origin'));
-        return origOpen(name);
-      };
+    await page.route('**/local.json', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ mediaBase: 'cdn' }),
+      });
     });
     await page.route('**/data/B.json*', async (route) => {
       await route.fulfill({
@@ -861,7 +905,7 @@ test.describe('Category media access', () => {
         type: 'basic',
         correct: 'T',
         points: 3,
-        media: 'offline-idb.png',
+        media: 'offline-cache.png',
         mediaType: 'image',
       };
       await route.fulfill({
@@ -872,7 +916,7 @@ test.describe('Category media access', () => {
     });
     await page.route('**/data/translations_pl.json', async (route) => {
       const polish = await (await route.fetch()).json();
-      polish['801'] = { q: 'Offline IDB playback', src: 'excel' };
+      polish['801'] = { q: 'Offline cache playback', src: 'excel' };
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -883,6 +927,10 @@ test.describe('Category media access', () => {
       mediaHits.push(route.request().url());
       await route.abort();
     });
+    await page.route('https://f003.backblazeb2.com/file/prawko-maz/**', async (route) => {
+      mediaHits.push(route.request().url());
+      await route.abort();
+    });
     await page.goto('/');
     await page.waitForSelector('#home.active');
     await page.evaluate(async () => {
@@ -890,7 +938,8 @@ test.describe('Category media access', () => {
       const bin = atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==');
       const png = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) png[i] = bin.charCodeAt(i);
-      await storeMediaBlob('media/img/offline-idb.png', new Blob([png], { type: 'image/png' }));
+      const url = 'https://f003.backblazeb2.com/file/prawko-maz/img/offline-cache.png';
+      await storeMediaBlob(url, new Blob([png], { type: 'image/png' }));
     });
     await fakeOffline(page);
     await goToCategories(page);
@@ -1219,8 +1268,10 @@ test.describe('Opportunistic viewed media cache', () => {
         correct: 'T',
       }, document.querySelector('#quiz .question-card') || document.querySelector('.question-card'));
     });
-    await expect(page.locator('#quiz .media-area video')).toHaveAttribute('src', /^blob:/);
-    expect(hits.length).toBe(after);
+    // Loopback + mediaBase media: play from disk URL, not a stored blob:.
+    await expect(page.locator('#quiz .media-area video')).toHaveAttribute('src', /media\/vid\/watched-lan\.mp4/);
+    await expect(page.locator('#quiz .media-area video')).not.toHaveAttribute('src', /^blob:/);
+    await expect.poll(() => hits.length).toBe(after + 1);
   });
 
   test('leaving before the film arrives does not store it', async ({ page }) => {
@@ -1369,7 +1420,9 @@ test.describe('Opportunistic viewed media cache', () => {
     const fn = ui.slice(start, end);
     expect(fn).not.toMatch(/captureViewedMedia/);
     expect(offline).not.toMatch(/captureViewedMedia/);
-    expect(fn).toMatch(/resolvePlayableMediaUrl/);
+    expect(fn).not.toMatch(/resolvePlayableMediaUrl/);
+    expect(fn).toMatch(/getNextMediaUrl/);
+    expect(ui).not.toMatch(/resolvePlayableMediaUrl/);
     expect(ui).toMatch(/function bindMediaElement/);
     expect(ui).toMatch(/startMediaFeed\(el, url, storeMediaBlob\)/);
     expect(ui).toMatch(/!remote && usesLocalMedia\(\) && isLoopbackHost\(\)/);
@@ -1378,12 +1431,46 @@ test.describe('Opportunistic viewed media cache', () => {
     expect(ui).not.toMatch(/enqueueViewedMediaCopy/);
     expect(feed).toMatch(/elementNetworkFallback/);
     expect(feed).toMatch(/openMediaResponse/);
+    expect(feed).toMatch(/paintFromCacheHit/);
+    expect(feed).not.toMatch(/paintFromCachedUrl/);
+    expect(feed).not.toMatch(/mediaFeedHasServiceWorker/);
+    expect(feed).toMatch(/matchCachedMediaResponse\(url\)/);
+    expect(feed).toMatch(/canUseOfflineMediaCache/);
+    expect(feed).toMatch(/getStoredMediaBlob/);
+    expect(feed).toMatch(/waitForAppOnline/);
+    expect(feed).toMatch(/matchStoredMediaBlob/);
+    expect(feed).toMatch(/Range:\s*`bytes=\$\{received\}-/);
+    expect(feed).toMatch(/openOfflineMediaCache/);
+    expect(feed).toMatch(/offlineMediaCachePromise/);
+    const matchCache = feed.slice(
+      feed.indexOf('async function matchCachedMediaResponse'),
+      feed.indexOf('function mediaRefFromUrl'),
+    );
+    expect(matchCache).not.toMatch(/ignoreSearch\s*:/);
+    expect(matchCache).not.toMatch(/ignoreVary\s*:/);
+    expect(matchCache).toMatch(/cache\.match\(abs\)/);
+    const openMedia = feed.slice(
+      feed.indexOf('async function openMediaResponse'),
+      feed.indexOf('function playIfWanted'),
+    );
+    expect(openMedia).toMatch(/canUseOfflineMediaCache/);
+    expect(openMedia.indexOf('matchStoredMediaBlob')).toBeLessThan(openMedia.indexOf('fetch(url'));
+    expect(feed).not.toMatch(/mediaPerfMark|prawko-media-/);
     expect(feed).toMatch(/FILM_PACE_MIN_SAMPLE = 0\.3/);
+    const offlineSrc = fs.readFileSync(path.join(__dirname, '../src/js/offline.js'), 'utf8');
+    expect(offlineSrc).not.toMatch(/ignoreSearch\s*:/);
+    expect(offlineSrc).not.toMatch(/ignoreVary\s*:/);
+    expect(offlineSrc).toMatch(/canUseOfflineMediaCache/);
+    expect(offlineSrc).toMatch(/waitForAppOnline/);
+    expect(ui).not.toMatch(/prawko-media-config/);
     const loadImage = feed.slice(feed.indexOf('async function loadImage'), feed.indexOf('async function loadFilm'));
     expect(loadImage).toMatch(/elementNetworkFallback/);
-    expect(loadImage).toMatch(/store\(url, blob\)/);
-    expect(loadImage).toMatch(/createObjectURL/);
-    expect(loadImage).not.toMatch(/el\.src = url/);
+    expect(loadImage).toMatch(/paintFromCacheHit/);
+    expect(loadImage).toMatch(/paintFromBlob/);
+    expect(feed).toMatch(/async function paintFromCacheHit[\s\S]*paintFromBlob\(el, blob, null/);
+    expect(feed).toMatch(/async function paintFromBlob[\s\S]*store\(url, blob\)/);
+    expect(feed).toMatch(/async function paintFromBlob[\s\S]*createObjectURL/);
+    expect(feed).toMatch(/X-Prawko-From-Cache/);
     const sw = fs.readFileSync(path.join(__dirname, '../src/sw.js'), 'utf8');
     expect(sw).toMatch(/function viewedMediaStaysOnDisk/);
     expect(sw).toMatch(/function isLoopbackHostName/);
@@ -1391,6 +1478,8 @@ test.describe('Opportunistic viewed media cache', () => {
     expect(sw).toMatch(/url\.origin === self\.location\.origin/);
     expect(sw).toMatch(/fetchAndRememberMedia/);
     expect(sw).toMatch(/rememberPlayedMedia/);
+    expect(sw).toMatch(/X-Prawko-From-Cache/);
+    expect(sw).toMatch(/cached\.clone\(\)/);
   });
 
   test('loopback local videos are not copied into the offline cache', async ({ page }) => {
