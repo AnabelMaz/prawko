@@ -1933,4 +1933,43 @@ test.describe('Opportunistic viewed media cache', () => {
     expect(result.fetches).toBe(0);
     expect(result.orphanGone).toBe(true);
   });
+
+  test('reconcile does not delete another category file listed only on a shared pack', async ({ page }) => {
+    await stubRemoteMedia(page);
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    const result = await page.evaluate(async () => {
+      const { getMediaUrls } = await import(new URL('./js/data.js', location.href).href);
+      const {
+        reconcileDownloadedCategories,
+        getCachedUrlSet,
+      } = await import(new URL('./js/offline.js', location.href).href);
+      const sharedForB = 'shared-keep-for-b.webp';
+      const sharedUrls = getMediaUrls(sharedForB, 'image');
+      const cache = await caches.open('prawko-offline-media-v1');
+      for (const url of sharedUrls) {
+        await cache.put(
+          new Request(url, { mode: 'cors' }),
+          new Response(new Uint8Array([3, 3, 3]), { headers: { 'Content-Type': 'image/webp' } }),
+        );
+      }
+      // C was "downloaded" with an old manifest; packsDone claims a shared zip
+      // that also listed B's file. Reconcile must not treat that as C's orphan.
+      localStorage.setItem('prawko_offline', JSON.stringify(['C']));
+      localStorage.setItem('prawko_offline_manifest', JSON.stringify({
+        C: getMediaUrls('only-c.webp', 'image'),
+      }));
+      localStorage.setItem('prawko_offline_packs', JSON.stringify({
+        'set-A-B-C-shared': {
+          sha256: 'abc',
+          names: [sharedForB, 'only-c.webp'],
+        },
+      }));
+      await reconcileDownloadedCategories();
+      const cached = await getCachedUrlSet();
+      const kept = [...cached].some((k) => String(k).includes(sharedForB));
+      return { kept, cachedSize: cached.size };
+    });
+    expect(result.kept).toBe(true);
+  });
 });

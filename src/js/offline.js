@@ -1350,13 +1350,10 @@ async function runPackDownload(categoryId, onProgress, signal) {
   }
   if (packsDoneDirty) savePacksDone(doneMap);
 
+  // Orphans = prior manifest for THIS category only. Do not add packsDone
+  // names: shared zips list files for other categories too, and pruning
+  // against this category's needed set would delete their offline copies.
   const orphanCandidates = new Set(mediaNamesFromUrls(loadManifest()[categoryId] || []));
-  for (const id of packIds) {
-    const prev = doneMap[id];
-    if (prev && Array.isArray(prev.names)) {
-      for (const name of prev.names) orphanCandidates.add(name);
-    }
-  }
 
   const cov = coverageFromUrls(mediaUrls, cached);
   if (cov.pct >= 100) {
@@ -1665,6 +1662,9 @@ export async function reconcileDownloadedCategories() {
       continue;
     }
 
+    // Same rule as pack download finish: only this category's prior manifest
+    // URLs are orphan candidates. Shared pack name lists must not be pruned
+    // against one category's needed set.
     const orphanCandidates = new Set(mediaNamesFromUrls(previousListed || []));
     if (packsMan && doneMap) {
       const packIds = packsMan.categories?.[categoryId];
@@ -1673,10 +1673,6 @@ export async function reconcileDownloadedCategories() {
         for (const packId of packIds) {
           const pack = packsMan.packs?.[packId];
           if (!pack) continue;
-          const prev = doneMap[packId];
-          if (prev && Array.isArray(prev.names)) {
-            for (const name of prev.names) orphanCandidates.add(name);
-          }
           if (syncPackDoneFromCache(pack, doneMap, cached)) {
             packsDirty = true;
             changed = true;
