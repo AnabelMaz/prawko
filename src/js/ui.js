@@ -616,6 +616,14 @@ function lockVideoChrome(video) {
 let mediaLoadGen = 0;
 let playableBlobUrl = '';
 
+/** Wipe media children but keep the learn queue toast (it lives in .media-area). */
+function clearMediaArea(mediaArea) {
+  if (!mediaArea) return;
+  const toast = mediaArea.querySelector('.learn-toast');
+  mediaArea.innerHTML = '';
+  if (toast) mediaArea.appendChild(toast);
+}
+
 // blob/data → replay from offline-cache (second+ visit). First visit elsewhere:
 // One path: http(s) URL → media-feed → SW (or Cache Storage match) → element.
 // Loopback + mediaBase media: files already on this computer — el.src, no copy.
@@ -664,7 +672,7 @@ export function renderQuestion(question, container, options = {}) {
   if (oldVideo) { oldVideo.pause(); oldVideo.removeAttribute('src'); oldVideo.load(); }
   if (oldCopy && oldCopy !== playableBlobUrl) URL.revokeObjectURL(oldCopy);
   abortMediaFeed();
-  mediaArea.innerHTML = '';
+  clearMediaArea(mediaArea);
   revokePlayableBlob();
   mediaArea.onclick = null;
   mediaArea.classList.remove('has-media', 'loading', 'awaiting-frame', 'has-learn-video', 'learn-video-hold', 'exam-film-pending', 'media-empty');
@@ -730,7 +738,7 @@ export function renderQuestion(question, container, options = {}) {
 
     const showMediaFallback = (onRetry) => {
       mediaArea.classList.remove('loading', 'awaiting-frame');
-      mediaArea.innerHTML = '';
+      clearMediaArea(mediaArea);
       if (examMedia) {
         mediaArea.classList.remove('has-media', 'exam-film-pending');
         mediaArea.classList.add('media-empty');
@@ -789,7 +797,7 @@ export function renderQuestion(question, container, options = {}) {
           }
 
           mediaArea.classList.add('loading', 'awaiting-frame');
-          mediaArea.innerHTML = '';
+          clearMediaArea(mediaArea);
 
           const video = document.createElement('video');
           stampMediaClip(video, q);
@@ -969,7 +977,7 @@ export function renderQuestion(question, container, options = {}) {
           }
 
           mediaArea.classList.add('loading', 'awaiting-frame');
-          mediaArea.innerHTML = '';
+          clearMediaArea(mediaArea);
 
           const img = document.createElement('img');
           const onImageReady = () => {
@@ -1023,7 +1031,9 @@ export function renderQuestion(question, container, options = {}) {
       mediaArea.setAttribute('aria-hidden', 'false');
       mediaArea.setAttribute('role', 'img');
       mediaArea.setAttribute('aria-label', t('noMedia'));
+      const toast = mediaArea.querySelector('.learn-toast');
       mediaArea.innerHTML = '<svg class="media-empty-icon" viewBox="0 0 96 72" aria-hidden="true"><rect x="16" y="24" width="52" height="36" rx="6" fill="none" stroke="currentColor" stroke-width="3"/><rect x="24" y="14" width="18" height="12" rx="3" fill="none" stroke="currentColor" stroke-width="3"/><circle cx="42" cy="42" r="10" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/></svg>';
+      if (toast) mediaArea.appendChild(toast);
     }
     onLearnMediaSettled(learnMediaMark);
   }
