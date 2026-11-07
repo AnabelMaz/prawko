@@ -27,6 +27,16 @@ import {
   setLearnForgetEnabled,
   setPracticeExamEnabled,
 } from './profiles.js';
+import { attachHelp, attachHelpBeside, attachHoverHelp, refreshHelpLabels } from './help-popover.js';
+
+function syncProfileHoverHelp(el, getLabel) {
+  if (!el) return;
+  const label = getLabel();
+  el.setAttribute('aria-label', label);
+  attachHoverHelp(el, getLabel);
+  if (document.documentElement.hasAttribute('data-handset')) el.title = label;
+  else el.removeAttribute('title');
+}
 
 let meta = null;
 let uniqueQuestionCount = null;
@@ -407,7 +417,8 @@ function updateLanguageButtons(lang) {
   btn.textContent = LANG_LABELS[lang] || lang.toUpperCase();
   btn.classList.add('active');
   btn.setAttribute('aria-label', t('langToggle'));
-  btn.title = t('profileLangHint');
+  btn.removeAttribute('title');
+  attachHelpBeside(btn, () => t('profileLangHint'));
 }
 
 const THEME_CYCLE = ['light', 'dark', 'system'];
@@ -450,7 +461,8 @@ function applyTheme(theme, themeIcon, themeBtn) {
     themeBtn.setAttribute('aria-pressed', pressed);
     const label = themeChoiceLabel(choice);
     themeBtn.setAttribute('aria-label', label);
-    themeBtn.title = t('profileThemeHint');
+    themeBtn.removeAttribute('title');
+    attachHelpBeside(themeBtn, () => t('profileThemeHint'));
   }
 }
 
@@ -493,7 +505,8 @@ function applyExamSkin(skin) {
     btn.textContent = label;
     btn.setAttribute('aria-pressed', next === 'panel' ? 'true' : 'false');
     btn.setAttribute('aria-label', `${t('examSkinToggle')}: ${label}`);
-    btn.title = t('profileSkinHint');
+    btn.removeAttribute('title');
+    attachHelpBeside(btn, () => t('profileSkinHint'));
   }
   refitUiScale();
 }
@@ -508,9 +521,7 @@ function setProfileListOpen(open) {
   if (toggle) {
     toggle.hidden = false;
     toggle.setAttribute('aria-expanded', profileListOpen ? 'true' : 'false');
-    const label = t('profileList');
-    toggle.setAttribute('aria-label', label);
-    toggle.title = label;
+    syncProfileHoverHelp(toggle, () => t('profileList'));
   }
 }
 
@@ -539,9 +550,7 @@ function fillProfilePanel() {
   document.querySelectorAll('.profile-io-btn').forEach((btn) => {
     const key = btn.getAttribute('data-i18n-aria');
     if (!key) return;
-    const label = t(key);
-    btn.setAttribute('aria-label', label);
-    btn.title = label;
+    syncProfileHoverHelp(btn, () => t(key));
   });
   list.innerHTML = '';
   profiles.forEach((profile) => {
@@ -576,41 +585,48 @@ function fillProfilePanel() {
   const summary = getProfileSummary();
   if (learnEl) {
     const learnText = t('profileLearn').replace('{known}', String(summary.learnKnown));
-    const learnHint = t('profileLearnHint');
     learnEl.textContent = learnText;
-    learnEl.title = learnHint;
-    learnEl.setAttribute('aria-label', `${learnText}. ${learnHint}`);
+    learnEl.removeAttribute('title');
+    learnEl.setAttribute('aria-label', learnText);
+    attachHelpBeside(learnEl, () => t('profileLearnHint'));
   }
   if (examsEl) {
     const examsText = t('profileExams')
       .replace('{n}', String(summary.exams))
       .replace('{passed}', String(summary.examsPassed));
-    const examsHint = t('profileExamsHint');
     examsEl.textContent = examsText;
-    examsEl.title = examsHint;
-    examsEl.setAttribute('aria-label', `${examsText}. ${examsHint}`);
+    examsEl.removeAttribute('title');
+    examsEl.setAttribute('aria-label', examsText);
+    attachHelpBeside(examsEl, () => t('profileExamsHint'));
   }
   if (deleteBtn) {
-    const label = profiles.length <= 1 ? t('profileReset') : t('profileDelete');
-    deleteBtn.setAttribute('aria-label', label);
-    deleteBtn.title = label;
+    syncProfileHoverHelp(deleteBtn, () => (
+      listProfiles().length <= 1 ? t('profileReset') : t('profileDelete')
+    ));
   }
   const practiceBox = document.querySelector('.profile-practice-exam');
   if (practiceBox) practiceBox.checked = getPracticeExamEnabled();
   const practiceLabel = document.querySelector('label[for="profile-practice-exam"]');
   if (practiceLabel) {
-    const practiceHint = t('profilePracticeExamHint');
-    practiceLabel.title = practiceHint;
-    practiceLabel.setAttribute('aria-label', `${t('profilePracticeExam')}. ${practiceHint}`);
+    practiceLabel.removeAttribute('title');
+    practiceLabel.setAttribute('aria-label', t('profilePracticeExam'));
+    attachHelp(practiceLabel, () => t('profilePracticeExamHint'), { inside: true });
   }
   const forgetBox = document.querySelector('.profile-learn-forget');
   if (forgetBox) forgetBox.checked = getLearnForgetEnabled();
   const forgetLabel = document.querySelector('label[for="profile-learn-forget"]');
   if (forgetLabel) {
-    const forgetHint = t('profileLearnForgetHint');
-    forgetLabel.title = forgetHint;
-    forgetLabel.setAttribute('aria-label', `${t('profileLearnForget')}. ${forgetHint}`);
+    forgetLabel.removeAttribute('title');
+    forgetLabel.setAttribute('aria-label', t('profileLearnForget'));
+    attachHelp(forgetLabel, () => t('profileLearnForgetHint'), { inside: true });
   }
+  const themeBtn = document.querySelector('.profile-appearance .theme-btn');
+  if (themeBtn) attachHelpBeside(themeBtn, () => t('profileThemeHint'));
+  const skinBtn = document.querySelector('.profile-appearance .skin-btn');
+  if (skinBtn) attachHelpBeside(skinBtn, () => t('profileSkinHint'));
+  const langBtn = document.querySelector('.profile-appearance .lang-cycle');
+  if (langBtn) attachHelpBeside(langBtn, () => t('profileLangHint'));
+  refreshHelpLabels();
 }
 
 let committingNewProfile = false;

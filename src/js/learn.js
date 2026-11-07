@@ -18,6 +18,7 @@ import {
 import { getLang, t } from './i18n.js';
 import { profileGet, profileSet } from './profiles.js';
 import { loadLocalConfig } from './data.js';
+import { attachHelp, hideHelp } from './help-popover.js';
 
 let state = null;
 let keydownHandler = null;
@@ -515,7 +516,7 @@ function updateLearnStats() {
 }
 
 function closeQueueMenus() {
-  hideLearnFilterHint();
+  hideHelp();
   document.querySelectorAll('.learn-queue-dropdown.is-open').forEach((el) => {
     el.classList.remove('is-open');
     el.querySelector('.learn-queue-select')?.setAttribute('aria-expanded', 'false');
@@ -527,107 +528,6 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') closeQueueMenus();
 });
 
-const LEARN_HINT_LONG_MS = 450;
-let learnFilterHintEl = null;
-let learnHintLongTimer = 0;
-let learnHintFromLongPress = false;
-
-function ensureLearnFilterHint() {
-  if (learnFilterHintEl) return learnFilterHintEl;
-  learnFilterHintEl = document.createElement('div');
-  learnFilterHintEl.className = 'learn-filter-hint';
-  learnFilterHintEl.hidden = true;
-  learnFilterHintEl.setAttribute('role', 'tooltip');
-  document.body.appendChild(learnFilterHintEl);
-  return learnFilterHintEl;
-}
-
-function hideLearnFilterHint() {
-  if (learnHintLongTimer) {
-    clearTimeout(learnHintLongTimer);
-    learnHintLongTimer = 0;
-  }
-  if (!learnFilterHintEl) return;
-  learnFilterHintEl.hidden = true;
-  learnFilterHintEl.textContent = '';
-}
-
-function showLearnFilterHint(anchor, text) {
-  if (!text) return;
-  const tip = ensureLearnFilterHint();
-  tip.textContent = text;
-  tip.hidden = false;
-  tip.style.left = '0px';
-  tip.style.top = '0px';
-  const rect = anchor.getBoundingClientRect();
-  const tipW = tip.offsetWidth;
-  const tipH = tip.offsetHeight;
-  let left = rect.left;
-  let top = rect.bottom + 6;
-  if (left + tipW > window.innerWidth - 8) {
-    left = Math.max(8, window.innerWidth - tipW - 8);
-  }
-  if (top + tipH > window.innerHeight - 8) {
-    top = Math.max(8, rect.top - tipH - 6);
-  }
-  tip.style.left = `${Math.round(left)}px`;
-  tip.style.top = `${Math.round(top)}px`;
-}
-
-function isHandsetUi() {
-  return document.documentElement.hasAttribute('data-handset');
-}
-
-function bindLearnFilterOptionHint(li, hint) {
-  if (!hint) return;
-  li.dataset.hint = hint;
-  li.addEventListener('mouseenter', () => {
-    showLearnFilterHint(li, hint);
-  });
-  li.addEventListener('mouseleave', () => {
-    hideLearnFilterHint();
-  });
-  li.addEventListener('contextmenu', (e) => {
-    if (isHandsetUi()) e.preventDefault();
-  });
-  li.addEventListener('touchstart', (e) => {
-    if (!isHandsetUi()) return;
-    learnHintFromLongPress = false;
-    if (learnHintLongTimer) clearTimeout(learnHintLongTimer);
-    const touch = e.changedTouches?.[0];
-    const startX = touch?.clientX ?? 0;
-    const startY = touch?.clientY ?? 0;
-    learnHintLongTimer = window.setTimeout(() => {
-      learnHintLongTimer = 0;
-      learnHintFromLongPress = true;
-      showLearnFilterHint(li, hint);
-    }, LEARN_HINT_LONG_MS);
-    const cancel = (ev) => {
-      const t = ev.changedTouches?.[0];
-      if (t && (Math.abs(t.clientX - startX) > 12 || Math.abs(t.clientY - startY) > 12)) {
-        if (learnHintLongTimer) {
-          clearTimeout(learnHintLongTimer);
-          learnHintLongTimer = 0;
-        }
-      }
-    };
-    li.addEventListener('touchmove', cancel, { once: true });
-  }, { passive: true });
-  li.addEventListener('touchend', () => {
-    if (learnHintLongTimer) {
-      clearTimeout(learnHintLongTimer);
-      learnHintLongTimer = 0;
-    }
-  });
-  li.addEventListener('touchcancel', () => {
-    if (learnHintLongTimer) {
-      clearTimeout(learnHintLongTimer);
-      learnHintLongTimer = 0;
-    }
-    hideLearnFilterHint();
-    learnHintFromLongPress = false;
-  });
-}
 
 function createQueueDropdown(extraClass, onPick) {
   const root = document.createElement('div');
@@ -663,14 +563,13 @@ function syncQueueDropdown(root, options, value, hints = null) {
     li.dataset.value = optValue;
     li.textContent = label;
     if (optValue === value) li.setAttribute('aria-selected', 'true');
-    if (hints && hints[optValue]) bindLearnFilterOptionHint(li, hints[optValue]);
+    if (hints && hints[optValue]) {
+      li.dataset.hint = hints[optValue];
+      attachHelp(li, () => hints[optValue], { inside: true });
+    }
     li.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (learnHintFromLongPress) {
-        learnHintFromLongPress = false;
-        hideLearnFilterHint();
-        return;
-      }
+      if (e.target.closest('.ui-help-btn')) return;
       closeQueueMenus();
       root._onPick(optValue);
     });

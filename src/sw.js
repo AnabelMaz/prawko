@@ -1,6 +1,6 @@
 importScripts('./js/range-assemble.js');
 
-const CACHE_VERSION = 'prawko-v143';
+const CACHE_VERSION = 'prawko-v144';
 const APP_SHELL_CACHE = CACHE_VERSION + '-shell';
 const DATA_CACHE = CACHE_VERSION + '-data';
 const MEDIA_CACHE = CACHE_VERSION + '-media';
@@ -20,6 +20,7 @@ const APP_SHELL = [
   './js/stats.js',
   './js/profiles.js',
   './js/i18n.js',
+  './js/help-popover.js',
   './js/offline.js',
   './js/media-feed.js',
   './js/range-assemble.js',
