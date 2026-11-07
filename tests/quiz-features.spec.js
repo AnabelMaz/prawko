@@ -900,7 +900,7 @@ test.describe('Learn queue filter', () => {
     await expect(page.locator('.learn-filter-select .learn-queue-select')).toHaveText('Do nauki');
   });
 
-  test('learn filter options show short hints on hover', async ({ page }) => {
+  test('learn filter options keep hint text for help', async ({ page }) => {
     await startLearnMode(page);
     await page.click('.learn-filter-select .learn-queue-select');
     const unknown = page.locator('.learn-filter-select [data-value="unknown"]');
@@ -911,10 +911,6 @@ test.describe('Learn queue filter', () => {
     await expect(hard).toHaveAttribute('data-hint', /dwa błędy|Umiem/i);
     await expect(known).toHaveAttribute('data-hint', /Dwie poprawne/i);
     await expect(all).toHaveAttribute('data-hint', /Cała kategoria/i);
-    await unknown.dispatchEvent('mouseenter');
-    const tip = page.locator('.learn-filter-hint');
-    await expect(tip).toBeVisible();
-    await expect(tip).toContainText(/Umiem|nowe/i);
   });
 
   test('learn queue menus stay square in both exam skins', async ({ page }) => {
@@ -2144,9 +2140,10 @@ test.describe('Local profiles', () => {
     await expect(page.locator('.profile-appearance .theme-btn')).toBeVisible();
     await expect(page.locator('.profile-appearance .skin-btn')).toBeVisible();
     await expect(page.locator('.profile-appearance .lang-cycle')).toBeVisible();
-    await expect(page.locator('.profile-appearance .theme-btn')).toHaveAttribute('title', /jasny|ciemny|systemie/i);
-    await expect(page.locator('.profile-appearance .skin-btn')).toHaveAttribute('title', /Panel|Stacja/i);
-    await expect(page.locator('.profile-appearance .lang-cycle')).toHaveAttribute('title', /PL.*EN.*DE.*UK/i);
+    await expect(page.locator('.profile-appearance .ui-help-host:has(.theme-btn)')).toBeVisible();
+    await expect(page.locator('.profile-appearance .ui-help-host:has(.skin-btn)')).toBeVisible();
+    await expect(page.locator('.profile-appearance .ui-help-host:has(.lang-cycle)')).toBeVisible();
+    await expect(page.locator('.profile-appearance .ui-help-host .theme-btn + .ui-help-btn')).toBeVisible();
     await expect(page.locator('.top-controls > .theme-btn')).toHaveCount(0);
     await expect(page.locator('.profile-stat-learn')).toContainText('Nauka:');
     await expect(page.locator('.profile-stat-exams')).toContainText('Egzaminy:');
@@ -2155,13 +2152,17 @@ test.describe('Local profiles', () => {
     await expect(page.locator('.profile-stat-block')).toBeVisible();
     await expect(learnRow.locator('.profile-learn-forget')).toBeVisible();
     await expect(learnRow.locator('.profile-learn-forget')).not.toBeChecked();
-    await expect(learnRow.locator('.profile-pref-inline span')).toHaveText('Zapominanie');
+    await expect(learnRow.locator('.profile-pref-inline [data-i18n="profileLearnForget"]')).toHaveText('Zapominanie');
     await expect(examsRow.locator('.profile-practice-exam')).toBeVisible();
-    await expect(examsRow.locator('.profile-pref-inline span')).toHaveText('Próbny');
-    await expect(page.locator('.profile-stat-learn')).toHaveAttribute('title', /postęp nauki|Umiem/i);
-    await expect(page.locator('.profile-stat-exams')).toHaveAttribute('title', /historię egzaminów|podejścia/i);
-    await expect(learnRow.locator('.profile-pref-inline')).toHaveAttribute('title', /30 dniach|60 dniach|zapomniane/i);
-    await expect(examsRow.locator('.profile-pref-inline')).toHaveAttribute('title', /rozgrzewkę|bez punktów/i);
+    await expect(examsRow.locator('.profile-pref-inline [data-i18n="profilePracticeExam"]')).toHaveText('Próbny');
+    await learnRow.locator('label[for="profile-learn-forget"] .ui-help-btn').click();
+    const tip = page.locator('.ui-help-popover');
+    await expect(tip).toBeVisible();
+    await expect(tip).toContainText(/30 dniach|60 dniach|zapomniane/i);
+    await examsRow.locator('label[for="profile-practice-exam"] .ui-help-btn').click();
+    await expect(tip).toContainText(/rozgrzewkę|bez punktów/i);
+    await page.locator('.ui-help-host:has(.profile-stat-learn) .ui-help-btn').click();
+    await expect(tip).toContainText(/postęp nauki|Umiem/i);
     const learnStat = await page.locator('.profile-stat-learn').boundingBox();
     const forgetBox = await learnRow.locator('.profile-pref-inline').boundingBox();
     const examsStat = await page.locator('.profile-stat-exams').boundingBox();
@@ -2779,20 +2780,150 @@ test.describe('phone screen', () => {
     await page.goto('/');
     await page.waitForSelector('#home.active');
     await expect(page.locator('html')).toHaveAttribute('data-handset', '1');
+    const featureTitle = page.locator('#home .feature-card h3').first();
+    const featureDesc = page.locator('#home .feature-card p').first();
+    const titleSize = parseFloat(await featureTitle.evaluate((el) => getComputedStyle(el).fontSize));
+    const descSize = parseFloat(await featureDesc.evaluate((el) => getComputedStyle(el).fontSize));
+    expect(titleSize).toBeGreaterThanOrEqual(18);
+    expect(descSize).toBeGreaterThanOrEqual(16);
     const toggle = page.locator('.profile-toggle');
     const toggleBox = await toggle.boundingBox();
     expect(toggleBox.height).toBeGreaterThanOrEqual(30);
     await expect(toggle).toHaveCSS('min-height', '32px');
     await toggle.click();
+    const panel = page.locator('#profile-panel');
+    await expect(panel).toBeVisible();
+    const panelBox = await panel.boundingBox();
+    expect(panelBox.width).toBeGreaterThanOrEqual(280);
     const icon = page.locator('.profile-icon-btn').first();
     const iconBox = await icon.boundingBox();
     expect(iconBox.width).toBeGreaterThanOrEqual(26);
     expect(iconBox.height).toBeGreaterThanOrEqual(26);
     await expect(icon).toHaveCSS('width', '28px');
   });
+
+  test('category cards are taller on handset with room under offline status', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    await expect(page.locator('html')).toHaveAttribute('data-handset', '1');
+    await page.click('[data-navigate="categories"]');
+    await page.waitForSelector('#categories.active');
+    const card = page.locator('.category-grid .category-card[data-category="B"]');
+    await expect(card).toBeVisible();
+    const box = await card.boundingBox();
+    expect(box.height / box.width).toBeGreaterThan(0.8);
+    const offline = card.locator('.offline-btn');
+    await expect(offline).toBeVisible();
+    const offlineBox = await offline.boundingBox();
+    expect(box.y + box.height - (offlineBox.y + offlineBox.height)).toBeGreaterThanOrEqual(4);
+  });
+
+  test('profile help uses a trailing info button on handset', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    await expect(page.locator('html')).toHaveAttribute('data-handset', '1');
+    await page.click('.profile-toggle');
+    const forgetHelp = page.locator('label[for="profile-learn-forget"] .ui-help-btn');
+    await expect(forgetHelp).toBeVisible();
+    const labelText = page.locator('label[for="profile-learn-forget"] [data-i18n="profileLearnForget"]');
+    const textBox = await labelText.boundingBox();
+    const helpBox = await forgetHelp.boundingBox();
+    expect(helpBox.x).toBeGreaterThan(textBox.x + textBox.width - 2);
+    expect(helpBox.x).toBeLessThan(textBox.x + textBox.width + 14);
+    const learnBtn = page.locator('.profile-stat-learn');
+    const learnHelp = page.locator('.ui-help-host:has(.profile-stat-learn) .ui-help-btn');
+    await expect(learnHelp).toBeVisible();
+    const learnBox = await learnBtn.boundingBox();
+    const learnHelpBox = await learnHelp.boundingBox();
+    expect(learnHelpBox.x).toBeGreaterThan(learnBox.x + learnBox.width - 2);
+    expect(learnHelpBox.x).toBeLessThan(learnBox.x + learnBox.width + 14);
+    const forgetLabelBox = await page.locator('label[for="profile-learn-forget"]').boundingBox();
+    expect(learnHelpBox.x + learnHelpBox.width).toBeLessThanOrEqual(forgetLabelBox.x);
+    const themeHelp = page.locator('.profile-appearance .theme-btn + .ui-help-btn');
+    const skinBtn = page.locator('.profile-appearance .skin-btn');
+    const skinHelp = page.locator('.profile-appearance .skin-btn + .ui-help-btn');
+    const langBtn = page.locator('.profile-appearance .lang-cycle');
+    await expect(themeHelp).toBeVisible();
+    const themeBtnBox = await page.locator('.profile-appearance .theme-btn').boundingBox();
+    const themeHelpBox = await themeHelp.boundingBox();
+    const skinBtnBox = await skinBtn.boundingBox();
+    const skinHelpBox = await skinHelp.boundingBox();
+    const langBtnBox = await langBtn.boundingBox();
+    const tightGap = themeHelpBox.x - (themeBtnBox.x + themeBtnBox.width);
+    const groupGap = langBtnBox.x - (skinHelpBox.x + skinHelpBox.width);
+    expect(tightGap).toBeLessThan(4);
+    expect(skinHelpBox.x - (skinBtnBox.x + skinBtnBox.width)).toBeLessThan(4);
+    expect(groupGap).toBeGreaterThan(tightGap + 3);
+    const forgetHelpBox = await forgetHelp.boundingBox();
+    expect(Math.abs(forgetHelpBox.height - themeHelpBox.height)).toBeLessThan(2);
+    expect(Math.abs(forgetHelpBox.height - learnHelpBox.height)).toBeLessThan(2);
+    await forgetHelp.click();
+    const tip = page.locator('.ui-help-popover');
+    await expect(tip).toBeVisible();
+    await expect(tip).toContainText(/30 dniach|60 dniach|zapomniane/i);
+  });
+
+  test('learn filter help uses a trailing info button on handset', async ({ page }) => {
+    await startLearnMode(page);
+    await expect(page.locator('html')).toHaveAttribute('data-handset', '1');
+    await page.click('.learn-filter-select .learn-queue-select');
+    const unknown = page.locator('.learn-filter-select [data-value="unknown"]');
+    const help = unknown.locator('.ui-help-btn');
+    await expect(help).toBeVisible();
+    const textBox = await unknown.evaluate((el) => {
+      const text = [...el.childNodes].find((n) => n.nodeType === Node.TEXT_NODE);
+      const range = document.createRange();
+      range.selectNodeContents(text);
+      const r = range.getBoundingClientRect();
+      return { x: r.x, width: r.width };
+    });
+    const helpBox = await help.boundingBox();
+    expect(helpBox.x).toBeGreaterThan(textBox.x + textBox.width - 2);
+    await help.click();
+    const tip = page.locator('.ui-help-popover');
+    await expect(tip).toBeVisible();
+    await expect(tip).toContainText(/Umiem|nowe/i);
+  });
 });
 
 test.describe('computer screen', () => {
+  test.use({
+    viewport: { width: 1280, height: 800 },
+    screen: { width: 1920, height: 1080 },
+  });
+
+  test('help opens on hover without a visible info button', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    await expect(page.locator('html')).not.toHaveAttribute('data-handset', '1');
+    await page.click('.profile-toggle');
+    await expect(page.locator('label[for="profile-learn-forget"] .ui-help-btn')).toBeHidden();
+    await expect(page.locator('.profile-appearance .theme-btn + .ui-help-btn')).toBeHidden();
+    const tip = page.locator('.ui-help-popover');
+    await page.locator('label[for="profile-learn-forget"]').hover();
+    await expect(tip).toBeHidden();
+    await expect(tip).toBeVisible({ timeout: 1000 });
+    await expect(tip).toContainText(/30 dniach|60 dniach|zapomniane/i);
+    await page.locator('.profile-action-export').hover();
+    await expect(tip).toBeHidden();
+    await expect(tip).toBeVisible({ timeout: 1000 });
+    await expect(tip).toContainText(/Eksportuj profil|Export profile/i);
+    await expect(page.locator('.profile-action-export')).not.toHaveAttribute('title');
+    await page.locator('.profile-appearance .theme-btn').hover();
+    await expect(tip).toBeVisible({ timeout: 1000 });
+    await expect(tip).toContainText(/jasny|ciemny|system|theme|motyw/i);
+    await startLearnMode(page);
+    await expect(page.locator('html')).not.toHaveAttribute('data-handset', '1');
+    await page.click('.learn-filter-select .learn-queue-select');
+    const unknown = page.locator('.learn-filter-select [data-value="unknown"]');
+    await expect(unknown.locator('.ui-help-btn')).toBeHidden();
+    await unknown.hover();
+    await expect(tip).toBeVisible({ timeout: 1000 });
+    await expect(tip).toContainText(/Umiem|nowe/i);
+  });
+});
+
+test.describe('computer screen narrow window', () => {
   test('a narrow window on a large screen keeps compact profile controls', async ({ browser, baseURL }) => {
     const context = await browser.newContext({
       viewport: { width: 420, height: 900 },

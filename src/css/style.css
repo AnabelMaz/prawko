@@ -764,8 +764,13 @@ body.session-chrome-hidden .top-controls {
 .profile-appearance {
   display: flex;
   align-items: center;
-  gap: 2px;
+  /* Space between control groups — not the same as control↔"i". */
+  gap: 10px;
   margin: 0 0 10px;
+}
+
+.profile-appearance .ui-help-host {
+  gap: 1px;
 }
 
 .profile-list {
@@ -918,16 +923,16 @@ body.session-chrome-hidden .top-controls {
 }
 
 .profile-pref-inline {
-  display: flex;
-  align-items: center;
-  gap: 5px;
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 2px;
   justify-self: start;
   max-width: none;
   margin: 0;
   padding: 2px 0;
   border: none;
   border-radius: 0;
-  font-size: 0.68rem;
+  font-size: 0.78rem;
   font-weight: 600;
   line-height: 1.2;
   color: var(--text-secondary);
@@ -953,7 +958,7 @@ body.session-chrome-hidden .top-controls {
 
 /* One step for every rem outside the quiz. Ratios stay as they are. */
 html[data-handset]:not(:has(#quiz.active)) {
-  --type-boost: 1.15;
+  --type-boost: 1.25;
 }
 
 /* Phone screen: undo the station scale on the whole bar, button and frame together. */
@@ -978,7 +983,7 @@ html[data-handset] .profile-toggle-icon {
 }
 
 html[data-handset] .profile-panel {
-  width: min(220px, calc(100vw - 16px));
+  width: min(300px, calc(100vw - 16px));
   padding: 10px;
 }
 
@@ -1020,7 +1025,7 @@ html[data-handset] .profile-icon-btn svg {
 }
 
 html[data-handset] .profile-appearance {
-  gap: 2px;
+  gap: 8px;
   margin-bottom: 8px;
 }
 
@@ -1073,7 +1078,7 @@ html[data-handset] .profile-pref {
 
 html[data-handset] .profile-pref-inline {
   padding: 2px 0;
-  font-size: 10.5px;
+  font-size: 11.84px;
 }
 
 html[data-handset] .profile-pref input {
@@ -1216,6 +1221,21 @@ html[data-ui-orient="landscape"] .hero p {
   font-size: 0.78rem;
   color: var(--text-secondary);
   line-height: 1.45;
+}
+
+/* Phone only: bigger home tile type (desktop stays on the rem above). */
+html[data-handset] .feature-card .feature-icon {
+  width: 40px;
+  height: 40px;
+  margin-bottom: 12px;
+}
+
+html[data-handset] .feature-card h3 {
+  font-size: 1.05rem;
+}
+
+html[data-handset] .feature-card p {
+  font-size: 0.92rem;
 }
 
 /* Exam info */
@@ -3392,6 +3412,16 @@ html[data-ui-mode="fit"] #categories.active .category-grid .category-card {
   overflow: hidden;
 }
 
+/* Phone: taller tiles so type-boost leaves room under the offline status. */
+html[data-handset][data-ui-mode="fit"] #categories.active .category-grid .category-card {
+  aspect-ratio: 199 / 170;
+  padding-bottom: 7%;
+}
+
+html[data-handset][data-ui-mode="fit"] #categories.active .category-grid .offline-btn {
+  margin-top: 0.55em;
+}
+
 html[data-ui-mode="fit"] #categories.active .category-grid .category-card:hover {
   transform: none;
 }
@@ -5279,6 +5309,10 @@ button:focus-visible,
 }
 
 .learn-queue-menu [role="option"] {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 2px;
   border-radius: calc(var(--radius-sm) - 2px);
   padding: 8px 10px;
   cursor: var(--cursor-click);
@@ -5289,6 +5323,7 @@ button:focus-visible,
   white-space: nowrap;
   color: var(--text);
 }
+
 
 .learn-queue-menu [role="option"][aria-selected="true"] {
   font-weight: 700;
@@ -5307,27 +5342,100 @@ button:focus-visible,
   color: var(--primary);
 }
 
-.learn-filter-hint {
+/* Desktop: hover/focus on the label — no visible "i". Handset: small "i" after text. */
+html:not([data-handset]) .ui-help-btn {
+  display: none !important;
+}
+
+.ui-help-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  /* Fixed rem — same circle everywhere; parent em differed (host vs label). */
+  font-size: 0.65rem;
+  width: 1em;
+  height: 1em;
+  margin: 0.12em 0 0;
+  padding: 0;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-weight: 700;
+  line-height: 1;
+  font-family: inherit;
+  cursor: var(--cursor-click);
+  vertical-align: top;
+}
+
+html[data-handset] .ui-help-btn {
+  font-size: 0.72rem;
+}
+
+.ui-help-btn:hover,
+.ui-help-btn[aria-expanded="true"] {
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
+.ui-help-popover {
   position: fixed;
   z-index: 400;
-  max-width: min(18rem, calc(100vw - 16px));
-  padding: 6px 10px;
+  max-width: min(16rem, calc(100vw - 16px));
+  padding: 4px 8px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: 3px;
   background: var(--bg-card);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--shadow);
   color: var(--text);
-  font-size: 0.72rem;
-  font-weight: 600;
-  line-height: 1.35;
+  /* Desktop: compact system-title size; handset bumps below. */
+  font-size: 0.68rem;
+  font-weight: 400;
+  line-height: 1.3;
   pointer-events: none;
 }
 
-html[data-handset] .learn-filter-hint {
+html[data-handset] .ui-help-popover {
   max-width: min(22rem, calc(100vw - 16px));
   padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lg);
   font-size: 0.92rem;
+  font-weight: 600;
   line-height: 1.4;
+}
+
+.ui-help-host {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* Host fills the 1fr cell but packs text+"i" at the start (no stretch-to-end "i"). */
+.profile-stat-block .ui-help-host {
+  justify-self: stretch;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.profile-stat-block .ui-help-host .profile-stat-learn,
+.profile-stat-block .ui-help-host .profile-stat-exams {
+  flex: 0 1 auto;
+  width: auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-stat-row .ui-help-btn,
+.profile-appearance .ui-help-btn,
+.ui-help-host .ui-help-btn,
+.learn-queue-menu [role="option"] .ui-help-btn {
+  align-self: flex-start;
 }
 
 /* Station = examiner chrome on every screen. Panel = original branded app
