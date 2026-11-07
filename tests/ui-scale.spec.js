@@ -1665,6 +1665,8 @@ test('Panel exam keeps time-bar space while the clip plays so chrome does not ju
   if (!(await page.locator('.exam-film-pending').count())) return;
 
   const measure = () => page.evaluate(() => {
+    const quiz = document.getElementById('quiz');
+    const origin = quiz?.getBoundingClientRect().top ?? 0;
     const row = document.querySelector('.exam-time-row');
     const caption = document.querySelector('.exam-phase-caption');
     const dock = document.querySelector('.quiz-dock');
@@ -1673,24 +1675,39 @@ test('Panel exam keeps time-bar space while the clip plays so chrome does not ju
     const media = document.querySelector('.media-area');
     const rowBox = row?.getBoundingClientRect();
     const cs = row ? getComputedStyle(row) : null;
+    // Relative to #quiz — fit-mode scale/scroll can shift the whole shell in
+    // the viewport without any chrome jump inside the exam card.
     return {
-      phase: document.getElementById('quiz')?.getAttribute('data-exam-phase'),
+      phase: quiz?.getAttribute('data-exam-phase'),
       rowH: rowBox?.height ?? 0,
       rowVis: cs?.visibility || '',
       rowDisplay: cs?.display || '',
       captionH: caption?.getBoundingClientRect().height ?? 0,
-      dockTop: dock?.getBoundingClientRect().top ?? 0,
-      nextTop: next?.getBoundingClientRect().top ?? 0,
-      qTop: q?.getBoundingClientRect().top ?? 0,
-      mediaBottom: media?.getBoundingClientRect().bottom ?? 0,
+      dockTop: (dock?.getBoundingClientRect().top ?? 0) - origin,
+      nextTop: (next?.getBoundingClientRect().top ?? 0) - origin,
+      qTop: (q?.getBoundingClientRect().top ?? 0) - origin,
+      mediaBottom: (media?.getBoundingClientRect().bottom ?? 0) - origin,
+      mediaH: media?.getBoundingClientRect().height ?? 0,
     };
   });
 
+  // Placeholder must already own the media slot — measuring mid-pack makes
+  // the later “no jump” check compare a collapsed frame to a filled one.
+  await expect.poll(async () => (await measure()).mediaH).toBeGreaterThan(80);
   const before = await measure();
   await page.click('.exam-film-start');
-  await expect.poll(() => page.evaluate(() => document.getElementById('quiz')?.getAttribute('data-exam-phase'))).toBe('watch');
-  await page.waitForSelector('#quiz video');
+  // Phase flips to watch before media-feed finishes; measure only after the
+  // placeholder is gone and the film has a real box (no mid-load collapse).
+  await expect.poll(() => page.evaluate(() => {
+    const quiz = document.getElementById('quiz');
+    if (quiz?.getAttribute('data-exam-phase') !== 'watch') return '';
+    if (quiz.querySelector('.exam-film-pending')) return '';
+    const video = quiz.querySelector('video');
+    if (!video || video.clientHeight < 40 || video.paused) return '';
+    return 'ready';
+  }), { timeout: 20000 }).toBe('ready');
   const during = await measure();
+  expect(during.phase).toBe('watch');
   expect(during.rowDisplay).not.toBe('none');
   expect(during.rowH).toBeGreaterThan(8);
   expect(during.rowVis).toBe('hidden');
