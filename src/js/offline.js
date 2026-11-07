@@ -127,9 +127,14 @@ function mediaCacheIsPersistent() {
   return typeof isSecureContext === 'undefined' || isSecureContext !== false;
 }
 
+/** Same gate as storeMediaBlob — secure context Cache Storage vs IDB. */
+export function canUseOfflineMediaCache() {
+  return mediaCacheIsPersistent() && typeof caches !== 'undefined' && Boolean(caches.open);
+}
+
 let offlineCacheHandle = null;
 
-async function openOfflineCache() {
+export async function openOfflineCache() {
   if (!mediaCacheIsPersistent()) return null;
   if (typeof caches === 'undefined') return null;
   if (offlineCacheHandle) return offlineCacheHandle;
@@ -170,8 +175,12 @@ async function listIdbMediaKeys() {
   return keys;
 }
 
+/** Reused IDB connection — open/close per get was too slow on the learn hot path. */
+let mediaDbPromise = null;
+
 function openMediaDb() {
-  return new Promise((resolve, reject) => {
+  if (mediaDbPromise) return mediaDbPromise;
+  mediaDbPromise = new Promise((resolve, reject) => {
     if (typeof indexedDB === 'undefined') {
       reject(new Error('IndexedDB is not available'));
       return;
@@ -182,9 +191,24 @@ function openMediaDb() {
         req.result.createObjectStore(IDB_STORE);
       }
     };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error || new Error('IndexedDB open failed'));
+    req.onsuccess = () => {
+      const db = req.result;
+      db.onclose = () => { mediaDbPromise = null; };
+      db.onversionchange = () => {
+        try { db.close(); } catch { /* ignore */ }
+        mediaDbPromise = null;
+      };
+      resolve(db);
+    };
+    req.onerror = () => {
+      mediaDbPromise = null;
+      reject(req.error || new Error('IndexedDB open failed'));
+    };
+  }).catch((err) => {
+    mediaDbPromise = null;
+    throw err;
   });
+  return mediaDbPromise;
 }
 
 function copyIdbValue(value) {
@@ -201,19 +225,14 @@ function idbRequest(mode, run) {
     let txDone = false;
     let copyDone = false;
     let copiedValue;
-    const closeDb = () => {
-      try { db.close(); } catch { /* already closed */ }
-    };
     const fail = (err) => {
       if (settled) return;
       settled = true;
-      closeDb();
       reject(err);
     };
     const tryFinish = () => {
       if (settled || !txDone || !copyDone) return;
       settled = true;
-      closeDb();
       resolve(copiedValue);
     };
     req.onsuccess = () => {
@@ -253,10 +272,9 @@ async function clonePlayableBlob(value, name) {
   const type = (value.type && String(value.type)) || mediaMime(name) || 'application/octet-stream';
   if (value instanceof Blob) {
     if (value.size < 1) return null;
-    if (value.type === type) return value;
-    const buf = await value.arrayBuffer();
-    if (!buf.byteLength) return null;
-    return new Blob([buf], { type });
+    // Same bytes: avoid arrayBuffer() copy just to set MIME.
+    if (!value.type || value.type === type) return value;
+    return new Blob([value], { type });
   }
   if (value instanceof ArrayBuffer && value.byteLength > 0) {
     return new Blob([value], { type });
@@ -317,12 +335,23 @@ async function idbGetMediaBlob(media, mediaType) {
 export async function storeMediaBlob(url, blob) {
   if (!blob || blob.size < 1) throw new Error('empty media blob');
   const type = blob.type || mediaMime(url);
-  const body = blob.type === type ? blob : new Blob([await blob.arrayBuffer()], { type });
+  const body = (!blob.type || blob.type === type) ? blob : new Blob([blob], { type });
   const abs = new URL(url, typeof location !== 'undefined' ? location.href : 'https://example.invalid/').href;
   const tail = mediaPathTail(abs);
   const cache = await openOfflineCache();
   if (cache) {
     try {
+      // Exact URL only — ignoreSearch is an O(N) scan on large caches in Chrome.
+      const existing = await cache.match(abs)
+        || await cache.match(new Request(abs));
+      if (existing) {
+        const prevLen = Number(existing.headers.get('Content-Length')) || 0;
+        if (prevLen === body.size) return;
+        try {
+          const prev = await existing.blob();
+          if (prev && prev.size === body.size) return;
+        } catch { /* replace below */ }
+      }
       await cache.put(new Request(abs), new Response(body, {
         status: 200,
         headers: {
@@ -345,54 +374,73 @@ export async function storeMediaBlob(url, blob) {
 
 async function matchCachedMediaResponse(cache, media, mediaType) {
   const urls = getMediaUrls(media, mediaType);
-  const opts = { ignoreSearch: true, ignoreVary: true };
+  const { names, tails } = idbKeyCandidates(media, mediaType);
+
+  // Exact URL first (same store keys as put — no ignoreSearch O(N) scan).
   for (const url of urls) {
     try {
       const abs = new URL(url, location.href).href;
-      const hit = await cache.match(abs, opts)
-        || await cache.match(new Request(abs), opts)
-        || await cache.match(new Request(abs, { mode: 'cors' }), opts)
-        || await cache.match(new Request(abs, { mode: 'no-cors' }), opts);
+      const hit = await cache.match(abs)
+        || await cache.match(new Request(abs));
       if (hit) return hit;
     } catch { /* try next alias */ }
   }
-  const { names, tails } = idbKeyCandidates(media, mediaType);
+
+  // Tail index from listed keys — avoid four Request-mode probes per URL.
   let keys = [];
   try {
-    invalidateOfflineMediaKeys();
     keys = await listOfflineCacheKeys(cache);
   } catch {
     return null;
   }
+  const byTail = new Map();
   for (const req of keys) {
-    const tail = mediaPathTail(req.url);
+    const t = mediaPathTail(req.url);
+    if (t && !byTail.has(t)) byTail.set(t, req);
+  }
+  for (const t of tails) {
+    const req = byTail.get(t);
+    if (!req) continue;
+    try {
+      const hit = await cache.match(req);
+      if (hit) return hit;
+    } catch { /* try next tail */ }
+  }
+
+  for (const req of keys) {
     const file = String(req.url).split('/').pop() || '';
     let decoded = file;
     try { decoded = decodeURIComponent(file); } catch { /* keep encoded */ }
-    const match = (tail && tails.has(tail))
-      || names.has(file)
+    const match = names.has(file)
       || names.has(file.toLowerCase())
       || names.has(decoded)
       || names.has(decoded.toLowerCase());
     if (!match) continue;
     try {
-      const hit = await cache.match(req, opts) || await cache.match(req);
+      const hit = await cache.match(req);
       if (hit) return hit;
     } catch { /* try next key */ }
   }
   return null;
 }
 
-export async function getStoredMediaBlob(media, mediaType) {
-  const cache = await openOfflineCache();
-  if (cache) {
-    try {
-      const hit = await matchCachedMediaResponse(cache, media, mediaType);
-      if (hit) {
-        const blob = await clonePlayableBlob(await hit.blob(), media);
-        if (blob) return blob;
-      }
-    } catch { /* fall through to IndexedDB */ }
+/**
+ * @param {{ cache?: boolean }} [opts] — cache:false skips Cache Storage (exact miss
+ * already checked; only IDB store-fallback remains).
+ */
+export async function getStoredMediaBlob(media, mediaType, opts = {}) {
+  const useCache = opts.cache !== false;
+  if (useCache) {
+    const cache = await openOfflineCache();
+    if (cache) {
+      try {
+        const hit = await matchCachedMediaResponse(cache, media, mediaType);
+        if (hit) {
+          const blob = await clonePlayableBlob(await hit.blob(), media);
+          if (blob) return blob;
+        }
+      } catch { /* fall through to IndexedDB */ }
+    }
   }
   return idbGetMediaBlob(media, mediaType);
 }
@@ -858,6 +906,11 @@ function waitUntilOnline(signal) {
     }
     signal?.addEventListener('abort', onAbort, { once: true });
   });
+}
+
+/** For media-feed retries when the NIC drops mid-download. */
+export function waitForAppOnline(signal) {
+  return waitUntilOnline(signal);
 }
 
 function readWithStall(reader, signal) {

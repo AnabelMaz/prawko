@@ -1,6 +1,6 @@
 importScripts('./js/range-assemble.js');
 
-const CACHE_VERSION = 'prawko-v144';
+const CACHE_VERSION = 'prawko-v150';
 const APP_SHELL_CACHE = CACHE_VERSION + '-shell';
 const DATA_CACHE = CACHE_VERSION + '-data';
 const MEDIA_CACHE = CACHE_VERSION + '-media';
@@ -150,45 +150,67 @@ self.addEventListener('activate', (event) => {
 });
 
 async function serveCachedMedia(cached, request) {
-  // Slice the cached blob. Copying the whole file into one buffer before
-  // answering Range is what delayed the first frame.
-  const blob = await cached.blob();
-  const total = blob.size;
-  const storedType = cached.headers.get('Content-Type') || blob.type || 'application/octet-stream';
+  const storedType = cached.headers.get('Content-Type') || 'application/octet-stream';
   const range = request && request.headers ? request.headers.get('Range') : '';
-  const parsed = total > 0 ? self.PrawkoRangeAssemble.parseRequestRange(range, total) : null;
-  const headers = {
+  const knownLen = Number(cached.headers.get('Content-Length')) || 0;
+  const parsed = knownLen > 0
+    ? self.PrawkoRangeAssemble.parseRequestRange(range, knownLen)
+    : null;
+  const cors = {
     'Content-Type': storedType,
     'Accept-Ranges': 'bytes',
     'Access-Control-Allow-Origin': self.location.origin || '*',
+    'X-Prawko-From-Cache': '1',
   };
-  if (!parsed || (parsed.start === 0 && parsed.end === total - 1)) {
-    headers['Content-Length'] = String(total);
+  // Full 200: stream the stored body (no blob() round-trip into RAM).
+  if (!parsed || (knownLen > 0 && parsed.start === 0 && parsed.end === knownLen - 1)) {
+    const headers = new Headers(cached.headers);
+    Object.entries(cors).forEach(([k, v]) => headers.set(k, v));
+    if (knownLen > 0) headers.set('Content-Length', String(knownLen));
+    const src = cached.clone();
+    return new Response(src.body, { status: 200, statusText: 'OK', headers });
+  }
+  // Range: materialize once, then slice.
+  const blob = await cached.blob();
+  const total = blob.size || knownLen;
+  const rangeParsed = total > 0
+    ? self.PrawkoRangeAssemble.parseRequestRange(range, total)
+    : null;
+  if (!rangeParsed || (rangeParsed.start === 0 && rangeParsed.end === total - 1)) {
+    const headers = { ...cors, 'Content-Length': String(total) };
     return new Response(blob, { status: 200, headers });
   }
-  const slice = blob.slice(parsed.start, parsed.end + 1, storedType);
-  headers['Content-Length'] = String(slice.size);
-  headers['Content-Range'] = `bytes ${parsed.start}-${parsed.end}/${total}`;
-  return new Response(slice, { status: 206, headers });
+  const slice = blob.slice(rangeParsed.start, rangeParsed.end + 1, storedType);
+  return new Response(slice, {
+    status: 206,
+    headers: {
+      ...cors,
+      'Content-Length': String(slice.size),
+      'Content-Range': `bytes ${rangeParsed.start}-${rangeParsed.end}/${total}`,
+    },
+  });
 }
 
 async function matchOfflineMedia(request) {
   const cache = await caches.open(OFFLINE_MEDIA_CACHE);
   const raw = typeof request === 'string' ? request : request.url;
   const url = videoAssemblyKey(raw);
-  const opts = { ignoreSearch: true, ignoreVary: true };
-  // Never match the player Range request — Cache Storage stores a full 200.
-  const direct = (await cache.match(url, opts))
-    || (await cache.match(new Request(url, { mode: 'cors' }), opts))
-    || (await cache.match(new Request(url, { mode: 'no-cors' }), opts))
-    || (await cache.match(new Request(url, { mode: 'same-origin' }), opts));
-  if (direct) return direct;
+  // Exact URL only — skipping query on match is an O(N) scan in Chrome on large caches.
+  let hit = await cache.match(url);
+  if (hit) return hit;
   const tail = mediaPathTail(url);
   const stored = tail ? offlineMediaByTail.get(tail) : '';
+  if (stored) {
+    hit = await cache.match(stored);
+    if (hit) return hit;
+  }
+  // Rare key-shape mismatches from older puts (still exact URL).
+  hit = (await cache.match(new Request(url, { mode: 'cors' })))
+    || (await cache.match(new Request(url, { mode: 'same-origin' })));
+  if (hit) return hit;
   if (!stored) return null;
-  return (await cache.match(stored, opts))
-    || (await cache.match(new Request(stored, { mode: 'cors' }), opts))
-    || (await cache.match(new Request(stored, { mode: 'same-origin' }), opts));
+  return (await cache.match(new Request(stored, { mode: 'cors' })))
+    || (await cache.match(new Request(stored, { mode: 'same-origin' })));
 }
 
 function isLoopbackHostName(host) {
@@ -352,37 +374,45 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (url.pathname.includes('/icons/') || url.pathname.includes('/fonts/')) {
-    event.respondWith(
-      caches.open(APP_SHELL_CACHE).then((cache) =>
-        cache.match(event.request).then((cached) => {
-          if (cached) return cached;
-          return fetch(event.request).then((response) => {
-            if (response.ok) safeCachePut(cache, event.request, response.clone());
-            return response;
-          });
-        })
-      )
-    );
+    // Cache-first. Offline miss must not reject (DevTools Offline / no net) —
+    // a 404 lets CSS use the keyword after url(...), e.g. not-allowed.
+    event.respondWith((async () => {
+      const cache = await caches.open(APP_SHELL_CACHE);
+      const cached = await cache.match(event.request)
+        || await cache.match(url.href)
+        || await cache.match(url.pathname);
+      if (cached) return cached;
+      try {
+        const response = await fetch(event.request);
+        if (response.ok) await safeCachePut(cache, event.request, response.clone());
+        return response;
+      } catch {
+        return new Response(new Uint8Array(0), {
+          status: 404,
+          statusText: 'Not Found',
+          headers: { 'Content-Type': 'application/octet-stream', 'Cache-Control': 'no-store' },
+        });
+      }
+    })());
     return;
   }
 
-  // App shell — network first so a refresh actually picks up new HTML/JS/CSS.
-  // Cache is the offline fallback, not the thing that hides updates.
-  event.respondWith(
-    fetch(event.request).then((response) => {
-      if (response.ok) {
-        const copy = response.clone();
-        event.waitUntil(
-          caches.open(APP_SHELL_CACHE).then((cache) => safeCachePut(cache, event.request, copy))
-        );
-      }
+  // App shell — online: network first (refresh gets new HTML/JS/CSS).
+  // Offline: serve cache without calling fetch (avoids ERR_INTERNET_DISCONNECTED noise).
+  event.respondWith((async () => {
+    const cache = await caches.open(APP_SHELL_CACHE);
+    const cached = await cache.match(event.request)
+      || await cache.match('./index.html')
+      || await cache.match('./');
+    if (cached && navigator.onLine === false) return cached;
+    try {
+      const response = await fetch(event.request);
+      if (response.ok) await safeCachePut(cache, event.request, response.clone());
       return response;
-    }).catch(() =>
-      caches.open(APP_SHELL_CACHE).then((cache) =>
-        cache.match(event.request).then((cached) => cached || cache.match('./index.html') || cache.match('./'))
-      )
-    )
-  );
+    } catch {
+      return cached || Response.error();
+    }
+  })());
 });
 
 self.addEventListener('message', (event) => {

@@ -3,7 +3,7 @@
 import { t, getLang, translateQuestion } from './i18n.js';
 import { getCategoryStats, getLearnProgress, loadHistory, getLearnTouchedCategories, getLearnCategoryBreakdown, getLearnUniqueFilterCounts } from './stats.js';
 import { getMediaUrls, fetchCategory, usesLocalMedia, isLoopbackHost, loadLocalConfig } from './data.js';
-import { getCategoryMediaAccess, getCategoriesOfflineCoverage, getDownloadedCategories, getActiveDownloadProgress, getActiveDownloadCategory, getInProgressOfflineCategory, isAppOnline, offlineCoverageHue, resolvePlayableMediaUrl, storeMediaBlob } from './offline.js';
+import { getCategoryMediaAccess, getCategoriesOfflineCoverage, getDownloadedCategories, getActiveDownloadProgress, getActiveDownloadCategory, getInProgressOfflineCategory, offlineCoverageHue, storeMediaBlob } from './offline.js';
 import { refitUiScale, layoutCategoryGrid, syncExamMediaAlign, alignAndFitExamDock, fitAfterShowScreen, shouldHoldScreenChange } from './scale.js';
 import { abortMediaFeed, startMediaFeed } from './media-feed.js';
 import { prepareAnswerFit, prepareDockFit } from './fit-text.js';
@@ -617,15 +617,13 @@ let mediaLoadGen = 0;
 let playableBlobUrl = '';
 
 // blob/data → replay from offline-cache (second+ visit). First visit elsewhere:
-// one page media-feed fetch → storeMediaBlob → paint from that body (MSE / object URL).
+// One path: http(s) URL → media-feed → SW (or Cache Storage match) → element.
 // Loopback + mediaBase media: files already on this computer — el.src, no copy.
 function bindMediaElement(el, url) {
   if (!url) return;
   if (/^(blob|data):/i.test(url)) {
     el.dataset.byteSource = 'stored';
     el.src = url;
-    // Stored replay keeps the caller's autoplay flag; kick play the same way
-    // media-feed does after a live body (attribute alone is not enough after a src swap).
     if (el.tagName === 'VIDEO' && el.autoplay) {
       const pending = el.play();
       if (pending && typeof pending.catch === 'function') pending.catch(() => {});
@@ -715,7 +713,6 @@ export function renderQuestion(question, container, options = {}) {
     };
 
     let candidateIndex = 0;
-    let triedStored = false;
     const getNextMediaUrl = () => {
       if (candidateIndex >= mediaCandidates.length) return null;
       const url = mediaCandidates[candidateIndex];
@@ -723,43 +720,12 @@ export function renderQuestion(question, container, options = {}) {
       return url;
     };
     const stillCurrent = () => mediaGen === mediaLoadGen;
-    // A stored blob is the whole file from an earlier view. Otherwise the
-    // element gets the file URL and one read of that response plays it.
-    const takeStored = async () => {
-      if (triedStored) return null;
-      triedStored = true;
-      const stored = await resolvePlayableMediaUrl(q.media, q.mediaType);
-      if (!stillCurrent()) {
-        if (stored) URL.revokeObjectURL(stored);
-        return null;
-      }
-      if (stored) {
-        playableBlobUrl = stored;
-        return stored;
-      }
-      return null;
-    };
+    // Same online and offline: http(s) candidates. Cache hits are served by
+    // the service worker (or a Cache Storage match inside media-feed).
     const nextPlayableUrl = async () => {
       await ensureMediaCandidates();
       if (!stillCurrent()) return null;
-      if (isAppOnline()) {
-        const url = getNextMediaUrl();
-        if (url) {
-          // Prefer a stored complete file so replay does not touch the network.
-          const stored = await resolvePlayableMediaUrl(q.media, q.mediaType);
-          if (!stillCurrent()) {
-            if (stored) URL.revokeObjectURL(stored);
-            return null;
-          }
-          if (stored) {
-            playableBlobUrl = stored;
-            triedStored = true;
-            return stored;
-          }
-          return url;
-        }
-      }
-      return takeStored();
+      return getNextMediaUrl();
     };
 
     const showMediaFallback = (onRetry) => {
@@ -817,7 +783,6 @@ export function renderQuestion(question, container, options = {}) {
           if (!mediaUrl) {
             showMediaFallback(() => {
               candidateIndex = 0;
-              triedStored = false;
               loadVideo();
             });
             return;
@@ -998,7 +963,6 @@ export function renderQuestion(question, container, options = {}) {
           if (!mediaUrl) {
             showMediaFallback(() => {
               candidateIndex = 0;
-              triedStored = false;
               loadImage();
             });
             return;

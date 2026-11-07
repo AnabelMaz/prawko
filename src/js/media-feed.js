@@ -7,6 +7,13 @@
 // decision stands — no mid-play pause from the pace check. Anything else
 // waits for the whole body and then plays that blob. Leaving early aborts.
 
+import {
+  canUseOfflineMediaCache,
+  openOfflineCache,
+  getStoredMediaBlob,
+  waitForAppOnline,
+} from './offline.js';
+
 /** Leftover download must fit in this fraction of the film length to start. */
 export const FILM_PACE_FRACTION = 0.75;
 
@@ -77,54 +84,203 @@ function elementNetworkFallback(el, url, wantPlay) {
   }
 }
 
+const MEDIA_FETCH_RETRIES = 5;
+
+/** Reused Cache handle — only when store also uses Cache (secure context). */
+let offlineMediaCachePromise = null;
+
+function openOfflineMediaCache() {
+  if (!canUseOfflineMediaCache()) return null;
+  if (!offlineMediaCachePromise) {
+    offlineMediaCachePromise = openOfflineCache().catch((err) => {
+      offlineMediaCachePromise = null;
+      throw err;
+    });
+  }
+  return offlineMediaCachePromise;
+}
+
+/**
+ * Exact URL hit in Cache Storage — same gate as storeMediaBlob.
+ * No ignoreSearch: Chrome scans O(N) with that flag on large caches.
+ */
+async function matchCachedMediaResponse(url) {
+  try {
+    const opened = openOfflineMediaCache();
+    if (!opened) return null;
+    const cache = await opened;
+    if (!cache) return null;
+    const abs = new URL(url, typeof location !== 'undefined' ? location.href : undefined).href;
+    return await cache.match(abs)
+      || await cache.match(new Request(abs))
+      || null;
+  } catch {
+    return null;
+  }
+}
+
+function mediaRefFromUrl(url) {
+  try {
+    const path = new URL(url, typeof location !== 'undefined' ? location.href : undefined).pathname;
+    const m = path.match(/\/(vid|img)\/([^/]+)$/i);
+    if (!m) return null;
+    let name = m[2];
+    try { name = decodeURIComponent(name); } catch { /* keep encoded */ }
+    return { name, mediaType: m[1].toLowerCase() === 'vid' ? 'video' : 'image' };
+  } catch {
+    return null;
+  }
+}
+
+function responseFromStoredBlob(blob) {
+  const headers = new Headers({
+    'Content-Type': blob.type || 'application/octet-stream',
+    'Content-Length': String(blob.size),
+    'X-Prawko-From-Cache': '1',
+  });
+  return new Response(blob, { status: 200, statusText: 'OK', headers });
+}
+
+/** IDB (and store-fallback) — skip Cache when exact CS was already tried. */
+async function matchStoredMediaBlob(url, { skipCache = false } = {}) {
+  const ref = mediaRefFromUrl(url);
+  if (!ref) return null;
+  try {
+    const blob = await getStoredMediaBlob(ref.name, ref.mediaType, { cache: !skipCache });
+    if (!blob || blob.size < 1) return null;
+    return responseFromStoredBlob(blob);
+  } catch {
+    return null;
+  }
+}
+
+function isNavAbort(err, signal) {
+  return Boolean(err && err.name === 'AbortError' && signal?.aborted);
+}
+
+function isNetworkMediaError(err) {
+  if (!err) return false;
+  if (err.name === 'AbortError') return true;
+  if (err.name === 'TypeError') return true;
+  const msg = String(err.message || err);
+  return /network|fetch|Failed to fetch|ERR_|load failed/i.test(msg);
+}
+
 async function openMediaResponse(url, signal) {
+  // Same store rule as offline.js: Cache Storage only in secure context;
+  // otherwise IDB first. CS miss → IDB (mirrors storeMediaBlob Cache.put fail).
+  if (canUseOfflineMediaCache()) {
+    const cached = await matchCachedMediaResponse(url);
+    if (cached && cached.ok) {
+      const headers = new Headers(cached.headers);
+      headers.set('X-Prawko-From-Cache', '1');
+      return new Response(cached.body, { status: 200, statusText: 'OK', headers });
+    }
+    const fromIdb = await matchStoredMediaBlob(url, { skipCache: true });
+    if (fromIdb) {
+      return fromIdb;
+    }
+  } else {
+    const fromIdb = await matchStoredMediaBlob(url, { skipCache: true });
+    if (fromIdb) {
+      return fromIdb;
+    }
+  }
   const res = await fetch(url, { credentials: 'omit', signal });
   if (!res.ok || res.status !== 200 || !res.body) throw new Error('media');
   return res;
 }
 
-async function loadImage(el, url, signal, store, still, rememberUrl) {
-  // One readable fetch → store → paint from those bytes (same I/O as film).
-  // Do not set el.src to the network URL after fetch — that triggers a second GET.
-  let res;
-  try {
-    res = await openMediaResponse(url, signal);
-  } catch (err) {
-    if (err && err.name === 'AbortError') return;
-    if (!still()) return;
-    elementNetworkFallback(el, url, false);
-    return;
+function playIfWanted(el, wantPlay) {
+  if (!wantPlay || el.tagName !== 'VIDEO') return;
+  const pending = el.play();
+  if (pending && typeof pending.catch === 'function') pending.catch(() => {});
+}
+
+async function paintFromBlob(el, blob, store, url, still, rememberUrl, wantPlay) {
+  if (store) {
+    try {
+      await store(url, blob);
+    } catch { /* still paint from this body */ }
   }
-  const bytes = new Uint8Array(await res.arrayBuffer());
-  const type = imageType(url, res.headers.get('Content-Type'));
-  const blob = new Blob([bytes], { type });
-  try {
-    await store(url, blob);
-  } catch { /* still paint from this body */ }
   if (!still()) return;
   const objectUrl = URL.createObjectURL(blob);
-  rememberUrl(objectUrl);
+  const previous = rememberUrl(objectUrl);
+  if (previous && previous !== objectUrl) URL.revokeObjectURL(previous);
   el.dataset.byteSource = 'stored';
   el.src = objectUrl;
+  playIfWanted(el, wantPlay);
+}
+
+/**
+ * Cache hit (SW or page Cache Storage): one body → blob: URL.
+ * No cancel + second el.src=http (that caused ERR_ABORTED and dual GETs).
+ * Never re-store; live path still stores via paintFromBlob(store).
+ */
+async function paintFromCacheHit(el, res, url, still, rememberUrl, wantPlay, asImage) {
+  let blob = await res.blob();
+  if (!still()) return;
+  if (asImage) {
+    const type = imageType(url, res.headers.get('Content-Type'));
+    if (blob.type !== type) blob = new Blob([blob], { type });
+  } else if (!blob.type || !blob.type.startsWith('video/')) {
+    blob = new Blob([blob], { type: 'video/mp4' });
+  }
+  await paintFromBlob(el, blob, null, url, still, rememberUrl, wantPlay);
+}
+
+async function loadImage(el, url, signal, store, still, rememberUrl) {
+  let lastErr = null;
+  for (let attempt = 0; attempt < MEDIA_FETCH_RETRIES; attempt++) {
+    if (!still() || signal.aborted) return;
+    try {
+      if (attempt > 0) await waitForAppOnline(signal);
+      const res = await openMediaResponse(url, signal);
+      if (res.headers.get('X-Prawko-From-Cache') === '1') {
+        await paintFromCacheHit(el, res, url, still, rememberUrl, false, true);
+        return;
+      }
+      const type = imageType(url, res.headers.get('Content-Type'));
+      let blob = await res.blob();
+      if (blob.type !== type) blob = new Blob([blob], { type });
+      await paintFromBlob(el, blob, store, url, still, rememberUrl, false);
+      return;
+    } catch (err) {
+      if (isNavAbort(err, signal) || signal.aborted || !still()) return;
+      lastErr = err;
+      if (!isNetworkMediaError(err) || attempt === MEDIA_FETCH_RETRIES - 1) break;
+      try {
+        await new Promise((r) => setTimeout(r, 250 * (attempt + 1)));
+      } catch { /* ignore */ }
+    }
+  }
+  if (!still() || signal.aborted) return;
+  if (lastErr && lastErr.name === 'AbortError') return;
+  elementNetworkFallback(el, url, false);
+}
+
+async function fetchFilmBody(url, signal, received) {
+  if (received > 0) {
+    const res = await fetch(url, {
+      credentials: 'omit',
+      signal,
+      headers: { Range: `bytes=${received}-` },
+    });
+    if (res.status === 206 && res.body) return { res, mode: 'append' };
+    if (res.status === 200 && res.body) return { res, mode: 'restart' };
+    throw new Error('media');
+  }
+  const res = await openMediaResponse(url, signal);
+  return { res, mode: 'start' };
 }
 
 async function loadFilm(video, url, signal, store, still, rememberUrl) {
   const wantPlay = video.autoplay === true;
   video.autoplay = false;
-  let res;
-  try {
-    res = await openMediaResponse(url, signal);
-  } catch (err) {
-    if (err && err.name === 'AbortError') return;
-    if (!still()) return;
-    elementNetworkFallback(video, url, wantPlay);
-    return;
-  }
-  const total = Number(res.headers.get('Content-Length')) || 0;
+  let total = 0;
   const startedAt = performance.now();
   const chunks = [];
   let received = 0;
-  const reader = res.body.getReader();
   let index = null;
   let session = null;
   const pace = {
@@ -143,24 +299,74 @@ async function loadFilm(video, url, signal, store, still, rememberUrl) {
     if (!index || !session) return;
     session.push(chunks, received, index);
   };
-  const open = openFilmPlayer(video, rememberUrl, () => pace.mayStart(), wantPlay);
-  session = open.session;
-  try {
-    while (true) {
-      const step = await reader.read();
-      if (step.done) break;
-      if (!still() || signal.aborted) {
-        reader.cancel().catch(() => {});
+
+  let attempt = 0;
+  while (attempt < MEDIA_FETCH_RETRIES) {
+    if (!still() || signal.aborted) return;
+    try {
+      if (attempt > 0) await waitForAppOnline(signal);
+      const { res, mode } = await fetchFilmBody(url, signal, received);
+      if (mode === 'start' && res.headers.get('X-Prawko-From-Cache') === '1') {
+        await paintFromCacheHit(video, res, url, still, rememberUrl, wantPlay, false);
         return;
       }
-      chunks.push(step.value);
-      received += step.value.byteLength;
-      if (!session) continue;
-      pump();
+      if (mode === 'restart') {
+        chunks.length = 0;
+        received = 0;
+        index = null;
+        session = null;
+      }
+      if (mode === 'start' || mode === 'restart') {
+        total = Number(res.headers.get('Content-Length')) || total;
+      } else {
+        const cr = res.headers.get('Content-Range') || '';
+        const m = cr.match(/\/(\d+)\s*$/);
+        if (m) total = Number(m[1]) || total;
+      }
+      if (!session) {
+        const open = openFilmPlayer(video, rememberUrl, () => pace.mayStart(), wantPlay);
+        session = open.session;
+      }
+      const reader = res.body.getReader();
+      try {
+        while (true) {
+          const step = await reader.read();
+          if (step.done) break;
+          if (!still() || signal.aborted) {
+            reader.cancel().catch(() => {});
+            return;
+          }
+          chunks.push(step.value);
+          received += step.value.byteLength;
+          if (!session) continue;
+          pump();
+        }
+      } catch (err) {
+        reader.cancel().catch(() => {});
+        if (isNavAbort(err, signal) || signal.aborted || !still()) return;
+        if (!isNetworkMediaError(err)) throw err;
+        attempt += 1;
+        if (attempt >= MEDIA_FETCH_RETRIES) throw err;
+        continue;
+      }
+      break;
+    } catch (err) {
+      if (isNavAbort(err, signal) || signal.aborted || !still()) return;
+      if (!isNetworkMediaError(err) || attempt >= MEDIA_FETCH_RETRIES - 1) {
+        elementNetworkFallback(video, url, wantPlay);
+        return;
+      }
+      attempt += 1;
+      try {
+        await new Promise((r) => setTimeout(r, 250 * attempt));
+      } catch { /* ignore */ }
     }
-  } catch (err) {
-    if (err && err.name === 'AbortError') return;
-    throw err;
+  }
+
+  if (!still() || signal.aborted) return;
+  if (received < 1) {
+    elementNetworkFallback(video, url, wantPlay);
+    return;
   }
   pace.done = true;
   const bytes = sliceChunks(chunks, 0, received);
