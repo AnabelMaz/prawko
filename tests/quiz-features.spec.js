@@ -71,7 +71,9 @@ async function startLearnMode(page, { localJson, category = 'B', stubRemote = tr
 async function setLearnQueue(page, kind, value) {
   const root = page.locator(`.learn-${kind}-select`);
   await root.locator('.learn-queue-select').click();
-  await root.locator(`[role="option"][data-value="${value}"]`).click();
+  // Trailing .ui-help-btn sits near the center on handset; a default click opens
+  // help instead of picking the option (li handler ignores .ui-help-btn clicks).
+  await root.locator(`[role="option"][data-value="${value}"]`).click({ position: { x: 8, y: 8 } });
 }
 
 async function stubLearnVideoFiles(page) {
@@ -997,7 +999,7 @@ test.describe('Learn queue filter', () => {
   test('empty filter toast sits in the center of the media area', async ({ page }) => {
     await startLearnMode(page);
     await page.locator('.learn-filter-select .learn-queue-select').click();
-    await page.locator('.learn-filter-select [data-value="hard"]').click();
+    await page.locator('.learn-filter-select [data-value="hard"]').click({ position: { x: 8, y: 8 } });
     const pos = await page.evaluate(() => {
       const overlay = document.querySelector('.learn-toast');
       const pill = overlay?.querySelector('.learn-toast-msg') || overlay;
@@ -1022,7 +1024,7 @@ test.describe('Learn queue filter', () => {
     await page.setViewportSize({ width: 640, height: 450 });
     await startLearnMode(page);
     await page.locator('.learn-filter-select .learn-queue-select').click();
-    await page.locator('.learn-filter-select [data-value="hard"]').click();
+    await page.locator('.learn-filter-select [data-value="hard"]').click({ position: { x: 8, y: 8 } });
     const metrics = await page.evaluate(() => {
       const pill = document.querySelector('.learn-toast-msg');
       const media = document.querySelector('#quiz .media-area');
@@ -1044,12 +1046,7 @@ test.describe('Learn queue filter', () => {
   test('switching a non-empty filter toasts the new queue', async ({ page }) => {
     await startLearnMode(page);
     await setLearnQueue(page, 'filter', 'all');
-    const pos = await page.evaluate(() => {
-      const overlay = document.querySelector('.learn-toast');
-      const pill = overlay?.querySelector('.learn-toast-msg') || overlay;
-      return { text: pill?.textContent || null };
-    });
-    expect(pos.text).toBe('Wszystkie · Losowo');
+    await expect(page.locator('.learn-toast-msg')).toHaveText('Wszystkie · Losowo');
     await expect(page.locator('.learn-filter-select')).toHaveAttribute('data-value', 'all');
   });
 });
