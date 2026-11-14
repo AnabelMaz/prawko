@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { goToCategories, cycleLanguage, cycleSkin, learnCatalogLabel, waitForUiHold } = require('./helpers');
+const { goToCategories, cycleLanguage, cycleSkin, learnCatalogLabel, waitForUiHold, enablePracticeExam } = require('./helpers');
 const TINY_MP4 = require('./tiny-mp4');
 const TRIM_MP4 = require('fs').readFileSync(require('path').join(__dirname, 'trim-1s.mp4'));
 
@@ -3071,5 +3071,125 @@ test.describe('Exam results question review', () => {
     await expect(page.locator('.result-verdict')).toHaveText(/NIEZDANY/);
     await expect(page.locator('.review-item')).toHaveCount(32);
     await expect(page.locator('.review-stats')).toHaveText(/Bez odpowiedzi: 32/);
+  });
+});
+
+test.describe('Exam feeds learn progress', () => {
+  async function buildPtKnownBank(page) {
+    await page.goto('/');
+    return page.evaluate(async () => {
+      const [cat, facts] = await Promise.all([
+        fetch('data/PT.json').then((res) => res.json()),
+        fetch('data/questions.json').then((res) => res.json()),
+      ]);
+      const bank = {};
+      for (const id of cat.questionIds) {
+        const fact = facts[String(id)];
+        if (!fact?.correct) continue;
+        bank[String(id)] = {
+          answer: fact.correct,
+          streak: 2,
+          misses: 0,
+          answeredAt: Date.now() - 86400000,
+        };
+      }
+      return bank;
+    });
+  }
+
+  async function currentExamAnswerKey(page) {
+    return page.evaluate(async () => {
+      const text = document.querySelector('.question-text')?.textContent || '';
+      const [cat, facts, polish] = await Promise.all([
+        fetch('data/PT.json').then((res) => res.json()),
+        fetch('data/questions.json').then((res) => res.json()),
+        fetch('data/translations_pl.json').then((res) => res.json()),
+      ]);
+      for (const id of cat.questionIds) {
+        if (polish[String(id)]?.q !== text) continue;
+        return { id: String(id), correct: facts[String(id)].correct };
+      }
+      return null;
+    });
+  }
+
+  test('a wrong locked exam answer drops a known question from learn', async ({ page }) => {
+    const bank = await buildPtKnownBank(page);
+    await page.addInitScript((seed) => {
+      localStorage.setItem('prawko_p_p1_learn', JSON.stringify({ PT: seed }));
+    }, bank);
+    await startExamMode(page);
+    await page.waitForSelector('.answers .answer-btn');
+    const current = await currentExamAnswerKey(page);
+    expect(current).toBeTruthy();
+    const wrong = current.correct === 'T' ? 'N' : (current.correct === 'N' ? 'T' : (
+      current.correct === 'A' ? 'B' : 'A'
+    ));
+    await page.locator(`.answers .answer-btn[data-answer="${wrong}"]`).click();
+    await page.click('.btn-end-exam');
+    await page.waitForSelector('.modal-overlay.active');
+    await page.click('.btn-confirm-end');
+    await page.waitForSelector('#results.active');
+
+    const entry = await page.evaluate((id) => {
+      const learn = JSON.parse(localStorage.getItem('prawko_p_p1_learn') || '{}');
+      return learn.PT?.[id] || null;
+    }, current.id);
+    expect(entry.streak).toBe(0);
+    expect(entry.answer).toBe(wrong);
+    expect(entry.misses).toBe(1);
+  });
+
+  test('a correct locked exam answer raises the learn streak', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.removeItem('prawko_p_p1_learn');
+    });
+    await startExamMode(page);
+    await page.waitForSelector('.answers .answer-btn');
+    const current = await currentExamAnswerKey(page);
+    expect(current).toBeTruthy();
+    await page.locator(`.answers .answer-btn[data-answer="${current.correct}"]`).click();
+    await page.click('.btn-end-exam');
+    await page.waitForSelector('.modal-overlay.active');
+    await page.click('.btn-confirm-end');
+    await page.waitForSelector('#results.active');
+
+    const entry = await page.evaluate((id) => {
+      const learn = JSON.parse(localStorage.getItem('prawko_p_p1_learn') || '{}');
+      return learn.PT?.[id] || null;
+    }, current.id);
+    expect(entry).toBeTruthy();
+    expect(entry.streak).toBe(1);
+    expect(entry.answer).toBe(current.correct);
+  });
+
+  test('ending without an answer leaves known learn rows alone', async ({ page }) => {
+    const bank = await buildPtKnownBank(page);
+    await page.addInitScript((seed) => {
+      localStorage.setItem('prawko_p_p1_learn', JSON.stringify({ PT: seed }));
+    }, bank);
+    await startExamMode(page);
+    await page.waitForSelector('.answers .answer-btn');
+    const before = await page.evaluate(() => localStorage.getItem('prawko_p_p1_learn'));
+    await page.click('.btn-end-exam');
+    await page.waitForSelector('.modal-overlay.active');
+    await page.click('.btn-confirm-end');
+    await page.waitForSelector('#results.active');
+    const after = await page.evaluate(() => localStorage.getItem('prawko_p_p1_learn'));
+    expect(after).toBe(before);
+  });
+
+  test('practice exam answers do not write learn progress', async ({ page }) => {
+    await enablePracticeExam(page);
+    await page.addInitScript(() => {
+      localStorage.removeItem('prawko_p_p1_learn');
+    });
+    await startExamMode(page);
+    await expect(page.locator('#quiz')).toHaveClass(/exam-practice/);
+    await page.waitForSelector('.answers .answer-btn');
+    await page.locator('.answers .answer-btn').first().click();
+    await page.locator('.btn-exam-next.visible').click();
+    const learn = await page.evaluate(() => localStorage.getItem('prawko_p_p1_learn'));
+    expect(learn == null || learn === '' || learn === '{}').toBeTruthy();
   });
 });

@@ -13,7 +13,7 @@ import {
   confirmModalAction,
   hideModal,
 } from './ui.js';
-import { saveLastResult, saveResult } from './stats.js';
+import { saveLastResult, saveResult, saveLearnAnswer } from './stats.js';
 import { t, getLang } from './i18n.js';
 import { refitUiScale } from './scale.js';
 import { getPracticeExamEnabled } from './profiles.js';
@@ -492,6 +492,15 @@ function buildExamItems(pool, practice) {
   }));
 }
 
+/** Lock the current exam item; if answered (not practice), write the same learn store as learn mode. */
+function lockCurrentToLearn(item = currentItem()) {
+  if (!state || !item || item.locked) return;
+  item.locked = true;
+  item.isCorrect = item.given === item.question.correct;
+  if (item.practice || !item.given) return;
+  saveLearnAnswer(state.category, item.question.id, item.given, item.isCorrect);
+}
+
 export function startExam(categoryData, meta) {
   const rules = {
     ...meta.exam,
@@ -762,8 +771,6 @@ function beginAnswerPhase() {
     if (!current || current.locked) return;
     current.timedOut = !current.given;
     if (isOnLastQuestion() && !isPracticeItem()) {
-      current.locked = true;
-      current.isCorrect = current.given === current.question.correct;
       stopWatchClock();
       stopQuestionClock();
       setAnswerButtonsEnabled(false);
@@ -798,8 +805,7 @@ function confirmAndAdvance() {
     showPracticeHandoff();
     return;
   }
-  item.locked = true;
-  item.isCorrect = item.given === item.question.correct;
+  lockCurrentToLearn(item);
   stopWatchClock();
   stopQuestionClock();
   setAnswerButtonsEnabled(false);
@@ -820,6 +826,7 @@ function advanceQuestion() {
 
 function finishExam() {
   if (!state || state.finished) return;
+  lockCurrentToLearn();
   stopPracticeHandoffTimer();
   stopWatchClock();
   state.finished = true;
