@@ -3071,6 +3071,164 @@ test.describe('Exam results question review', () => {
     await expect(page.locator('.result-verdict')).toHaveText(/NIEZDANY/);
     await expect(page.locator('.review-item')).toHaveCount(32);
     await expect(page.locator('.review-stats')).toHaveText(/Bez odpowiedzi: 32/);
+
+    const stored = await page.evaluate(() => ({
+      last: localStorage.getItem('prawko_p_p1_last_result'),
+      stats: JSON.parse(localStorage.getItem('prawko_p_p1_stats') || '[]'),
+      answers: JSON.parse(localStorage.getItem('prawko_p_p1_stats_answers') || '[]'),
+    }));
+    expect(stored.last).toBeNull();
+    expect(stored.stats).toHaveLength(1);
+    expect(stored.stats[0].answers).toBeUndefined();
+    expect(stored.stats[0].review).toBe(true);
+    expect(stored.answers[0]).toHaveLength(32);
+  });
+});
+
+test.describe('Exam history question review', () => {
+  async function sampleBAnswers(page, count = 2) {
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    return page.evaluate(async (n) => {
+      const [cat, facts] = await Promise.all([
+        fetch('data/B.json').then((res) => res.json()),
+        fetch('data/questions.json').then((res) => res.json()),
+      ]);
+      const live = [];
+      for (const id of cat.questionIds || []) {
+        const fact = facts[String(id)];
+        if (!fact?.correct) continue;
+        live.push({ id: String(id), correct: fact.correct });
+        if (live.length >= n) break;
+      }
+      return live;
+    }, count);
+  }
+
+  test('history row opens the same review; missing ids show unavailable', async ({ page }) => {
+    const live = await sampleBAnswers(page, 2);
+    expect(live.length).toBe(2);
+    const wrongGiven = live[1].correct === 'T' ? 'N' : (live[1].correct === 'N' ? 'T' : 'B');
+
+    await page.evaluate(({ liveAnswers, wrong }) => {
+      const row = {
+        date: '2026-03-01T12:00:00.000Z',
+        category: 'B',
+        score: 3,
+        maxPoints: 74,
+        passed: false,
+        basicScore: 2,
+        specialistScore: 1,
+        answers: [
+          { id: liveAnswers[0].id, given: liveAnswers[0].correct, ok: true },
+          { id: liveAnswers[1].id, given: wrong, ok: false },
+          { id: 'missing-exam-id-xyz', given: 'T', ok: false },
+          { id: 'missing-skip-id', given: null, ok: false },
+        ],
+      };
+      localStorage.setItem('prawko_p_p1_stats', JSON.stringify([row]));
+    }, { liveAnswers: live, wrong: wrongGiven });
+
+    await page.goto('/#history');
+    await page.waitForSelector('#history.active');
+    const split = await page.evaluate(() => ({
+      stats: JSON.parse(localStorage.getItem('prawko_p_p1_stats') || '[]'),
+      answers: JSON.parse(localStorage.getItem('prawko_p_p1_stats_answers') || '[]'),
+      last: localStorage.getItem('prawko_p_p1_last_result'),
+    }));
+    expect(split.last).toBeNull();
+    expect(split.stats).toHaveLength(1);
+    expect(split.stats[0].answers).toBeUndefined();
+    expect(split.stats[0].review).toBe(true);
+    expect(split.answers[0]).toHaveLength(4);
+
+    const reviewRow = page.locator('.history-item-review');
+    await expect(reviewRow).toHaveCount(1);
+    await reviewRow.click();
+    await page.waitForSelector('#results.active');
+    await expect(page.locator('.review-item')).toHaveCount(4);
+    await expect(page.locator('.review-item-ok')).toHaveCount(1);
+    await expect(page.locator('.review-item-bad')).toHaveCount(2);
+    await expect(page.locator('.review-item-skip')).toHaveCount(1);
+    await expect(page.locator('.review-item-missing')).toHaveCount(2);
+
+    const missing = page.locator('.review-item-missing').first();
+    await missing.locator('summary').click();
+    await expect(missing.locator('.review-unavailable')).toHaveText(/niedostępne/i);
+    await expect(missing.locator('.review-answers')).toHaveCount(0);
+    await expect(missing.locator('.incorrect-question')).toHaveCount(0);
+
+    const liveOk = page.locator('.review-item-ok').first();
+    await liveOk.locator('summary').click();
+    await expect(liveOk.locator('.incorrect-question')).not.toBeEmpty();
+    await expect(liveOk.locator('.review-answers .answer-btn.correct')).toHaveCount(1);
+  });
+
+  test('profile export round-trips compact exam answers', async ({ page }) => {
+    const live = await sampleBAnswers(page, 1);
+    expect(live.length).toBe(1);
+    const liveId = live[0].id;
+
+    const givenOk = live[0].correct;
+    await page.evaluate(({ id, given }) => {
+      localStorage.setItem('prawko_p_p1_stats', JSON.stringify([{
+        date: '2026-08-31T10:15:00.000Z',
+        category: 'B',
+        score: 70,
+        maxPoints: 74,
+        passed: true,
+        basicScore: 44,
+        specialistScore: 26,
+        answers: [
+          { id, given, ok: true },
+          { id: 'gone-forever', given: 'N', ok: false },
+        ],
+      }]));
+    }, { id: liveId, given: givenOk });
+
+    await page.click('.profile-toggle');
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.locator('.profile-action-export').click(),
+    ]);
+    const chunks = [];
+    const stream = await download.createReadStream();
+    for await (const chunk of stream) chunks.push(chunk);
+    const file = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    expect(file.data.last_result).toBeUndefined();
+    expect(file.data.stats_answers).toBeUndefined();
+    const packedBytes = Buffer.from(file.data.stats, 'base64');
+    expect(packedBytes.subarray(0, 4).toString('binary')).toBe('PXH2');
+    // 4 magic + 7 summary + 1 count + 2×3 answer slots
+    expect(packedBytes.length).toBe(18);
+
+    await page.evaluate(() => {
+      localStorage.removeItem('prawko_p_p1_stats');
+      localStorage.removeItem('prawko_p_p1_stats_answers');
+      localStorage.removeItem('prawko_p_p1_last_result');
+    });
+    await page.locator('.profile-import-file').setInputFiles({
+      name: 'prawko-ja.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(JSON.stringify(file)),
+    });
+    const modal = page.locator('#confirm-modal.active');
+    await expect(modal).toBeVisible();
+    await modal.locator('.btn-confirm-end').click();
+
+    const restored = await page.evaluate(() => ({
+      stats: JSON.parse(localStorage.getItem('prawko_p_p1_stats') || '[]'),
+      answers: JSON.parse(localStorage.getItem('prawko_p_p1_stats_answers') || '[]'),
+      last: localStorage.getItem('prawko_p_p1_last_result'),
+    }));
+    expect(restored.last).toBeNull();
+    expect(restored.stats).toHaveLength(1);
+    expect(restored.stats[0].answers).toBeUndefined();
+    expect(restored.stats[0].review).toBe(true);
+    expect(restored.answers[0]).toEqual([
+      { id: liveId, given: givenOk, ok: true },
+      { id: '', given: 'N', ok: false },
+    ]);
   });
 });
 

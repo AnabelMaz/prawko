@@ -6513,6 +6513,21 @@ html[data-exam-skin="panel"] #quiz .review-answers.abc-answers .answer-btn.corre
   gap: 12px;
 }
 
+.history-item-review {
+  cursor: pointer;
+}
+
+.history-item-review:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.review-unavailable,
+.review-given-only {
+  margin: 0.5rem 0 0;
+  color: var(--text-secondary);
+}
+
 .history-item-info {
   flex: 1;
 }

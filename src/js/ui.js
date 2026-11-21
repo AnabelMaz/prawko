@@ -1,7 +1,7 @@
 // ui.js — DOM rendering utilities
 
 import { t, getLang, translateQuestion } from './i18n.js';
-import { getCategoryStats, getLearnProgress, loadHistory, getLearnTouchedCategories, getLearnCategoryBreakdown, getLearnUniqueFilterCounts } from './stats.js';
+import { getCategoryStats, getLearnProgress, loadHistory, historyRowHasReview, getLearnTouchedCategories, getLearnCategoryBreakdown, getLearnUniqueFilterCounts } from './stats.js';
 import { getMediaUrls, fetchCategory, usesLocalMedia, isLoopbackHost, loadLocalConfig } from './data.js';
 import { getCategoryMediaAccess, getCategoriesOfflineCoverage, getDownloadedCategories, getActiveDownloadProgress, getActiveDownloadCategory, getInProgressOfflineCategory, offlineCoverageHue, storeMediaBlob } from './offline.js';
 import { refitUiScale, layoutCategoryGrid, syncExamMediaAlign, alignAndFitExamDock, fitAfterShowScreen, shouldHoldScreenChange } from './scale.js';
@@ -1388,10 +1388,10 @@ export function renderResults(result) {
   reviewList.append(heading, stats);
 
   answers.forEach((item, index) => {
-    const q = translateQuestion(item.question);
     const outcome = reviewOutcome(item);
     const details = document.createElement('details');
     details.className = `review-item review-item-${outcome}`;
+    if (item.missing || !item.question) details.classList.add('review-item-missing');
 
     const summary = document.createElement('summary');
     const markLabel = outcome === 'ok'
@@ -1426,6 +1426,26 @@ export function renderResults(result) {
         return;
       }
       body.dataset.ready = '1';
+      if (item.missing || !item.question) {
+        const note = document.createElement('p');
+        note.className = 'review-unavailable';
+        note.textContent = t('reviewQuestionUnavailable');
+        body.append(note);
+        if (item.given) {
+          const yours = document.createElement('p');
+          yours.className = 'review-given-only';
+          yours.textContent = `${t('yourAnswer')} ${item.given}`;
+          body.append(yours);
+        } else if (outcome === 'skip') {
+          const skipped = document.createElement('p');
+          skipped.className = 'review-no-answer';
+          skipped.textContent = t('noAnswer');
+          body.append(skipped);
+        }
+        refitUiScale();
+        return;
+      }
+      const q = translateQuestion(item.question);
       if (q.media) appendReviewMedia(body, q);
       const qText = document.createElement('p');
       qText.className = 'incorrect-question';
@@ -1471,9 +1491,18 @@ export function renderHistory() {
   if (clearBtn) clearBtn.style.display = '';
 
   // Show newest first
-  [...history].reverse().forEach(r => {
+  const newestFirst = [...history].reverse();
+  newestFirst.forEach((r, visualIndex) => {
     const item = document.createElement('div');
     item.className = 'history-item';
+    const storageIndex = history.length - 1 - visualIndex;
+    if (historyRowHasReview(r)) {
+      item.classList.add('history-item-review');
+      item.dataset.historyIndex = String(storageIndex);
+      item.setAttribute('role', 'button');
+      item.tabIndex = 0;
+      item.setAttribute('aria-label', t('historyOpenReview'));
+    }
 
     const info = document.createElement('div');
     info.className = 'history-item-info';

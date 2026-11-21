@@ -6,7 +6,7 @@ import { startLearn, setupLearnListeners, cleanupLearn, refreshLearnQuestion, re
 import { showScreen, renderCategories, applyLanguage, renderHistory, renderLearnProgress, renderResults, showConfirmModal, refreshOfflineCoverage, formatOfflineRunningLabel, setCategoryCardsBankPending } from './ui.js';
 import { setLang, getLang, loadQuestionTranslations, nextLang, LANG_LABELS, t, readStoredLang } from './i18n.js';
 import { downloadCategoryMedia, getDownloadedCategories, reconcileDownloadedCategories, offlineCoverageHue, getInProgressOfflineCategory, getActiveDownloadProgress, getActiveDownloadCategory, clearInProgressOfflineCategory, isAppOnline, stopDownload } from './offline.js';
-import { getProfileSummary, loadHistory, loadLastResult, clearHistory, clearLearnProgress, packLearnForExport, unpackLearnFromImport, packExamHistoryForExport, unpackExamHistoryFromImport } from './stats.js';
+import { getProfileSummary, loadHistory, loadHistoryEntry, loadLatestHistoryEntry, historyJsonForExport, clearHistory, clearLearnProgress, packLearnForExport, unpackLearnFromImport, packExamHistoryForExport, unpackExamHistoryFromImport, ensureHydratedResult, historyRowHasReview } from './stats.js';
 import { setupUiFitScale, refitUiScale, revealUiScale, layoutCategoryGrid, applyUiFitScale } from './scale.js';
 import {
   DEFAULT_PROFILE_NAME,
@@ -212,7 +212,39 @@ function syncSessionChrome(screenId) {
   if (hide) setProfilePanelOpen(false);
 }
 
-function handleRoute() {
+/** History index for #results; null → newest exam in history. */
+let resultsDisplayIndex = null;
+
+async function paintExamResults(row) {
+  if (!row) return false;
+  const hydrated = await ensureHydratedResult(row);
+  if (!hydrated) return false;
+  renderResults(hydrated);
+  return true;
+}
+
+async function showStoredExamResults() {
+  const row = resultsDisplayIndex != null
+    ? loadHistoryEntry(resultsDisplayIndex)
+    : loadLatestHistoryEntry();
+  if (!row) return;
+  await paintExamResults(row);
+}
+
+async function openHistoryExamReview(storageIndex) {
+  const row = loadHistoryEntry(storageIndex);
+  if (!historyRowHasReview(row)) return;
+  resultsDisplayIndex = storageIndex;
+  setAppMode('exam');
+  if (window.location.hash.slice(1) === 'results') {
+    await showStoredExamResults();
+    showScreen('results');
+    return;
+  }
+  window.location.hash = 'results';
+}
+
+async function handleRoute() {
   const hash = window.location.hash.slice(1) || 'home';
 
   if (!VALID_SCREENS.has(hash)) {
@@ -225,6 +257,8 @@ function handleRoute() {
     cleanupExam();
     cleanupLearn();
     setQuizCategoryPill(null);
+  } else {
+    resultsDisplayIndex = null;
   }
 
   // If navigating to quiz with a pending category, start the session
@@ -272,8 +306,7 @@ function handleRoute() {
   if (hash === 'history') renderHistory();
   if (hash === 'learn-progress') renderLearnProgress(meta);
   if (hash === 'results') {
-    const last = loadLastResult();
-    if (last) renderResults(last);
+    await showStoredExamResults();
   }
   if (hash === 'results' || hash === 'history') setAppMode('exam');
   if (hash === 'learn-progress') setAppMode('learn');
@@ -683,6 +716,8 @@ async function expandProfileSnapshot(raw) {
     return null;
   }
   const data = { ...raw.data };
+  delete data.last_result;
+  delete data.stats_answers;
   if (Object.prototype.hasOwnProperty.call(data, 'learn')) {
     if (typeof data.learn !== 'string') return null;
     const expanded = await unpackLearnFromImport(data.learn);
@@ -692,7 +727,7 @@ async function expandProfileSnapshot(raw) {
   }
   if (Object.prototype.hasOwnProperty.call(data, 'stats')) {
     if (typeof data.stats !== 'string') return null;
-    const expanded = unpackExamHistoryFromImport(data.stats);
+    const expanded = await unpackExamHistoryFromImport(data.stats);
     if (expanded == null) return null;
     if (expanded === '[]') delete data.stats;
     else data.stats = expanded;
@@ -703,6 +738,9 @@ async function expandProfileSnapshot(raw) {
 async function downloadProfileSnapshot() {
   const snapshot = snapshotActiveProfile();
   try {
+    delete snapshot.data.last_result;
+    delete snapshot.data.stats_answers;
+    snapshot.data.stats = historyJsonForExport();
     if (typeof snapshot.data.learn === 'string') {
       const packed = await packLearnForExport(snapshot.data.learn);
       if (packed == null) {
@@ -713,7 +751,7 @@ async function downloadProfileSnapshot() {
       else snapshot.data.learn = packed;
     }
     if (typeof snapshot.data.stats === 'string') {
-      const packed = packExamHistoryForExport(snapshot.data.stats);
+      const packed = await packExamHistoryForExport(snapshot.data.stats);
       if (packed == null) {
         window.alert(t('profileExportBad'));
         return;
@@ -1254,8 +1292,7 @@ async function init() {
       refreshExamQuestion();
     }
     if (document.getElementById('results').classList.contains('active')) {
-      const last = loadLastResult();
-      if (last) renderResults(last);
+      await showStoredExamResults();
     }
     if (document.getElementById('history').classList.contains('active')) renderHistory();
     if (document.getElementById('learn-progress').classList.contains('active')) renderLearnProgress(meta);
@@ -1275,6 +1312,24 @@ async function init() {
     e.stopPropagation();
     e.preventDefault();
     startOfflineDownload(dlBtn);
+  });
+
+  const historyList = document.querySelector('.history-list');
+  historyList?.addEventListener('click', (e) => {
+    const item = e.target.closest('.history-item-review[data-history-index]');
+    if (!item || !historyList.contains(item)) return;
+    const index = Number(item.dataset.historyIndex);
+    if (!Number.isInteger(index) || index < 0) return;
+    openHistoryExamReview(index);
+  });
+  historyList?.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const item = e.target.closest('.history-item-review[data-history-index]');
+    if (!item || !historyList.contains(item)) return;
+    e.preventDefault();
+    const index = Number(item.dataset.historyIndex);
+    if (!Number.isInteger(index) || index < 0) return;
+    openHistoryExamReview(index);
   });
 
   // Clear history button — with confirmation

@@ -13,7 +13,7 @@ import {
   confirmModalAction,
   hideModal,
 } from './ui.js';
-import { saveLastResult, saveResult, saveLearnAnswer } from './stats.js';
+import { saveResult, saveLearnAnswer } from './stats.js';
 import { t, getLang } from './i18n.js';
 import { refitUiScale } from './scale.js';
 import { getPracticeExamEnabled } from './profiles.js';
@@ -866,7 +866,6 @@ function finishExam() {
     sessionStorage.setItem(LAST_EXAM_CATEGORY_KEY, lastExamCategory);
   } catch {}
   saveResult(result);
-  saveLastResult(result);
   renderResults(result);
   window.location.hash = 'results';
 }
