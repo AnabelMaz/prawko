@@ -1362,7 +1362,22 @@ exit `$LASTEXITCODE
         }
     }
 
-    if (-not $SkipMedia) {
+    if ($SkipMedia) {
+        # Do not refresh snapshot\media and do not pull checkout src\media into the pack.
+        $skipContribMedia = $true
+        $keptMedia = $false
+        foreach ($sub in @("img", "vid")) {
+            if (Test-DirHasFiles (Join-Path $destSnapshot "media\$sub")) { $keptMedia = $true; break }
+        }
+        if ($keptMedia) {
+            $components.media = $true
+            $sources.media = "(unchanged on destination)"
+            $locations.media = "snapshot"
+            Write-Host "-> Snapshot media: left in place (-ExcludeMedia)." -ForegroundColor Gray
+        } else {
+            Write-Host "-> Snapshot media: skipped (-ExcludeMedia)." -ForegroundColor DarkYellow
+        }
+    } else {
         $mediaSrc = Resolve-ExportSnapshotMediaRoot
         if ($mediaSrc) {
             $mediaDst = Join-Path $destSnapshot "media"
@@ -1445,7 +1460,14 @@ exit `$LASTEXITCODE
             $omit = @()
             if ($skipContribData) { $omit += "src\data" }
             if ($skipContribMedia) { $omit += "src\media" }
-            Write-Host ("   Runtime in snapshot — omitting contrib: {0}" -f ($omit -join ", ")) -ForegroundColor Gray
+            $why = if ($SkipMedia -and $skipContribMedia -and -not $components.media) {
+                "omitting contrib"
+            } elseif ($SkipMedia -and $skipContribMedia) {
+                "media stay in snapshot — omitting contrib"
+            } else {
+                "Runtime in snapshot — omitting contrib"
+            }
+            Write-Host ("   {0}: {1}" -f $why, ($omit -join ", ")) -ForegroundColor Gray
         }
         $srcStats = Get-CopyTreeStats -Root $contribSrc -ExcludeDirNames $xdNames
         Invoke-SafeRobocopy -Activity "Export contrib" -ProgressTotalBytes $srcStats.Bytes -ProgressExcludeDirNames $xdNames -Source $contribSrc -Destination $destContrib -ArgumentList @(

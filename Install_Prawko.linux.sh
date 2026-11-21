@@ -1192,19 +1192,28 @@ STUB
       say_y "-> Snapshot data: nothing to export."
     fi
   fi
-  if [ "$EXCLUDE_MEDIA" -eq 0 ]; then
-    if media_src="$(resolve_export_media_root)"; then
-      mkdir -p "$dest_root/snapshot/media"
-      say_c "-> Snapshot media: $media_src -> $dest_root/snapshot/media"
-      for sub in img vid; do
-        [ -d "$media_src/$sub" ] || continue
-        mkdir -p "$dest_root/snapshot/media/$sub"
-        rsync_progress -a "$media_src/$sub/" "$dest_root/snapshot/media/$sub/"
-      done
-      has_media=1; src_media="$media_src"
+  omit_contrib_media=0
+  if [ "$EXCLUDE_MEDIA" -eq 1 ]; then
+    omit_contrib_media=1
+    if dir_has_files "$dest_root/snapshot/media/img" || dir_has_files "$dest_root/snapshot/media/vid"; then
+      has_media=1
+      src_media="(unchanged on destination)"
+      say_d "-> Snapshot media: left in place (--exclude-media)."
     else
-      say_y "-> Snapshot media: nothing to export."
+      say_y "-> Snapshot media: skipped (--exclude-media)."
     fi
+  elif media_src="$(resolve_export_media_root)"; then
+    mkdir -p "$dest_root/snapshot/media"
+    say_c "-> Snapshot media: $media_src -> $dest_root/snapshot/media"
+    for sub in img vid; do
+      [ -d "$media_src/$sub" ] || continue
+      mkdir -p "$dest_root/snapshot/media/$sub"
+      rsync_progress -a "$media_src/$sub/" "$dest_root/snapshot/media/$sub/"
+    done
+    has_media=1; src_media="$media_src"
+    omit_contrib_media=1
+  else
+    say_y "-> Snapshot media: nothing to export."
   fi
   if [ "$EXCLUDE_LOCAL_JSON" -eq 0 ]; then
     if [ -f "$TARGET_DIR/src/local.json" ]; then
@@ -1243,9 +1252,15 @@ STUB
       _rsync_ex+=(--exclude 'src/data/')
       say_d "   Runtime in snapshot — omitting contrib src/data"
     fi
-    if [ "$has_media" -eq 1 ]; then
+    if [ "$omit_contrib_media" -eq 1 ]; then
       _rsync_ex+=(--exclude 'src/media/')
-      say_d "   Runtime in snapshot — omitting contrib src/media"
+      if [ "$EXCLUDE_MEDIA" -eq 1 ] && [ "$has_media" -eq 1 ]; then
+        say_d "   media stay in snapshot — omitting contrib src/media"
+      elif [ "$EXCLUDE_MEDIA" -eq 1 ]; then
+        say_d "   omitting contrib src/media"
+      else
+        say_d "   Runtime in snapshot — omitting contrib src/media"
+      fi
     fi
     rsync_progress "${_rsync_ex[@]}" "$contrib/" "$dest_contrib/"
     unset _rsync_ex
@@ -1254,8 +1269,8 @@ STUB
       say_y "-> Removing stale contrib src/data. This export keeps question JSON in snapshot/data."
       rm -rf "$dest_contrib/src/data"
     fi
-    if [ "$has_media" -eq 1 ] && [ -d "$dest_contrib/src/media" ]; then
-      say_y "-> Removing stale contrib src/media. This export keeps media in snapshot/media."
+    if [ "$omit_contrib_media" -eq 1 ] && [ -d "$dest_contrib/src/media" ]; then
+      say_y "-> Removing stale contrib src/media (pack keeps media out of contrib)."
       rm -rf "$dest_contrib/src/media"
     fi
     say_g "-> Contrib: $dest_contrib"
