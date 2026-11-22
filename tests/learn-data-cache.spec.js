@@ -93,4 +93,37 @@ test.describe('Learn data cache', () => {
     expect(result.storedStreak).toBe(2);
     expect(result.storedHasAnswer).toBe(false);
   });
+
+  test('legacy category id arrays migrate to objects on load', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForSelector('#home.active');
+    const result = await page.evaluate(async () => {
+      const stats = await import(new URL('./js/stats.js', location.href).href);
+      const profiles = await import(new URL('./js/profiles.js', location.href).href);
+      const pid = profiles.getActiveProfileId();
+      const key = `prawko_p_${pid}_learn`;
+      stats.clearLearnProgress();
+      localStorage.setItem(key, JSON.stringify({ B: [42, 43] }));
+      profiles.setActiveProfile(pid); // drop learn cache so load migrates
+      const progress = stats.getLearnProgress('B');
+      const status = stats.getLearnQuestionStatus('B', { id: 42, correct: 'T' });
+      const touched = stats.getLearnTouchedCategories();
+      const stored = JSON.parse(localStorage.getItem(key));
+      stats.clearLearnProgress();
+      return {
+        progress,
+        status,
+        touched,
+        isObject: stored?.B != null && typeof stored.B === 'object' && !Array.isArray(stored.B),
+        keys: stored?.B ? Object.keys(stored.B).sort() : [],
+        valuesNull: stored?.B ? Object.values(stored.B).every((v) => v === null) : false,
+      };
+    });
+    expect(result.progress).toBe(2);
+    expect(result.status).toBe('new');
+    expect(result.touched).toEqual(['B']);
+    expect(result.isObject).toBe(true);
+    expect(result.keys).toEqual(['42', '43']);
+    expect(result.valuesNull).toBe(true);
+  });
 });

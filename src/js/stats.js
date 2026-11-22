@@ -324,11 +324,9 @@ function normalizeLearnEntry(raw) {
 
 export function saveLearnAnswer(category, questionId, answer, isCorrect = null) {
   const data = loadLearnData();
-  if (typeof data[category] !== 'object' || Array.isArray(data[category])) {
-    // Migrate from old array format
-    const oldArr = Array.isArray(data[category]) ? data[category] : [];
+  // loadLearnData already rewrites legacy category arrays to objects.
+  if (typeof data[category] !== 'object' || data[category] === null || Array.isArray(data[category])) {
     data[category] = {};
-    oldArr.forEach(id => { data[category][id] = null; });
   }
 
   const prevEntry = normalizeLearnEntry(data[category][questionId]);
@@ -374,6 +372,23 @@ function rememberLearnData(data) {
   learnDataCacheEpoch = getProfileEpoch();
 }
 
+/** Rewrite legacy per-category id arrays to `{ id: null }` objects. Returns whether storage changed. */
+function migrateLearnCategoryArrays(data) {
+  let dirty = false;
+  for (const key of Object.keys(data)) {
+    const cat = data[key];
+    if (!Array.isArray(cat)) continue;
+    const obj = {};
+    for (const id of cat) {
+      if (id == null || id === '') continue;
+      obj[String(id)] = null;
+    }
+    data[key] = obj;
+    dirty = true;
+  }
+  return dirty;
+}
+
 function loadLearnData() {
   const epoch = getProfileEpoch();
   if (learnDataCache && learnDataCacheEpoch === epoch) return learnDataCache;
@@ -382,6 +397,15 @@ function loadLearnData() {
     if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
       rememberLearnData({});
       return learnDataCache;
+    }
+    if (migrateLearnCategoryArrays(parsed)) {
+      try {
+        if (!profileSet(LEARN_KEY, JSON.stringify(parsed))) {
+          forgetLearnDataCache();
+        }
+      } catch {
+        forgetLearnDataCache();
+      }
     }
     rememberLearnData(parsed);
     return learnDataCache;
@@ -397,7 +421,7 @@ function emptyLearnEntry() {
 
 function entryFromData(data, category, questionId) {
   const catData = data?.[category];
-  if (!catData || Array.isArray(catData)) return emptyLearnEntry();
+  if (!catData || typeof catData !== 'object' || Array.isArray(catData)) return emptyLearnEntry();
   return normalizeLearnEntry(catData[questionId]);
 }
 
@@ -424,8 +448,7 @@ function effectiveLearnEntry(entry, now = Date.now()) {
   return entry;
 }
 
-function statusFromEntry(entry, question, answerOverride) {
-  const view = effectiveLearnEntry(entry);
+function statusFromView(view, question, answerOverride) {
   const streak = view.streak || 0;
   const misses = view.misses || 0;
   // Session letter: only for in-visit filters before/with the durable update.
@@ -445,10 +468,20 @@ function statusFromEntry(entry, question, answerOverride) {
   return 'new';
 }
 
-function hardFromEntry(entry, question, answerOverride) {
+/** One aging pass + status/hard for breakdown and filter chips. */
+function classifyEntry(entry, question, answerOverride) {
   const view = effectiveLearnEntry(entry);
-  if ((view.misses || 0) < LEARN_HARD_MISSES) return false;
-  return statusFromEntry(entry, question, answerOverride) !== 'known';
+  const status = statusFromView(view, question, answerOverride);
+  const hard = (view.misses || 0) >= LEARN_HARD_MISSES && status !== 'known';
+  return { status, hard };
+}
+
+function statusFromEntry(entry, question, answerOverride) {
+  return classifyEntry(entry, question, answerOverride).status;
+}
+
+function hardFromEntry(entry, question, answerOverride) {
+  return classifyEntry(entry, question, answerOverride).hard;
 }
 
 function isKnownStreak(entry, now = Date.now()) {
@@ -462,17 +495,11 @@ export function getProfileSummary() {
   const ids = new Set();
   let learnKnown = 0;
   Object.values(learn).forEach((cat) => {
-    if (!cat) return;
-    if (Array.isArray(cat)) {
-      cat.forEach((id) => ids.add(String(id)));
-      return;
-    }
-    if (typeof cat === 'object') {
-      Object.entries(cat).forEach(([id, raw]) => {
-        ids.add(id);
-        if (isKnownStreak(normalizeLearnEntry(raw))) learnKnown += 1;
-      });
-    }
+    if (!cat || typeof cat !== 'object' || Array.isArray(cat)) return;
+    Object.entries(cat).forEach(([id, raw]) => {
+      ids.add(id);
+      if (isKnownStreak(normalizeLearnEntry(raw))) learnKnown += 1;
+    });
   });
   return {
     learnAnswered: ids.size,
@@ -486,9 +513,7 @@ export function getLearnTouchedCategories() {
   const data = loadLearnData();
   return Object.keys(data).filter((id) => {
     const cat = data[id];
-    if (!cat) return false;
-    if (Array.isArray(cat)) return cat.length > 0;
-    return typeof cat === 'object' && Object.keys(cat).length > 0;
+    return cat && typeof cat === 'object' && !Array.isArray(cat) && Object.keys(cat).length > 0;
   });
 }
 
@@ -497,14 +522,13 @@ export function getLearnCategoryBreakdown(category, questions) {
   const data = loadLearnData();
   const counts = { total: list.length, known: 0, wrong: 0, hard: 0, learning: 0, neu: 0, answered: 0 };
   list.forEach((q) => {
-    const entry = entryFromData(data, category, q.id);
-    const status = statusFromEntry(entry, q);
+    const { status, hard } = classifyEntry(entryFromData(data, category, q.id), q);
     if (status === 'known') counts.known += 1;
     else if (status === 'wrong') counts.wrong += 1;
     else if (status === 'learning') counts.learning += 1;
     else counts.neu += 1;
     if (status !== 'new') counts.answered += 1;
-    if (hardFromEntry(entry, q)) counts.hard += 1;
+    if (hard) counts.hard += 1;
   });
   return counts;
 }
@@ -519,9 +543,8 @@ export function getLearnUniqueFilterCounts(categoryBanks) {
     for (const q of list) {
       if (!q || q.id == null || !category) continue;
       const id = String(q.id);
-      const entry = entryFromData(data, category, q.id);
-      const known = statusFromEntry(entry, q) === 'known';
-      const hard = hardFromEntry(entry, q);
+      const { status, hard } = classifyEntry(entryFromData(data, category, q.id), q);
+      const known = status === 'known';
       const prev = byId.get(id);
       if (!prev) {
         byId.set(id, { known, hard });
@@ -555,8 +578,7 @@ export function clearLearnProgress() {
 export function getLearnProgress(category) {
   const data = loadLearnData();
   const catData = data[category];
-  if (!catData) return 0;
-  if (Array.isArray(catData)) return catData.length;
+  if (!catData || typeof catData !== 'object' || Array.isArray(catData)) return 0;
   return Object.keys(catData).length;
 }
 
@@ -653,7 +675,7 @@ function drawBand(days) {
 export function getLearnDrawBands(category, now = Date.now()) {
   const map = new Map();
   const catData = loadLearnData()?.[category];
-  if (!catData || Array.isArray(catData)) return map;
+  if (!catData || typeof catData !== 'object' || Array.isArray(catData)) return map;
   const today = localDayIndex(now);
   for (const id of Object.keys(catData)) {
     const entry = normalizeLearnEntry(catData[id]);
