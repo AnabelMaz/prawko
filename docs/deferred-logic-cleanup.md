@@ -25,16 +25,26 @@ Mostly pragmatic domain complexity (WORD exam phases, offline packs/files, scale
 - **Migration:** Lazy `ensureCanonicalOfflineKeys()` on first offline helper call; rewrites old CDN/`media/` keys; marker `localStorage prawko_offline_key_schema = '1'` only after success (no Cache bucket rename).
 - Touches `offline.js`, `media-feed.js`, `sw.js`. Shipped on `main` (canonical offline keys).
 
+### 3. `classifyEntry` + learn array→object on load (2026-11-22)
+
+- **Done:** `classifyEntry` runs aging once and returns `{ status, hard }`; breakdown / unique chips use it; `statusFromEntry` / `hardFromEntry` stay thin wrappers.
+- **Done:** `loadLearnData` rewrites legacy per-category id arrays to `{ id: null }` objects and persists; hot paths assume objects (defensive `Array.isArray` still returns empty).
+- Shipped on `main` (`stats.js` + learn-data-cache test).
+
 ## Worth cleaning (when ready)
 
-_(none — item 2 done)_
+_(none)_
 
 ## Nice-to-have (low priority)
 
-- **`classifyEntry(entry, q) → { status, hard }`** in `stats.js` — `hardFromEntry` / breakdown / unique counts call aging+status twice today.
-- **Exam counters** in `exam.js` `updateExamChrome` / `showQuestion` — several `filter`s over ~32 items; optional precomputed practice/scored offsets.
-- **Drop array→object learn migration** in `saveLearnAnswer` / summary helpers once legacy formats are gone (migrate-on-load once, then object-only).
-- **Dedupe shuffle** — `exam.js` `shuffle` vs `learn.js` `shuffleInPlace`.
+_(none left)_
+
+## Won’t do
+
+| Item | Why |
+|------|-----|
+| Prefetch exam counters in `updateExamChrome` | ~32 questions; several `filter`s are cheap; extra state for no UX gain |
+| Dedupe `exam.js` `shuffle` vs `learn.js` `shuffleInPlace` | Shared code would only be Fisher–Yates; exam picks by point recipe, learn bands by answer date — different product rules |
 
 ## Leave alone
 
