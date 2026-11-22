@@ -302,6 +302,7 @@ export function getCategoryStats(category) {
 
 function normalizeLearnEntry(raw) {
   if (typeof raw === 'object' && raw !== null && !Array.isArray(raw)) {
+    // Legacy `answer` is read only for status migration; new writes omit it.
     const answer = typeof raw.answer === 'string' ? raw.answer : null;
     const streak = Number.isFinite(raw.streak) && raw.streak > 0
       ? Math.floor(raw.streak)
@@ -312,6 +313,7 @@ function normalizeLearnEntry(raw) {
       : 0;
     return { answer, streak, answeredAt, misses };
   }
+  // Legacy: bare string was the chosen letter.
   return {
     answer: typeof raw === 'string' ? raw : null,
     streak: 0,
@@ -330,8 +332,8 @@ export function saveLearnAnswer(category, questionId, answer, isCorrect = null) 
   }
 
   const prevEntry = normalizeLearnEntry(data[category][questionId]);
+  // Durable learn stores progress only — chosen letter stays in the learn session Map.
   const nextEntry = {
-    answer: answer || null,
     streak: prevEntry.streak,
     answeredAt: Date.now(),
     misses: prevEntry.misses,
@@ -390,7 +392,7 @@ function loadLearnData() {
 }
 
 function emptyLearnEntry() {
-  return { answer: null, streak: 0, answeredAt: null, misses: 0 };
+  return { streak: 0, answeredAt: null, misses: 0 };
 }
 
 function entryFromData(data, category, questionId) {
@@ -414,7 +416,7 @@ function effectiveLearnEntry(entry, now = Date.now()) {
   if (!Number.isFinite(entry.answeredAt)) return entry;
   const ageMs = now - entry.answeredAt;
   if (ageMs >= LEARN_FORGET_FULL_DAYS * DAY_MS) {
-    return { ...entry, answer: null, streak: 0 };
+    return { ...entry, streak: 0 };
   }
   if (ageMs >= LEARN_FORGET_HALF_DAYS * DAY_MS) {
     return { ...entry, streak: 1 };
@@ -424,12 +426,23 @@ function effectiveLearnEntry(entry, now = Date.now()) {
 
 function statusFromEntry(entry, question, answerOverride) {
   const view = effectiveLearnEntry(entry);
-  const answer = answerOverride !== undefined ? answerOverride : view.answer;
   const streak = view.streak || 0;
-  if (answer !== null && answer !== question.correct) return 'wrong';
-  if (answer === question.correct && streak >= LEARN_KNOWN_STREAK) return 'known';
-  if (answer === null) return 'new';
-  return 'learning';
+  const misses = view.misses || 0;
+  // Session letter: only for in-visit filters before/with the durable update.
+  if (answerOverride !== undefined && question?.correct != null) {
+    if (answerOverride !== question.correct) return 'wrong';
+    if (streak >= LEARN_KNOWN_STREAK) return 'known';
+    return 'learning';
+  }
+  if (streak >= LEARN_KNOWN_STREAK) return 'known';
+  if (streak >= 1) return 'learning';
+  if (misses >= 1) return 'wrong';
+  // Legacy rows that only stored the chosen letter.
+  if (view.answer != null && question?.correct != null) {
+    if (view.answer !== question.correct) return 'wrong';
+    return 'learning';
+  }
+  return 'new';
 }
 
 function hardFromEntry(entry, question, answerOverride) {
@@ -566,7 +579,6 @@ export function isLearnQuestionHard(category, question, answerOverride) {
 // 101 learning and hard
 // 110 learning, one miss
 // 111 known, at least one miss
-const LEARN_WRONG_MARK = '!';
 const LEARN_DAY_CAP = 31;
 
 function compareQuestionId(a, b) {
@@ -606,15 +618,15 @@ function codeFromEntry(entry, question) {
   return 0;
 }
 
-function entryFromCode(code, question) {
-  const correct = question.correct;
-  if (code === 1) return { answer: correct, streak: 1, misses: 0 };
-  if (code === 2) return { answer: correct, streak: 2, misses: 0 };
-  if (code === 3) return { answer: LEARN_WRONG_MARK, streak: 0, misses: 1 };
-  if (code === 4) return { answer: LEARN_WRONG_MARK, streak: 0, misses: 2 };
-  if (code === 5) return { answer: correct, streak: 1, misses: 2 };
-  if (code === 6) return { answer: correct, streak: 1, misses: 1 };
-  if (code === 7) return { answer: correct, streak: 2, misses: 1 };
+/** Packed status code → durable learn fields (no chosen letter). */
+function entryFromCode(code) {
+  if (code === 1) return { streak: 1, misses: 0 };
+  if (code === 2) return { streak: 2, misses: 0 };
+  if (code === 3) return { streak: 0, misses: 1 };
+  if (code === 4) return { streak: 0, misses: 2 };
+  if (code === 5) return { streak: 1, misses: 2 };
+  if (code === 6) return { streak: 1, misses: 1 };
+  if (code === 7) return { streak: 2, misses: 1 };
   return null;
 }
 
@@ -638,27 +650,20 @@ function drawBand(days) {
   return 8;
 }
 
-function savedAnswerText(raw) {
-  if (typeof raw === 'string') return raw;
-  if (raw && typeof raw === 'object' && typeof raw.answer === 'string') return raw.answer;
-  return '';
-}
-
 export function getLearnDrawBands(category, now = Date.now()) {
   const map = new Map();
   const catData = loadLearnData()?.[category];
   if (!catData || Array.isArray(catData)) return map;
   const today = localDayIndex(now);
   for (const id of Object.keys(catData)) {
-    const raw = catData[id];
-    const stamp = raw && typeof raw === 'object' ? raw.answeredAt : null;
-    if (Number.isFinite(stamp)) {
-      let days = today - localDayIndex(stamp);
+    const entry = normalizeLearnEntry(catData[id]);
+    if (Number.isFinite(entry.answeredAt)) {
+      let days = today - localDayIndex(entry.answeredAt);
       if (days < 0) days = 0;
       map.set(id, drawBand(days));
       continue;
     }
-    if (savedAnswerText(raw) !== '') map.set(id, 1);
+    if (entry.streak > 0 || entry.misses > 0 || entry.answer != null) map.set(id, 1);
   }
   return map;
 }
@@ -770,7 +775,7 @@ export async function unpackLearnFromImport(raw) {
     const catOut = {};
     questions.forEach((q, index) => {
       const byte = bytes[index];
-      const entry = entryFromCode(byte & 7, q);
+      const entry = entryFromCode(byte & 7);
       if (!entry) return;
       entry.answeredAt = answeredAtFromDays(byte >> 3, now);
       catOut[String(q.id)] = entry;

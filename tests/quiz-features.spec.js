@@ -2422,24 +2422,25 @@ test.describe('Local profiles', () => {
     };
     const learn = JSON.stringify({
       B: {
-        99: { answer: 'T', streak: 2, misses: 0, answeredAt: answerDaysAgo(0) },
-        100: { answer: 'T', streak: 1, misses: 0, answeredAt: answerDaysAgo(3) },
-        109: { answer: 'T', streak: 0, misses: 1, answeredAt: answerDaysAgo(1) },
-        110: { answer: 'T', streak: 0, misses: 2, answeredAt: answerDaysAgo(10) },
-        352: { answer: 'N', streak: 1, misses: 2, answeredAt: answerDaysAgo(2) },
-        469: { answer: 'T', streak: 1, misses: 1, answeredAt: answerDaysAgo(0) },
-        475: { answer: 'N', streak: 4, misses: 3, answeredAt: answerDaysAgo(40) },
+        99: { streak: 2, misses: 0, answeredAt: answerDaysAgo(0) },
+        100: { streak: 1, misses: 0, answeredAt: answerDaysAgo(3) },
+        109: { streak: 0, misses: 1, answeredAt: answerDaysAgo(1) },
+        110: { streak: 0, misses: 2, answeredAt: answerDaysAgo(10) },
+        352: { streak: 1, misses: 2, answeredAt: answerDaysAgo(2) },
+        469: { streak: 1, misses: 1, answeredAt: answerDaysAgo(0) },
+        475: { streak: 4, misses: 3, answeredAt: answerDaysAgo(40) },
       },
     });
+    // Pack codes cap known streak display; misses/streak round-trip via status codes.
     const restored = {
       B: {
-        99: { answer: 'T', streak: 2, misses: 0 },
-        100: { answer: 'T', streak: 1, misses: 0 },
-        109: { answer: '!', streak: 0, misses: 1 },
-        110: { answer: '!', streak: 0, misses: 2 },
-        352: { answer: 'N', streak: 1, misses: 2 },
-        469: { answer: 'T', streak: 1, misses: 1 },
-        475: { answer: 'N', streak: 2, misses: 1 },
+        99: { streak: 2, misses: 0 },
+        100: { streak: 1, misses: 0 },
+        109: { streak: 0, misses: 1 },
+        110: { streak: 0, misses: 2 },
+        352: { streak: 1, misses: 2 },
+        469: { streak: 1, misses: 1 },
+        475: { streak: 2, misses: 1 },
       },
     };
     const restoredDays = { 99: 0, 100: 3, 109: 1, 110: 10, 352: 2, 469: 0, 475: 31 };
@@ -2448,7 +2449,8 @@ test.describe('Local profiles', () => {
       const status = {};
       const days = {};
       for (const [id, entry] of Object.entries(parsed.B)) {
-        status[id] = { answer: entry.answer, streak: entry.streak, misses: entry.misses };
+        expect(entry.answer).toBeUndefined();
+        status[id] = { streak: entry.streak, misses: entry.misses };
         days[id] = daysAgo(entry.answeredAt);
       }
       expect(status).toEqual(restored.B);

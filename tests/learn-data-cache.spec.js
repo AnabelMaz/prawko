@@ -81,7 +81,7 @@ test.describe('Learn data cache', () => {
         summaryHalf,
         summaryFull,
         storedStreak: stored.streak,
-        storedAnswer: stored.answer,
+        storedHasAnswer: Object.prototype.hasOwnProperty.call(stored, 'answer'),
       };
     });
     expect(result.fresh).toBe('known');
@@ -91,6 +91,6 @@ test.describe('Learn data cache', () => {
     expect(result.summaryHalf).toBe(0);
     expect(result.summaryFull).toBe(0);
     expect(result.storedStreak).toBe(2);
-    expect(result.storedAnswer).toBe('T');
+    expect(result.storedHasAnswer).toBe(false);
   });
 });
