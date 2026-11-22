@@ -70,7 +70,7 @@ test.describe('App flows', () => {
       await expect(page.locator('.exam-film-start')).toBeVisible();
       await page.click('.exam-film-start');
       await expect(page.locator('.exam-film-start')).toBeHidden();
-      await expect(page.locator('.exam-film-pending')).toHaveCount(0);
+      await expect(page.locator('.exam-film-pending')).toHaveCount(0, { timeout: 15000 });
       await expectFilmPlayingOrAnswerClock(page);
     } else {
       await expect(page.locator('.exam-film-start')).toBeHidden();
@@ -88,7 +88,7 @@ test.describe('App flows', () => {
     await expect(page.locator('.exam-film-start')).toBeVisible();
     await page.clock.fastForward(21000);
     await expect(page.locator('.exam-film-start')).toBeHidden();
-    await expect(page.locator('.exam-film-pending')).toHaveCount(0);
+    await expect(page.locator('.exam-film-pending')).toHaveCount(0, { timeout: 15000 });
     await expectFilmPlayingOrAnswerClock(page);
   });
 

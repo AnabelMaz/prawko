@@ -32,6 +32,17 @@ async function fakeOffline(page) {
   });
 }
 
+/** Live refreshOfflineCoverage can overwrite a manual paint; re-apply + check in one toPass. */
+async function withOfflineCoveragePaint(page, coverageMap, assertFn) {
+  await expect(async () => {
+    await page.evaluate(async (map) => {
+      const { applyOfflineCoverageToButtons } = await import(new URL('./js/ui.js', location.href).href);
+      applyOfflineCoverageToButtons(map, new Set());
+    }, coverageMap);
+    await assertFn();
+  }).toPass({ timeout: 15000 });
+}
+
 test.describe('Category media access', () => {
   test('access matrix covers local, downloaded, online, and blocked', async ({ page }) => {
     await page.goto('/');
@@ -498,45 +509,39 @@ test.describe('Category media access', () => {
     await stubRemoteMedia(page);
     await openCategories(page);
 
-    await page.evaluate(async () => {
-      const { applyOfflineCoverageToButtons } = await import(new URL('./js/ui.js', location.href).href);
-      applyOfflineCoverageToButtons({
-        B: { have: 37, total: 100, pct: 37 },
-        C: { have: 100, total: 100, pct: 100 },
-      }, new Set());
-    });
-
     const b = page.locator('.category-grid .category-card[data-category="B"] .offline-btn');
     const c = page.locator('.category-grid .category-card[data-category="C"] .offline-btn');
-    await expect(b).toHaveClass(/partial/);
-    await expect(b).toHaveAttribute('data-offline-pct', '37');
-    await expect(b).toContainText(/37% offline/);
-    expect(await b.evaluate((el) => el.style.getPropertyValue('--offline-hue'))).toBe('44');
-    await expect(c).toHaveClass(/downloaded/);
-    await expect(c).toContainText(/Dostępne offline|Available offline/);
-    await expect(c).not.toHaveClass(/partial/);
+    await withOfflineCoveragePaint(page, {
+      B: { have: 37, total: 100, pct: 37 },
+      C: { have: 100, total: 100, pct: 100 },
+    }, async () => {
+      await expect(b).toHaveClass(/partial/, { timeout: 1000 });
+      await expect(b).toHaveAttribute('data-offline-pct', '37', { timeout: 1000 });
+      await expect(b).toContainText(/37% offline/, { timeout: 1000 });
+      expect(await b.evaluate((el) => el.style.getPropertyValue('--offline-hue'))).toBe('44');
+      await expect(c).toHaveClass(/downloaded/, { timeout: 1000 });
+      await expect(c).toContainText(/Dostępne offline|Available offline/, { timeout: 1000 });
+      await expect(c).not.toHaveClass(/partial/, { timeout: 1000 });
+    });
   });
 
   test('coverage under 1% shows 0% offline once anything is stored', async ({ page }) => {
     await stubRemoteMedia(page);
     await openCategories(page);
 
-    await page.evaluate(async () => {
-      const { applyOfflineCoverageToButtons } = await import(new URL('./js/ui.js', location.href).href);
-      applyOfflineCoverageToButtons({
-        B: { have: 2, total: 5000, pct: 0 },
-        C: { have: 0, total: 100, pct: 0 },
-      }, new Set());
-    });
-
     const b = page.locator('.category-grid .category-card[data-category="B"] .offline-btn');
     const c = page.locator('.category-grid .category-card[data-category="C"] .offline-btn');
-    await expect(b).toHaveClass(/partial/);
-    await expect(b).toHaveAttribute('data-offline-pct', '0');
-    await expect(b).toContainText(/0% offline/);
-    expect(await b.evaluate((el) => el.style.getPropertyValue('--offline-hue'))).toBe('0');
-    await expect(c).not.toHaveClass(/partial/);
-    await expect(c).toContainText(/Pobierz offline|Save offline/);
+    await withOfflineCoveragePaint(page, {
+      B: { have: 2, total: 5000, pct: 0 },
+      C: { have: 0, total: 100, pct: 0 },
+    }, async () => {
+      await expect(b).toHaveClass(/partial/, { timeout: 1000 });
+      await expect(b).toHaveAttribute('data-offline-pct', '0', { timeout: 1000 });
+      await expect(b).toContainText(/0% offline/, { timeout: 1000 });
+      expect(await b.evaluate((el) => el.style.getPropertyValue('--offline-hue'))).toBe('0');
+      await expect(c).not.toHaveClass(/partial/, { timeout: 1000 });
+      await expect(c).toContainText(/Pobierz offline|Save offline/, { timeout: 1000 });
+    });
   });
 
   test('downloading keeps the coverage hue on the progress fill', async ({ page }) => {
