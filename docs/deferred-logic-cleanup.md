@@ -19,14 +19,15 @@ Mostly pragmatic domain complexity (WORD exam phases, offline packs/files, scale
 - **Done instead:** Durable learn stores only `{ streak, misses, answeredAt }`; session Map keeps the letter for UI. Pack/unpack no longer invents `'!'` / `question.correct`. Wire format unchanged (1 byte/question). Exam PXH2 unchanged.
 - Shipped on `main` (learn storage + packer).
 
+### 2. Canonical offline media cache keys (2026-11-22)
+
+- **Done:** One logical key `/vid|img/<file>` (lowercase). Cache Storage writes `origin + tail`; IDB uses the same tail. Coverage and reads use only that key.
+- **Migration:** Lazy `ensureCanonicalOfflineKeys()` on first offline helper call; rewrites old CDN/`media/` keys; marker `localStorage prawko_offline_key_schema = '1'` only after success (no Cache bucket rename).
+- Touches `offline.js`, `media-feed.js`, `sw.js`. Shipped on `main` (canonical offline keys).
+
 ## Worth cleaning (when ready)
 
-### 2. Canonical offline media cache keys
-
-- **Where:** `src/js/offline.js` — `addMediaCacheKeys`, `urlIsCached`, `idbKeyCandidates`, `idbGetMediaBlob`, `matchCachedMediaResponse`; overlap in `src/js/media-feed.js`
-- **Why suboptimal:** Fan-out of encoded/raw/lower/tail URL variants; miss path can scan many IDB keys. Duplicated offline ↔ media-feed.
-- **Leaner:** One canonical key on write (e.g. lower `vid/name.mp4`); one-shot migrate old keys; read only canonical.
-- **Risk:** Offline “already downloaded” false negatives until migration; test packs + files paths.
+_(none — item 2 done)_
 
 ## Nice-to-have (low priority)
 
@@ -53,8 +54,8 @@ Mostly pragmatic domain complexity (WORD exam phases, offline packs/files, scale
 ## How to resume in Cursor
 
 1. Checkout this branch: `git fetch && git checkout notes/logic-cleanup`
-2. Open this file; optionally re-read offline key helpers for item 2.
+2. Open this file; pick a nice-to-have if still useful.
 3. Implement **one** bullet per PR; do not mix with unrelated UI.
-4. After merge to `main`, delete this branch or mark items done here.
+4. After merge to `main`, mark items done here or delete this branch.
 
 Branch `notes/logic-cleanup` is documentation-only so pushes do not run CI (`deploy.yml` is `push` to `main` only).
