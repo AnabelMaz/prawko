@@ -11,14 +11,15 @@ Related chat / analysis: Cursor agent transcript around 2026-11-14; explore pass
 
 Mostly pragmatic domain complexity (WORD exam phases, offline packs/files, scale settle, MSE early-play). Not systematically over-engineered. Clean pointwise when touching that area.
 
+## Done
+
+### 1. Learn export packing — no chosen letter (2026-11-22)
+
+- **Was:** “plain JSON instead of packing” — rejected (keep small snapshots).
+- **Done instead:** Durable learn stores only `{ streak, misses, answeredAt }`; session Map keeps the letter for UI. Pack/unpack no longer invents `'!'` / `question.correct`. Wire format unchanged (1 byte/question). Exam PXH2 unchanged.
+- Shipped on `main` (learn storage + packer).
+
 ## Worth cleaning (when ready)
-
-### 1. Profile export bit-packing → plain JSON
-
-- **Where:** `src/js/stats.js` — `packLearnForExport` / `unpackLearnFromImport` (~351–574), `packExamHistoryForExport` / `unpackExamHistoryFromImport` (~576–723), helpers `codeFromEntry`, `entryFromCode`, `writeBits`, `readBits`, …
-- **Why inflated:** Bytes/base64 save little vs real JSON for ≤50 exams and learn already stored as objects; loses exact wrong answer (`LEARN_WRONG_MARK = '!'`); ties export to current question bank order via `fetchCategory`.
-- **Leaner:** Export/import the same JSON as `profileGet` (`prawko_learn` / `prawko_stats`). Update profile snapshot / import tests accordingly.
-- **Risk:** Breaks old packed snapshots already exported — need format version or dual unpack.
 
 ### 2. Canonical offline media cache keys
 
@@ -40,7 +41,9 @@ Mostly pragmatic domain complexity (WORD exam phases, offline packs/files, scale
 |------|-----|
 | `exam.js` phases, `locked`, next-guard, practice handoff | Real state machine, not duplicate flags |
 | `lockCurrentToLearn` | Already lean |
-| `learn.js` seqList + randomList + draw bands + `sessionAnswers` | Product rules; answer does not rebuild queue |
+| `learn.js` seqList + randomList + draw bands + `sessionAnswers` | Product rules; letter only in session |
+| Exam history PXH2 (`given` + `ok` + bank index) | Review needs letter; `ok` for tombstone/catalogue change |
+| Local JSON vs packed file | Canonical local; pack only at export/import boundary |
 | `scale.js` pin/settle/hold | Anti-flash; CSS “simplify” tends to regress |
 | `media-feed.js` MP4/MSE remux | Feature cost, not bloat |
 | `offline.js` packs vs files + resume | Required by `local.json` / CDN vs disk |
@@ -50,7 +53,7 @@ Mostly pragmatic domain complexity (WORD exam phases, offline packs/files, scale
 ## How to resume in Cursor
 
 1. Checkout this branch: `git fetch && git checkout notes/logic-cleanup`
-2. Open this file; optionally re-read `stats.js` export section and offline key helpers.
+2. Open this file; optionally re-read offline key helpers for item 2.
 3. Implement **one** bullet per PR; do not mix with unrelated UI.
 4. After merge to `main`, delete this branch or mark items done here.
 
