@@ -3318,7 +3318,6 @@ test.describe('Exam feeds learn progress', () => {
         const fact = facts[String(id)];
         if (!fact?.correct) continue;
         bank[String(id)] = {
-          answer: fact.correct,
           streak: 2,
           misses: 0,
           answeredAt: Date.now() - 86400000,
@@ -3367,7 +3366,7 @@ test.describe('Exam feeds learn progress', () => {
       return learn.PT?.[id] || null;
     }, current.id);
     expect(entry.streak).toBe(0);
-    expect(entry.answer).toBe(wrong);
+    expect(entry.answer).toBeUndefined();
     expect(entry.misses).toBe(1);
   });
 
@@ -3391,7 +3390,7 @@ test.describe('Exam feeds learn progress', () => {
     }, current.id);
     expect(entry).toBeTruthy();
     expect(entry.streak).toBe(1);
-    expect(entry.answer).toBe(current.correct);
+    expect(entry.answer).toBeUndefined();
   });
 
   test('ending without an answer leaves known learn rows alone', async ({ page }) => {
