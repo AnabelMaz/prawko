@@ -150,24 +150,20 @@ test.describe('Offline zip packs', () => {
 
     const result = await page.evaluate(async () => {
       const mod = await import(new URL('./js/offline.js', location.href).href);
-      const { getMediaUrls } = await import(new URL('./js/data.js', location.href).href);
       const { OFFLINE_DOWNLOAD } = await import(new URL('./js/data.js', location.href).href);
       const keepOld = typeof mod.downloadCategoryMediaFromFiles === 'function'
         && OFFLINE_DOWNLOAD === 'packs';
       const downloaded = await mod.downloadCategoryMediaFromPacks('PT');
       const cache = await caches.open('prawko-offline-media-v1');
-      const urls = getMediaUrls('pack-test.webp', 'image');
-      let cached = false;
-      for (const url of urls) {
-        if (await cache.match(url) || await cache.match(new Request(url, { mode: 'cors' }))) {
-          cached = true;
-          break;
-        }
-      }
+      const canon = mod.canonicalCacheUrl(mod.canonicalMediaKey('pack-test.webp', 'image'));
+      const hit = canon
+        ? (await cache.match(canon) || await cache.match(new Request(canon)))
+        : null;
       return {
         keepOld,
         success: downloaded.success,
-        cached,
+        cached: Boolean(hit),
+        canon,
       };
     });
 
