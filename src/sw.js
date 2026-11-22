@@ -117,19 +117,28 @@ function mediaPathTail(href) {
   }
 }
 
+function canonicalOfflineUrl(tail) {
+  if (!tail) return '';
+  try {
+    return new URL(tail, self.location.origin).href;
+  } catch {
+    return '';
+  }
+}
+
 async function rebuildOfflineMediaIndex() {
   const cache = await caches.open(OFFLINE_MEDIA_CACHE);
   const keys = await cache.keys();
   const urls = new Set();
   const byTail = new Map();
   for (const req of keys) {
-    urls.add(req.url);
-    try {
-      const u = new URL(req.url);
-      urls.add(u.origin + u.pathname);
-    } catch { /* ignore bad cache keys */ }
     const tail = mediaPathTail(req.url);
-    if (tail && !byTail.has(tail)) byTail.set(tail, req.url);
+    if (!tail) continue;
+    const canon = canonicalOfflineUrl(tail);
+    if (canon) urls.add(canon);
+    urls.add(req.url);
+    if (canon && req.url === canon) byTail.set(tail, canon);
+    else if (!byTail.has(tail)) byTail.set(tail, canon || req.url);
   }
   offlineMediaUrls = urls;
   offlineMediaByTail = byTail;
@@ -195,22 +204,22 @@ async function matchOfflineMedia(request) {
   const cache = await caches.open(OFFLINE_MEDIA_CACHE);
   const raw = typeof request === 'string' ? request : request.url;
   const url = videoAssemblyKey(raw);
-  // Exact URL only — skipping query on match is an O(N) scan in Chrome on large caches.
+  // Exact URL first — no ignoreSearch (O(N) on large caches in Chrome).
   let hit = await cache.match(url);
   if (hit) return hit;
   const tail = mediaPathTail(url);
-  const stored = tail ? offlineMediaByTail.get(tail) : '';
-  if (stored) {
+  if (!tail) return null;
+  const canon = canonicalOfflineUrl(tail);
+  if (canon) {
+    hit = await cache.match(canon) || await cache.match(new Request(canon));
+    if (hit) return hit;
+  }
+  const stored = offlineMediaByTail.get(tail) || '';
+  if (stored && stored !== canon) {
     hit = await cache.match(stored);
     if (hit) return hit;
   }
-  // Rare key-shape mismatches from older puts (still exact URL).
-  hit = (await cache.match(new Request(url, { mode: 'cors' })))
-    || (await cache.match(new Request(url, { mode: 'same-origin' })));
-  if (hit) return hit;
-  if (!stored) return null;
-  return (await cache.match(new Request(stored, { mode: 'cors' })))
-    || (await cache.match(new Request(stored, { mode: 'same-origin' })));
+  return null;
 }
 
 function isLoopbackHostName(host) {
@@ -241,7 +250,10 @@ const playedMediaAssembler = self.PrawkoRangeAssemble.createAssembler();
 
 async function storePlayedMedia(href, blob, mime) {
   const cache = await caches.open(OFFLINE_MEDIA_CACHE);
-  const key = videoAssemblyKey(href);
+  const tail = mediaPathTail(videoAssemblyKey(href));
+  if (!tail) return;
+  const key = canonicalOfflineUrl(tail);
+  if (!key) return;
   const type = mime || blob.type || 'application/octet-stream';
   await cache.put(new Request(key), new Response(blob, {
     status: 200,
@@ -251,12 +263,7 @@ async function storePlayedMedia(href, blob, mime) {
     },
   }));
   offlineMediaUrls.add(key);
-  try {
-    const u = new URL(key);
-    offlineMediaUrls.add(u.origin + u.pathname);
-  } catch { /* ignore a bad key */ }
-  const tail = mediaPathTail(key);
-  if (tail && !offlineMediaByTail.has(tail)) offlineMediaByTail.set(tail, key);
+  offlineMediaByTail.set(tail, key);
   const clients = await self.clients.matchAll({ type: 'window' });
   clients.forEach((client) => client.postMessage({ type: 'OFFLINE_MEDIA_UPDATED' }));
 }

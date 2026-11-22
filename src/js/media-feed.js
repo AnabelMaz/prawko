@@ -12,6 +12,9 @@ import {
   openOfflineCache,
   getStoredMediaBlob,
   waitForAppOnline,
+  canonicalMediaKey,
+  canonicalCacheUrl,
+  ensureCanonicalOfflineKeys,
 } from './offline.js';
 
 /** Leftover download must fit in this fraction of the film length to start. */
@@ -101,18 +104,21 @@ function openOfflineMediaCache() {
 }
 
 /**
- * Exact URL hit in Cache Storage — same gate as storeMediaBlob.
+ * Canonical origin+/vid|img/… hit in Cache Storage — same keys as storeMediaBlob.
  * No ignoreSearch: Chrome scans O(N) with that flag on large caches.
  */
 async function matchCachedMediaResponse(url) {
   try {
+    await ensureCanonicalOfflineKeys();
     const opened = openOfflineMediaCache();
     if (!opened) return null;
     const cache = await opened;
     if (!cache) return null;
-    const abs = new URL(url, typeof location !== 'undefined' ? location.href : undefined).href;
-    return await cache.match(abs)
-      || await cache.match(new Request(abs))
+    const tail = canonicalMediaKey(url);
+    const href = tail ? canonicalCacheUrl(tail) : '';
+    if (!href) return null;
+    return await cache.match(href)
+      || await cache.match(new Request(href))
       || null;
   } catch {
     return null;

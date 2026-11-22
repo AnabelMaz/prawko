@@ -10,6 +10,9 @@ const IN_PROGRESS_KEY = 'prawko_offline_in_progress';
 const OFFLINE_CACHE = 'prawko-offline-media-v1';
 const IDB_NAME = 'prawko-offline-media';
 const IDB_STORE = 'files';
+/** localStorage schema version for offline media key layout (not the Cache bucket name). */
+const OFFLINE_KEY_SCHEMA = '1';
+const OFFLINE_KEY_SCHEMA_STORAGE = 'prawko_offline_key_schema';
 const BATCH_SIZE = 2;
 const FILE_TIMEOUT_MS = 120000;
 const FILE_RETRIES = 3;
@@ -93,34 +96,126 @@ function mediaPathTail(href) {
   }
 }
 
-function addMediaCacheKeys(set, url) {
-  if (!url) return;
-  set.add(url);
-  const tail = mediaPathTail(url);
-  if (tail) set.add(tail);
+/**
+ * One logical key for a media file: `/vid/name` or `/img/name` (lowercase).
+ * Accepts a full URL, a tail, or a bare file name with mediaType.
+ */
+export function canonicalMediaKey(input, mediaType) {
+  if (input == null || input === '') return '';
+  const raw = String(input);
+  const fromPath = mediaPathTail(raw);
+  if (fromPath) return fromPath;
+  const asTail = raw.match(/^\/?(vid|img)\/[^/]+$/i);
+  if (asTail) return `/${raw.replace(/^\//, '')}`.toLowerCase();
+  const kind = mediaType === 'video' || mediaType === 'image'
+    ? mediaType
+    : (/\.(mp4|webm)$/i.test(raw) ? 'video' : (/\.(webp|jpe?g|png|gif)$/i.test(raw) ? 'image' : ''));
+  if (!kind) return '';
+  let file = raw.split(/[/\\]/).pop() || raw;
+  try { file = decodeURIComponent(file); } catch { /* keep encoded */ }
+  if (!file) return '';
+  return `/${kind === 'video' ? 'vid' : 'img'}/${file}`.toLowerCase();
+}
+
+export function canonicalCacheUrl(tail) {
+  if (!tail || typeof location === 'undefined') return '';
   try {
-    const base = typeof location !== 'undefined' ? location.href : 'https://example.invalid/';
-    const u = new URL(url, base);
-    set.add(u.href);
-    const file = u.pathname.split('/').pop();
-    if (file) {
-      set.add(file);
-      try { set.add(decodeURIComponent(file)); } catch { /* keep encoded */ }
-    }
+    return new URL(tail, location.origin).href;
   } catch {
-    const file = String(url).split('/').pop();
-    if (file) set.add(file);
+    return '';
   }
 }
 
+function canonicalCacheRequest(tail) {
+  const href = canonicalCacheUrl(tail);
+  return href ? new Request(href) : null;
+}
+
 function urlIsCached(url, cachedSet) {
-  if (!url || !cachedSet) return false;
-  const keys = new Set();
-  addMediaCacheKeys(keys, url);
-  for (const key of keys) {
-    if (cachedSet.has(key)) return true;
+  const key = canonicalMediaKey(url);
+  return Boolean(key && cachedSet?.has(key));
+}
+
+let canonMigratePromise = null;
+
+function offlineKeySchemaIsCurrent() {
+  try {
+    return localStorage.getItem(OFFLINE_KEY_SCHEMA_STORAGE) === OFFLINE_KEY_SCHEMA;
+  } catch {
+    return false;
   }
-  return false;
+}
+
+function markOfflineKeySchemaCurrent() {
+  try {
+    localStorage.setItem(OFFLINE_KEY_SCHEMA_STORAGE, OFFLINE_KEY_SCHEMA);
+  } catch { /* private mode / quota */ }
+}
+
+async function migrateCanonicalOfflineKeys() {
+  const origin = typeof location !== 'undefined' ? location.origin : '';
+  if (!origin) return;
+
+  const cache = await openOfflineCache();
+  if (cache) {
+    const keys = await cache.keys();
+    for (const req of keys) {
+      const tail = mediaPathTail(req.url);
+      if (!tail) continue;
+      const canonHref = new URL(tail, origin).href;
+      let reqHref = req.url;
+      try { reqHref = new URL(req.url).href; } catch { /* keep */ }
+      if (reqHref === canonHref) continue;
+      try {
+        const hit = await cache.match(req);
+        if (!hit) continue;
+        const existing = await cache.match(canonHref) || await cache.match(new Request(canonHref));
+        if (!existing) {
+          await cache.put(new Request(canonHref), hit.clone());
+        }
+        await cache.delete(req);
+      } catch { /* keep going; flag stays unset on total failure below */ }
+    }
+  }
+
+  try {
+    const idbKeyList = await idbKeys();
+    for (const key of idbKeyList) {
+      const raw = String(key || '');
+      const tail = mediaPathTail(raw)
+        || (raw.match(/^\/?(vid|img)\/[^/]+$/i) ? `/${raw.replace(/^\//, '')}`.toLowerCase() : '');
+      if (!tail || raw === tail) continue;
+      try {
+        const blob = await idbGet(key);
+        if (!blob) continue;
+        const already = await idbGet(tail);
+        if (!already) await idbPut(tail, blob);
+        await idbDelete(key);
+      } catch { /* keep going */ }
+    }
+  } catch { /* IndexedDB unavailable */ }
+}
+
+/**
+ * One-shot rewrite of Cache Storage + IDB keys to origin+/vid|img/….
+ * Marker: localStorage prawko_offline_key_schema = 1 (only after success).
+ */
+export async function ensureCanonicalOfflineKeys() {
+  if (offlineKeySchemaIsCurrent()) return;
+  if (canonMigratePromise) return canonMigratePromise;
+  canonMigratePromise = (async () => {
+    try {
+      await migrateCanonicalOfflineKeys();
+      markOfflineKeySchemaCurrent();
+      invalidateOfflineMediaKeys();
+      notifyServiceWorkerOfflineMedia();
+    } catch {
+      /* leave schema unset; next call retries (idempotent) */
+    } finally {
+      canonMigratePromise = null;
+    }
+  })();
+  return canonMigratePromise;
 }
 
 function mediaCacheIsPersistent() {
@@ -147,32 +242,14 @@ export async function openOfflineCache() {
   }
 }
 
-let cachedCacheKeys = null;
-let cachedIdbKeys = null;
-
 function invalidateOfflineMediaKeys() {
-  cachedCacheKeys = null;
-  cachedIdbKeys = null;
+  /* key lists are no longer cached; hook kept for SW message + callers */
 }
 
 if (typeof navigator !== 'undefined' && navigator.serviceWorker) {
   navigator.serviceWorker.addEventListener('message', (event) => {
     if (event.data?.type === 'OFFLINE_MEDIA_UPDATED') invalidateOfflineMediaKeys();
   });
-}
-
-async function listOfflineCacheKeys(cache) {
-  if (cachedCacheKeys && cachedCacheKeys.cache === cache) return cachedCacheKeys.keys;
-  const keys = await cache.keys();
-  cachedCacheKeys = { cache, keys };
-  return keys;
-}
-
-async function listIdbMediaKeys() {
-  if (cachedIdbKeys) return cachedIdbKeys;
-  const keys = await idbKeys();
-  cachedIdbKeys = keys;
-  return keys;
 }
 
 /** Reused IDB connection — open/close per get was too slow on the learn hot path. */
@@ -282,68 +359,42 @@ async function clonePlayableBlob(value, name) {
   return null;
 }
 
-function idbKeyCandidates(media, mediaType) {
-  const names = new Set();
-  const raw = String(media || '');
-  if (raw) {
-    names.add(raw);
-    names.add(raw.toLowerCase());
-    try { names.add(decodeURIComponent(raw)); } catch { /* keep raw */ }
-    try { names.add(decodeURIComponent(raw).toLowerCase()); } catch { /* keep raw */ }
-  }
+function canonicalTailsForMedia(media, mediaType) {
   const tails = new Set();
+  const direct = canonicalMediaKey(media, mediaType);
+  if (direct) tails.add(direct);
   for (const url of getMediaUrls(media, mediaType)) {
     const tail = mediaPathTail(url);
     if (tail) tails.add(tail);
   }
-  return { names, tails };
+  return tails;
 }
 
 async function idbGetMediaBlob(media, mediaType) {
-  const { names, tails } = idbKeyCandidates(media, mediaType);
-  for (const tail of tails) {
+  for (const tail of canonicalTailsForMedia(media, mediaType)) {
     try {
       const blob = await clonePlayableBlob(await idbGet(tail), media);
       if (blob) return blob;
     } catch { /* try next */ }
   }
-  let keys = [];
-  try {
-    keys = await listIdbMediaKeys();
-  } catch {
-    return null;
-  }
-  for (const key of keys) {
-    const file = String(key).split('/').pop() || '';
-    let decoded = file;
-    try { decoded = decodeURIComponent(file); } catch { /* keep encoded */ }
-    const match = names.has(file)
-      || names.has(file.toLowerCase())
-      || names.has(decoded)
-      || names.has(decoded.toLowerCase())
-      || tails.has(String(key))
-      || tails.has(String(key).toLowerCase());
-    if (!match) continue;
-    try {
-      const blob = await clonePlayableBlob(await idbGet(key), media);
-      if (blob) return blob;
-    } catch { /* try next key */ }
-  }
   return null;
 }
 
 export async function storeMediaBlob(url, blob) {
+  await ensureCanonicalOfflineKeys();
   if (!blob || blob.size < 1) throw new Error('empty media blob');
   const type = blob.type || mediaMime(url);
   const body = (!blob.type || blob.type === type) ? blob : new Blob([blob], { type });
   const abs = new URL(url, typeof location !== 'undefined' ? location.href : 'https://example.invalid/').href;
-  const tail = mediaPathTail(abs);
+  const tail = mediaPathTail(abs) || canonicalMediaKey(url);
+  if (!tail) throw new Error('no media storage');
   const cache = await openOfflineCache();
   if (cache) {
     try {
-      // Exact URL only — ignoreSearch is an O(N) scan on large caches in Chrome.
-      const existing = await cache.match(abs)
-        || await cache.match(new Request(abs));
+      const canonReq = canonicalCacheRequest(tail);
+      const canonHref = canonicalCacheUrl(tail);
+      const existing = await cache.match(canonHref)
+        || (canonReq ? await cache.match(canonReq) : null);
       if (existing) {
         const prevLen = Number(existing.headers.get('Content-Length')) || 0;
         if (prevLen === body.size) return;
@@ -352,7 +403,7 @@ export async function storeMediaBlob(url, blob) {
           if (prev && prev.size === body.size) return;
         } catch { /* replace below */ }
       }
-      await cache.put(new Request(abs), new Response(body, {
+      await cache.put(canonReq || new Request(canonHref), new Response(body, {
         status: 200,
         headers: {
           'Content-Type': type,
@@ -366,60 +417,20 @@ export async function storeMediaBlob(url, blob) {
       /* Cache Storage can exist but reject puts; keep going to IndexedDB. */
     }
   }
-  if (!tail) throw new Error('no media storage');
   await idbPut(tail, body);
   invalidateOfflineMediaKeys();
   notifyServiceWorkerOfflineMedia();
 }
 
 async function matchCachedMediaResponse(cache, media, mediaType) {
-  const urls = getMediaUrls(media, mediaType);
-  const { names, tails } = idbKeyCandidates(media, mediaType);
-
-  // Exact URL first (same store keys as put — no ignoreSearch O(N) scan).
-  for (const url of urls) {
+  for (const tail of canonicalTailsForMedia(media, mediaType)) {
+    const href = canonicalCacheUrl(tail);
+    if (!href) continue;
     try {
-      const abs = new URL(url, location.href).href;
-      const hit = await cache.match(abs)
-        || await cache.match(new Request(abs));
-      if (hit) return hit;
-    } catch { /* try next alias */ }
-  }
-
-  // Tail index from listed keys — avoid four Request-mode probes per URL.
-  let keys = [];
-  try {
-    keys = await listOfflineCacheKeys(cache);
-  } catch {
-    return null;
-  }
-  const byTail = new Map();
-  for (const req of keys) {
-    const t = mediaPathTail(req.url);
-    if (t && !byTail.has(t)) byTail.set(t, req);
-  }
-  for (const t of tails) {
-    const req = byTail.get(t);
-    if (!req) continue;
-    try {
-      const hit = await cache.match(req);
+      const hit = await cache.match(href)
+        || await cache.match(new Request(href));
       if (hit) return hit;
     } catch { /* try next tail */ }
-  }
-
-  for (const req of keys) {
-    const file = String(req.url).split('/').pop() || '';
-    let decoded = file;
-    try { decoded = decodeURIComponent(file); } catch { /* keep encoded */ }
-    const match = names.has(file)
-      || names.has(file.toLowerCase())
-      || names.has(decoded)
-      || names.has(decoded.toLowerCase());
-    if (!match) continue;
-    try {
-      const hit = await cache.match(req);
-      if (hit) return hit;
-    } catch { /* try next key */ }
   }
   return null;
 }
@@ -429,6 +440,7 @@ async function matchCachedMediaResponse(cache, media, mediaType) {
  * already checked; only IDB store-fallback remains).
  */
 export async function getStoredMediaBlob(media, mediaType, opts = {}) {
+  await ensureCanonicalOfflineKeys();
   const useCache = opts.cache !== false;
   if (useCache) {
     const cache = await openOfflineCache();
@@ -458,25 +470,32 @@ export function coverageFromUrls(neededUrls, cachedSet) {
   if (total === 0) return { have: 0, total: 0, pct: 100 };
   let have = 0;
   for (const url of neededUrls) {
-    const name = mediaFileNameFromUrl(url);
-    // Basename first so media/ vs CDN needed URLs match the same IDB/cache tails.
-    if ((name && nameInCachedSet(name, cachedSet)) || urlIsCached(url, cachedSet)) have++;
+    if (urlIsCached(url, cachedSet)) have++;
   }
   return { have, total, pct: Math.round((100 * have) / total) };
 }
 
 export async function getCachedUrlSet() {
+  await ensureCanonicalOfflineKeys();
   const cached = new Set();
   const cache = await openOfflineCache();
   if (cache) {
     try {
       const keys = await cache.keys();
-      for (const req of keys) addMediaCacheKeys(cached, req.url);
+      for (const req of keys) {
+        const tail = mediaPathTail(req.url);
+        if (tail) cached.add(tail);
+      }
     } catch { /* Cache Storage can be missing on http://lan-host */ }
   }
   try {
     const tails = await idbKeys();
-    for (const key of tails) addMediaCacheKeys(cached, key);
+    for (const key of tails) {
+      const raw = String(key || '');
+      const tail = mediaPathTail(raw)
+        || (raw.match(/^\/?(vid|img)\/[^/]+$/i) ? `/${raw.replace(/^\//, '')}`.toLowerCase() : '');
+      if (tail) cached.add(tail);
+    }
   } catch { /* IndexedDB unavailable */ }
   return cached;
 }
@@ -1090,7 +1109,7 @@ async function storePackBody(packId, url, expectedBytes, signal, onBytes) {
   if (filePos < prev) await setPartialLength(packId, filePos);
 }
 
-async function cacheZipEntry(cache, entryName, fileBytes, cachedSet) {
+async function cacheZipEntry(_cache, entryName, fileBytes, cachedSet) {
   const path = String(entryName || '').replace(/\\/g, '/').replace(/^\/+/, '');
   const slash = path.indexOf('/');
   if (slash < 1) return null;
@@ -1098,42 +1117,24 @@ async function cacheZipEntry(cache, entryName, fileBytes, cachedSet) {
   const file = path.slice(slash + 1);
   if ((folder !== 'img' && folder !== 'vid') || !file || file.endsWith('/')) return null;
   const mediaType = folder === 'vid' ? 'video' : 'image';
-  if (nameInCachedSet(file, cachedSet, mediaType)) return file;
+  const tail = canonicalMediaKey(file, mediaType);
+  if (!tail) return null;
+  if (cachedSet.has(tail) || nameInCachedSet(file, cachedSet, mediaType)) return file;
   const type = mediaMime(file);
   const blob = new Blob([fileBytes], { type });
-  if (!mediaCacheIsPersistent()) {
-    const url = getMediaUrls(file, mediaType)[0];
-    if (!url) return null;
-    await storeMediaBlob(url, blob);
-    addMediaCacheKeys(cachedSet, url);
-    cachedSet.add(file);
-    return file;
-  }
-  for (const url of getMediaUrls(file, mediaType)) {
-    const request = new Request(url, { mode: /^https?:\/\//i.test(url) ? 'cors' : 'same-origin' });
-    await cache.put(request, new Response(blob, { headers: { 'Content-Type': type } }));
-    addMediaCacheKeys(cachedSet, url);
-  }
-  cachedSet.add(file);
-  invalidateOfflineMediaKeys();
+  const url = getMediaUrls(file, mediaType)[0] || `media${tail}`;
+  await storeMediaBlob(url, blob);
+  cachedSet.add(tail);
   return file;
 }
 
 function nameInCachedSet(name, cachedSet, mediaType) {
   if (!name || !cachedSet) return false;
-  if (cachedSet.has(name)) return true;
-  try {
-    if (cachedSet.has(decodeURIComponent(name))) return true;
-  } catch { /* keep encoded */ }
-  const kind = mediaType || (/\.mp4$|\.webm$/i.test(name) ? 'video' : 'image');
-  for (const url of getMediaUrls(name, kind)) {
-    const keys = new Set();
-    addMediaCacheKeys(keys, url);
-    for (const key of keys) {
-      if (cachedSet.has(key)) return true;
-    }
-  }
-  return false;
+  const kind = mediaType === 'video' || mediaType === 'image'
+    ? mediaType
+    : (/\.(mp4|webm)$/i.test(name) ? 'video' : 'image');
+  const key = canonicalMediaKey(name, kind);
+  return Boolean(key && cachedSet.has(key));
 }
 
 function mediaFileNameFromUrl(url) {
@@ -1544,8 +1545,8 @@ async function runFileDownload(categoryId, onProgress, signal) {
       await storeResumableMedia(url, signal, (frac) => {
         onProgress?.(completed + frac, total, { failed: 0, cancelled: false });
       });
-      addMediaCacheKeys(cached, url);
-      addMediaCacheKeys(cached, new URL(url, location.href).href);
+      const tail = canonicalMediaKey(url);
+      if (tail) cached.add(tail);
       completed += 1;
       i += 1;
       onProgress?.(completed, total, { failed: 0, cancelled: false });
@@ -1553,9 +1554,9 @@ async function runFileDownload(categoryId, onProgress, signal) {
     }
     const batch = pending.slice(i, i + BATCH_SIZE).filter((item) => !isSameOriginMediaUrl(item));
     await Promise.all(batch.map(async (item) => {
-      const storedUrl = await storeWholeMedia(item, signal);
-      addMediaCacheKeys(cached, item);
-      addMediaCacheKeys(cached, storedUrl);
+      await storeWholeMedia(item, signal);
+      const tail = canonicalMediaKey(item);
+      if (tail) cached.add(tail);
     }));
     completed += batch.length;
     i += batch.length;

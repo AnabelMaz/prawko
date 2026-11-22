@@ -280,7 +280,7 @@ test.describe('Category media access', () => {
     await page.waitForSelector('#home.active');
     const result = await page.evaluate(async () => {
       const { coverageFromUrls, offlineCoverageHue } = await import(new URL('./js/offline.js', location.href).href);
-      const cached = new Set(['foo.webp', 'https://cdn.example.test/img/bar.webp']);
+      const cached = new Set(['/img/foo.webp', '/img/bar.webp']);
       return {
         empty: coverageFromUrls([], cached),
         none: coverageFromUrls(['https://cdn.example.test/img/missing.webp'], cached),
@@ -303,12 +303,12 @@ test.describe('Category media access', () => {
     expect(result.hue100).toBe(120);
   });
 
-  test('coverage matches media and CDN needed URLs via basename', async ({ page }) => {
+  test('coverage matches media and CDN needed URLs via canonical tails', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('#home.active');
     const result = await page.evaluate(async () => {
       const { coverageFromUrls } = await import(new URL('./js/offline.js', location.href).href);
-      const cached = new Set(['/img/shared.webp', 'clip.mp4']);
+      const cached = new Set(['/img/shared.webp', '/vid/clip.mp4']);
       return {
         fromMedia: coverageFromUrls(['media/img/shared.webp', 'media/vid/clip.mp4'], cached),
         fromCdn: coverageFromUrls([
@@ -639,7 +639,11 @@ test.describe('Category media access', () => {
     });
     const result = await page.evaluate(async ({ media, url }) => {
       const { fetchCategory, getMediaUrls } = await import(new URL('./js/data.js', location.href).href);
-      const { downloadCategoryMediaFromFiles } = await import(new URL('./js/offline.js', location.href).href);
+      const {
+        downloadCategoryMediaFromFiles,
+        canonicalMediaKey,
+        canonicalCacheUrl,
+      } = await import(new URL('./js/offline.js', location.href).href);
       const bank = await fetchCategory('PT');
       const cache = await caches.open('prawko-offline-media-v1');
       const seen = new Set();
@@ -658,7 +662,8 @@ test.describe('Category media access', () => {
         }
       }
       const downloaded = await downloadCategoryMediaFromFiles('PT');
-      const hit = await cache.match(url);
+      const canon = canonicalCacheUrl(canonicalMediaKey(url));
+      const hit = await cache.match(canon);
       const bytes = hit ? new Uint8Array(await hit.arrayBuffer()) : new Uint8Array();
       return {
         success: downloaded.success,
@@ -803,34 +808,42 @@ test.describe('Category media access', () => {
     await page.goto('/');
     await page.waitForSelector('#home.active');
     const result = await page.evaluate(async () => {
-      const { storeMediaBlob } = await import(new URL('./js/offline.js', location.href).href);
+      const { storeMediaBlob, canonicalMediaKey, canonicalCacheUrl } = await import(new URL('./js/offline.js', location.href).href);
       const url = new URL('media/vid/store-200.mp4', location.href).href;
       await storeMediaBlob(url, new Blob([new Uint8Array([1, 2, 3, 4, 5])], { type: 'video/mp4' }));
       const cache = await caches.open('prawko-offline-media-v1');
-      const res = await cache.match(url);
+      const canon = canonicalCacheUrl(canonicalMediaKey(url));
+      const res = await cache.match(canon);
       return {
         ok: Boolean(res),
         status: res?.status || 0,
         size: res ? (await res.blob()).size : 0,
+        canonHasVid: /\/vid\/store-200\.mp4$/i.test(canon),
       };
     });
     expect(result.ok).toBe(true);
     expect(result.status).toBe(200);
     expect(result.size).toBe(5);
+    expect(result.canonHasVid).toBe(true);
   });
 
-  test('next lookup sees a video the service worker stored after a previous miss', async ({ page }) => {
+  test('next lookup sees a video stored under the canonical key after a previous miss', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('#home.active');
     const result = await page.evaluate(async () => {
-      const { getStoredMediaBlob, resolvePlayableMediaUrl } = await import(new URL('./js/offline.js', location.href).href);
+      const {
+        getStoredMediaBlob,
+        resolvePlayableMediaUrl,
+        canonicalMediaKey,
+        canonicalCacheUrl,
+      } = await import(new URL('./js/offline.js', location.href).href);
       const name = 'after-miss-cache.mp4';
       const miss = await getStoredMediaBlob(name, 'video');
       const cache = await caches.open('prawko-offline-media-v1');
       const payload = new Uint8Array(256).fill(22);
-      const cdn = 'https://f003.backblazeb2.com/file/prawko-maz/vid/after-miss-cache.mp4';
+      const canon = canonicalCacheUrl(canonicalMediaKey(name, 'video'));
       await cache.put(
-        new Request(cdn, { mode: 'cors' }),
+        new Request(canon),
         new Response(new Blob([payload], { type: 'video/mp4' }), {
           status: 200,
           headers: { 'Content-Type': 'video/mp4' },
@@ -853,11 +866,18 @@ test.describe('Category media access', () => {
     expect(result.blobUrl).toBe(true);
   });
 
-  test('plays from Cache Storage even when the file was stored under a CDN URL', async ({ page }) => {
+  test('migrates a CDN Cache Storage key to origin+/vid and sets schema marker', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('#home.active');
     const result = await page.evaluate(async () => {
-      const { getStoredMediaBlob, resolvePlayableMediaUrl } = await import(new URL('./js/offline.js', location.href).href);
+      localStorage.removeItem('prawko_offline_key_schema');
+      const {
+        getStoredMediaBlob,
+        resolvePlayableMediaUrl,
+        canonicalMediaKey,
+        canonicalCacheUrl,
+        ensureCanonicalOfflineKeys,
+      } = await import(new URL('./js/offline.js', location.href).href);
       const cache = await caches.open('prawko-offline-media-v1');
       const payload = new Uint8Array(256).fill(21);
       const cdn = 'https://f003.backblazeb2.com/file/prawko-maz/vid/from-cdn-cache.mp4';
@@ -868,6 +888,8 @@ test.describe('Category media access', () => {
           headers: { 'Content-Type': 'video/mp4' },
         }),
       );
+      await ensureCanonicalOfflineKeys();
+      const canon = canonicalCacheUrl(canonicalMediaKey('from-cdn-cache.mp4', 'video'));
       const blob = await getStoredMediaBlob('from-cdn-cache.mp4', 'video');
       const play = await resolvePlayableMediaUrl('from-cdn-cache.mp4', 'video');
       const bytes = blob ? new Uint8Array(await blob.arrayBuffer()) : [];
@@ -876,11 +898,17 @@ test.describe('Category media access', () => {
         size: blob?.size || 0,
         first: bytes[0],
         blobUrl: Boolean(play && String(play).startsWith('blob:')),
+        schema: localStorage.getItem('prawko_offline_key_schema'),
+        hasCanon: Boolean(await cache.match(canon)),
+        hasCdn: Boolean(await cache.match(cdn)),
       };
     });
     expect(result.size).toBe(256);
     expect(result.first).toBe(21);
     expect(result.blobUrl).toBe(true);
+    expect(result.schema).toBe('1');
+    expect(result.hasCanon).toBe(true);
+    expect(result.hasCdn).toBe(false);
   });
 
   test('offline quiz plays Cache Storage media and never requests /media/', async ({ page }) => {
@@ -1448,7 +1476,12 @@ test.describe('Opportunistic viewed media cache', () => {
     );
     expect(matchCache).not.toMatch(/ignoreSearch\s*:/);
     expect(matchCache).not.toMatch(/ignoreVary\s*:/);
-    expect(matchCache).toMatch(/cache\.match\(abs\)/);
+    expect(matchCache).toMatch(/canonicalMediaKey\(url\)/);
+    expect(matchCache).toMatch(/canonicalCacheUrl\(tail\)/);
+    expect(matchCache).toMatch(/cache\.match\(href\)/);
+    expect(matchCache).toMatch(/ensureCanonicalOfflineKeys/);
+    expect(offline).toMatch(/prawko_offline_key_schema/);
+    expect(offline).toMatch(/ensureCanonicalOfflineKeys/);
     const openMedia = feed.slice(
       feed.indexOf('async function openMediaResponse'),
       feed.indexOf('function playIfWanted'),
