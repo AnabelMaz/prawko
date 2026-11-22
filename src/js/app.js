@@ -1339,6 +1339,9 @@ async function init() {
       clearHistory();
       renderHistory();
       fillProfilePanel();
+    }, {
+      confirmLabel: t('confirmClearYes'),
+      cancelLabel: t('confirmClearNo'),
     });
   });
 
@@ -1351,6 +1354,9 @@ async function init() {
         renderCategories(meta, getDownloadedCategories());
         renderRecentCategories();
       }
+    }, {
+      confirmLabel: t('confirmClearYes'),
+      cancelLabel: t('confirmClearNo'),
     });
   });
 

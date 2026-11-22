@@ -2309,6 +2309,42 @@ test.describe('Local profiles', () => {
     await expect(page.locator('.history-item-parts')).toContainText('44');
   });
 
+  test('clear history and clear learn confirm buttons use clear/cancel labels', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('prawko_p_p1_stats', JSON.stringify([
+        {
+          date: '2026-01-01T12:00:00.000Z',
+          category: 'B',
+          score: 70,
+          maxPoints: 74,
+          passed: true,
+          basicScore: 44,
+          specialistScore: 26,
+        },
+      ]));
+      localStorage.setItem('prawko_p_p1_learn', JSON.stringify({
+        B: { '99': { streak: 2, misses: 0, answeredAt: Date.now() } },
+      }));
+    });
+    await page.goto('/#history');
+    await page.waitForSelector('#history.active');
+    await page.click('.btn-clear-history');
+    const historyModal = page.locator('#confirm-modal.active');
+    await expect(historyModal.locator('#modal-title')).toHaveText('Wyczyść historię?');
+    await expect(historyModal.locator('.btn-confirm-end')).toHaveText('Tak, wyczyść');
+    await expect(historyModal.locator('.btn-cancel-end')).toHaveText('Nie, anuluj');
+    await historyModal.locator('.btn-cancel-end').click();
+    await expect(page.locator('#confirm-modal')).not.toHaveClass(/active/);
+
+    await page.goto('/#learn-progress');
+    await page.waitForSelector('#learn-progress.active');
+    await page.click('.btn-clear-learn');
+    const learnModal = page.locator('#confirm-modal.active');
+    await expect(learnModal.locator('#modal-title')).toHaveText('Wyczyść postęp nauki?');
+    await expect(learnModal.locator('.btn-confirm-end')).toHaveText('Tak, wyczyść');
+    await expect(learnModal.locator('.btn-cancel-end')).toHaveText('Nie, anuluj');
+  });
+
   test('exam count in the profile panel opens the empty history screen', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('#home.active');
