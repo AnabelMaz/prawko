@@ -412,10 +412,11 @@
     </section>
 
     <!-- ===== 4. RESULTS SCREEN ===== -->
-    <section id="results" class="screen">
+    <section id="results" class="screen" data-results-origin="live">
       <header class="screen-header">
         <button class="btn btn-back" data-navigate="categories" data-i18n="backToCategories">&#8592; Powrót do kategorii</button>
-        <h2 data-i18n="examResult">Wynik egzaminu</h2>
+        <h2 class="results-title" data-i18n="examResult">Wynik egzaminu</h2>
+        <p class="results-meta" hidden></p>
       </header>
 
       <div class="score-circle">
@@ -455,7 +456,7 @@
       <nav class="results-nav">
         <button class="btn btn-primary btn-retry" data-i18n="retry">Spróbuj ponownie</button>
         <button class="btn btn-secondary" data-navigate="categories" data-i18n="backToCategories">Powrót do kategorii</button>
-        <button class="btn btn-secondary" data-navigate="history" data-i18n="examHistory">Historia egzaminów</button>
+        <button class="btn btn-secondary btn-results-history" data-navigate="history" data-i18n="examHistory">Historia egzaminów</button>
       </nav>
 
       <div class="incorrect-list review-list">

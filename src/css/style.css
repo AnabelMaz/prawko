@@ -2752,6 +2752,24 @@ footer a {
   align-self: flex-start;
 }
 
+#results .results-meta {
+  margin: 4px 0 0;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+#results .results-meta[hidden] {
+  display: none;
+}
+
+/* History review: no immediate retry / redundant history shortcut */
+#results[data-results-origin="history"] .btn-retry,
+#results[data-results-origin="history"] .btn-results-history {
+  display: none;
+}
+
 /* Score circle */
 .score-circle {
   width: 200px;
@@ -3003,7 +3021,6 @@ html[data-ui-orient="landscape"] #results .review-media {
   max-width: 100%;
   margin-inline: auto;
 }
-
 
 .review-media img,
 .review-media video {

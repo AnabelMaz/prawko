@@ -219,7 +219,8 @@ async function paintExamResults(row) {
   if (!row) return false;
   const hydrated = await ensureHydratedResult(row);
   if (!hydrated) return false;
-  renderResults(hydrated);
+  const origin = resultsDisplayIndex != null ? 'history' : 'live';
+  renderResults(hydrated, { origin });
   return true;
 }
 

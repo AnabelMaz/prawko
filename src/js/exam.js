@@ -866,7 +866,7 @@ function finishExam() {
     sessionStorage.setItem(LAST_EXAM_CATEGORY_KEY, lastExamCategory);
   } catch {}
   saveResult(result);
-  renderResults(result);
+  renderResults(result, { origin: 'live' });
   window.location.hash = 'results';
 }
 

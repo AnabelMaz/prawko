@@ -3016,6 +3016,13 @@ test.describe('Exam results question review', () => {
     await expect(page.locator('.review-stats')).toHaveText(/Bez odpowiedzi: 32/);
     await expect(first.locator('summary')).toHaveText(/1\s*−/);
 
+    await expect(page.locator('#results')).toHaveAttribute('data-results-origin', 'live');
+    await expect(page.locator('#results .results-title')).toHaveText(/Wynik egzaminu/);
+    await expect(page.locator('#results .screen-header .btn-back')).toHaveAttribute('data-navigate', 'categories');
+    await expect(page.locator('#results .btn-retry')).toBeVisible();
+    await expect(page.locator('#results .btn-results-history')).toBeVisible();
+    await expect(page.locator('#results .results-meta')).toBeHidden();
+
     await first.locator('summary').click();
     await expect(first).toHaveJSProperty('open', true);
     await expect(first.locator('.incorrect-question')).toBeVisible();
@@ -3083,6 +3090,7 @@ test.describe('Exam results question review', () => {
     expect(stored.stats[0].review).toBe(true);
     expect(stored.answers[0]).toHaveLength(32);
   });
+
   test('landscape review media fills the review column, not a 280px cap', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await startExamMode(page);
@@ -3134,7 +3142,6 @@ test.describe('Exam results question review', () => {
     expect(opened.mediaW).toBeLessThanOrEqual(800);
     expect(opened.bodyW).toBeGreaterThan(opened.mediaW);
   });
-
 });
 
 test.describe('Exam history question review', () => {
@@ -3214,6 +3221,18 @@ test.describe('Exam history question review', () => {
     await liveOk.locator('summary').click();
     await expect(liveOk.locator('.incorrect-question')).not.toBeEmpty();
     await expect(liveOk.locator('.review-answers .answer-btn.correct')).toHaveCount(1);
+
+    await expect(page.locator('#results')).toHaveAttribute('data-results-origin', 'history');
+    await expect(page.locator('#results .results-title')).toHaveText(/Przegląd egzaminu/);
+    await expect(page.locator('#results .results-meta')).toBeVisible();
+    await expect(page.locator('#results .results-meta')).toContainText('B');
+    await expect(page.locator('#results .btn-retry')).toBeHidden();
+    await expect(page.locator('#results .btn-results-history')).toBeHidden();
+    const histBack = page.locator('#results .screen-header .btn-back');
+    await expect(histBack).toHaveAttribute('data-navigate', 'history');
+    await expect(histBack).toHaveText(/Powrót do historii/);
+    await histBack.click();
+    await page.waitForSelector('#history.active');
   });
 
   test('profile export round-trips compact exam answers', async ({ page }) => {

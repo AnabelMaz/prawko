@@ -1334,7 +1334,53 @@ function reviewOutcome(item) {
   return 'skip';
 }
 
-export function renderResults(result) {
+function formatExamReviewMeta(row) {
+  if (!row?.category || !row?.date) return '';
+  const date = new Date(row.date).toLocaleDateString(getLang() === 'en' ? 'en-GB' : 'pl-PL', {
+    day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+  return t('examReviewMeta')
+    .replace('{category}', String(row.category))
+    .replace('{date}', date);
+}
+
+/** Toggle #results chrome for a fresh exam finish vs opening a history row. */
+export function syncResultsChrome(origin, row = null) {
+  const screen = document.getElementById('results');
+  if (!screen) return;
+  const fromHistory = origin === 'history';
+  screen.dataset.resultsOrigin = fromHistory ? 'history' : 'live';
+
+  const back = screen.querySelector('.screen-header .btn-back');
+  const title = screen.querySelector('.results-title');
+  const meta = screen.querySelector('.results-meta');
+  if (back) {
+    const backKey = fromHistory ? 'backToHistory' : 'backToCategories';
+    back.dataset.i18n = backKey;
+    back.setAttribute('data-navigate', fromHistory ? 'history' : 'categories');
+    back.textContent = t(backKey);
+  }
+  if (title) {
+    const titleKey = fromHistory ? 'examReviewTitle' : 'examResult';
+    title.dataset.i18n = titleKey;
+    title.textContent = t(titleKey);
+  }
+  if (meta) {
+    if (fromHistory && row?.category && row?.date) {
+      meta.dataset.category = String(row.category);
+      meta.dataset.date = String(row.date);
+      meta.textContent = formatExamReviewMeta(row);
+      meta.hidden = false;
+    } else {
+      delete meta.dataset.category;
+      delete meta.dataset.date;
+      meta.textContent = '';
+      meta.hidden = true;
+    }
+  }
+}
+
+export function renderResults(result, { origin = 'live' } = {}) {
   const scoreValue = document.querySelector('.score-value');
   const scoreMax = document.querySelector('.score-max');
   const verdict = document.querySelector('.result-verdict');
@@ -1346,6 +1392,8 @@ export function renderResults(result) {
   const totalMax = document.querySelector('.total-max');
   const reviewList = document.querySelector('.incorrect-list');
   const scoreCircle = document.querySelector('.score-circle');
+
+  syncResultsChrome(origin, result);
 
   scoreValue.textContent = result.score;
   if (scoreMax) scoreMax.textContent = `/ ${result.maxPoints}`;
@@ -1650,6 +1698,14 @@ export function applyLanguage() {
   document.querySelectorAll('[data-i18n-title]').forEach((el) => {
     el.setAttribute('title', t(el.getAttribute('data-i18n-title')));
   });
+  const results = document.getElementById('results');
+  const meta = results?.querySelector('.results-meta');
+  if (results?.dataset.resultsOrigin && meta?.dataset.category && meta?.dataset.date) {
+    syncResultsChrome(results.dataset.resultsOrigin, {
+      category: meta.dataset.category,
+      date: meta.dataset.date,
+    });
+  }
   ensureCategorySearchUi();
   ensureQuizModeUi();
   document.dispatchEvent(new CustomEvent('prawko:language'));
