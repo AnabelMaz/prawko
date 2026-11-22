@@ -3083,6 +3083,58 @@ test.describe('Exam results question review', () => {
     expect(stored.stats[0].review).toBe(true);
     expect(stored.answers[0]).toHaveLength(32);
   });
+  test('landscape review media fills the review column, not a 280px cap', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await startExamMode(page);
+    await expect.poll(() => page.locator('html').getAttribute('data-ui-orient')).toBe('landscape');
+    await page.click('.btn-end-exam');
+    await page.waitForSelector('.modal-overlay.active');
+    await page.click('.btn-confirm-end');
+    await page.waitForSelector('#results.active');
+
+    // Open rows until one has media (exam draw is random; media mounts on toggle).
+    const opened = await page.evaluate(async () => {
+      const waitMedia = (item) => new Promise((resolve) => {
+        const start = performance.now();
+        const tick = () => {
+          if (item.querySelector('.review-media')) {
+            resolve(true);
+            return;
+          }
+          if (performance.now() - start > 1500) {
+            resolve(false);
+            return;
+          }
+          requestAnimationFrame(tick);
+        };
+        tick();
+      });
+      const items = [...document.querySelectorAll('.review-item')];
+      for (const item of items) {
+        item.open = true;
+        const hasMedia = await waitMedia(item);
+        if (hasMedia) {
+          const media = item.querySelector('.review-media');
+          const body = item.querySelector('.review-body');
+          return {
+            found: true,
+            mediaW: media.getBoundingClientRect().width,
+            bodyW: body.getBoundingClientRect().width,
+          };
+        }
+        item.open = false;
+      }
+      return { found: false };
+    });
+    expect(opened.found).toBe(true);
+    expect(opened.mediaW).toBeGreaterThan(300);
+    expect(opened.mediaW).toBeGreaterThanOrEqual(opened.bodyW * 0.9);
+    // Film ≈ learn/exam slot (800*0.55*16/9 ≈ 782); white card is a bit wider.
+    expect(opened.mediaW).toBeGreaterThan(700);
+    expect(opened.mediaW).toBeLessThanOrEqual(800);
+    expect(opened.bodyW).toBeGreaterThan(opened.mediaW);
+  });
+
 });
 
 test.describe('Exam history question review', () => {

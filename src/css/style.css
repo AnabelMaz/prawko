@@ -2965,13 +2965,45 @@ footer a {
 
 .review-media {
   position: relative;
-  width: min(100%, 280px);
+  width: 100%;
   aspect-ratio: 16 / 9;
   margin: 0;
   overflow: hidden;
   border-radius: var(--radius-sm);
   background: #111;
 }
+
+/* Landscape review: film matches learn/exam (--quiz-media-w); white card is
+   a bit wider (review-body pad 14+14) so the media stays nicely framed.
+   Cap with 800px design height first — raw 100vh overshoots when scale is 1. */
+html[data-ui-orient="landscape"] #results {
+  --review-film-w: min(
+    calc(800px * 0.55 * 16 / 9),
+    calc((100vh - var(--ui-chrome-top, 0px)) * 0.55 * 16 / 9 / var(--ui-scale)),
+    calc(var(--ui-design-width) * 0.70)
+  );
+  --review-body-pad-x: 28px; /* .review-body horizontal padding */
+}
+
+html[data-exam-skin="station"][data-ui-orient="landscape"] #results {
+  --review-film-w: min(
+    calc(800px * 0.62 * 16 / 9),
+    calc((100vh - var(--ui-chrome-top, 0px)) * 0.62 * 16 / 9 / var(--ui-scale)),
+    calc(var(--ui-design-width) * 0.70)
+  );
+}
+
+html[data-ui-orient="landscape"] #results .review-list,
+html[data-ui-orient="landscape"] #results .incorrect-list {
+  max-width: min(calc(var(--review-film-w) + var(--review-body-pad-x)), 100%);
+}
+
+html[data-ui-orient="landscape"] #results .review-media {
+  width: var(--review-film-w);
+  max-width: 100%;
+  margin-inline: auto;
+}
+
 
 .review-media img,
 .review-media video {
