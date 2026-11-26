@@ -1,6 +1,6 @@
 importScripts('./js/range-assemble.js');
 
-const CACHE_VERSION = 'prawko-v150';
+const CACHE_VERSION = 'prawko-v151';
 const APP_SHELL_CACHE = CACHE_VERSION + '-shell';
 const DATA_CACHE = CACHE_VERSION + '-data';
 const MEDIA_CACHE = CACHE_VERSION + '-media';
@@ -144,6 +144,50 @@ async function rebuildOfflineMediaIndex() {
   offlineMediaByTail = byTail;
 }
 
+/** Canonical offline keys (origin+/vid|img/file) — not disk /media/… paths. */
+function isCanonicalOfflineMediaPath(pathname) {
+  return /\/(vid|img)\/[^/]+$/i.test(pathname || '');
+}
+
+/** Paths that must never live in *-shell (icons under /icons/ stay). */
+function isShellMediaPollutionPath(pathname) {
+  const path = pathname || '';
+  if (/\/media\//.test(path)) return true;
+  if (isCanonicalOfflineMediaPath(path)) return true;
+  return /\.(mp4|webm)(\?|$)/i.test(path);
+}
+
+async function purgeMediaFromShellCaches() {
+  const names = await caches.keys();
+  for (const name of names) {
+    if (!String(name).endsWith('-shell')) continue;
+    let cache;
+    try {
+      cache = await caches.open(name);
+    } catch {
+      continue;
+    }
+    let keys;
+    try {
+      keys = await cache.keys();
+    } catch {
+      continue;
+    }
+    for (const req of keys) {
+      let path = '';
+      try {
+        path = new URL(req.url).pathname;
+      } catch {
+        continue;
+      }
+      if (!isShellMediaPollutionPath(path)) continue;
+      try {
+        await cache.delete(req);
+      } catch { /* keep going */ }
+    }
+  }
+}
+
 self.addEventListener('activate', (event) => {
   const currentCaches = [APP_SHELL_CACHE, DATA_CACHE, MEDIA_CACHE, OFFLINE_MEDIA_CACHE];
   event.waitUntil((async () => {
@@ -154,6 +198,8 @@ self.addEventListener('activate', (event) => {
         .filter((name) => name.startsWith('prawko-') && !currentCaches.includes(name))
         .map((name) => caches.delete(name))
     );
+    // Drop films/images wrongly put into *-shell before the /vid|/img media route.
+    await purgeMediaFromShellCaches();
     await self.clients.claim();
   })());
 });
@@ -315,7 +361,13 @@ function isStationMediaUrl(url) {
   if (url.origin !== self.location.origin) {
     return /\.(mp4|webm|webp|jpg|jpeg|png|gif)(\?|$)/i.test(url.pathname);
   }
-  return /\/media\//.test(url.pathname);
+  // Disk under /media/…, or canonical offline keys …/vid|img/<file> (not only /media/).
+  return /\/media\//.test(url.pathname) || isCanonicalOfflineMediaPath(url.pathname);
+}
+
+/** App-shell network-first must not swallow media into *-shell. */
+function isAppShellCacheableRequest(url) {
+  return !isShellMediaPollutionPath(url.pathname);
 }
 
 self.addEventListener('fetch', (event) => {
@@ -406,6 +458,7 @@ self.addEventListener('fetch', (event) => {
 
   // App shell — online: network first (refresh gets new HTML/JS/CSS).
   // Offline: serve cache without calling fetch (avoids ERR_INTERNET_DISCONNECTED noise).
+  // Never put /vid|/img|/media/ or video files here (canonical keys used to fall through).
   event.respondWith((async () => {
     const cache = await caches.open(APP_SHELL_CACHE);
     const cached = await cache.match(event.request)
@@ -414,7 +467,9 @@ self.addEventListener('fetch', (event) => {
     if (cached && navigator.onLine === false) return cached;
     try {
       const response = await fetch(event.request);
-      if (response.ok) await safeCachePut(cache, event.request, response.clone());
+      if (response.ok && isAppShellCacheableRequest(url)) {
+        await safeCachePut(cache, event.request, response.clone());
+      }
       return response;
     } catch {
       return cached || Response.error();

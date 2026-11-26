@@ -27,7 +27,9 @@ test('service worker serves stored media, remembers viewed misses, skips this co
   const disk = SW.slice(SW.indexOf('function viewedMediaStaysOnDisk'), SW.indexOf('function playedMediaKind'));
   expect(disk).toMatch(/isLoopbackHostName\(self\.location\.hostname\)/);
   expect(disk).toMatch(/url\.origin === self\.location\.origin/);
+  // Loopback skip stays /media/ only — canonical /vid|/img are cache keys, not disk.
   expect(disk).toMatch(/\\\/media\\\//);
+  expect(disk).not.toMatch(/isCanonicalOfflineMediaPath/);
   expect(SW).toMatch(/rememberPlayedMedia/);
   expect(SW).toMatch(/playedMediaAssembler/);
 });
@@ -55,15 +57,35 @@ test('service worker matches cached video by URL, not the player Range request',
   expect(block).toMatch(/cache\.match\(url\)/);
 });
 
-test('service worker treats CDN and /media/ as one cached-media path', () => {
+test('service worker treats CDN, /media/, and canonical /vid|/img as one cached-media path', () => {
   const start = SW.indexOf('function isStationMediaUrl');
   expect(start).toBeGreaterThan(-1);
   const block = SW.slice(start, SW.indexOf('self.addEventListener(\'fetch\'', start));
   expect(block).toMatch(/url\.origin !== self\.location\.origin/);
   expect(block).toMatch(/\\\/media\\\//);
+  expect(block).toMatch(/isCanonicalOfflineMediaPath/);
+  expect(SW).toMatch(/function isCanonicalOfflineMediaPath\(pathname\)/);
+  expect(SW).toMatch(/\\\/\(vid\|img\)\\\/\[\^\/\]\+\$/);
   const fetchBlock = SW.slice(SW.indexOf("self.addEventListener('fetch'"));
   expect(fetchBlock).toMatch(/isStationMediaUrl\(url\)/);
   expect(fetchBlock).toMatch(/fetchAndRememberMedia\(event, url\)/);
+});
+
+test('service worker does not put media paths into the app-shell cache', () => {
+  expect(SW).toMatch(/function isAppShellCacheableRequest\(url\)/);
+  expect(SW).toMatch(/function isShellMediaPollutionPath\(pathname\)/);
+  expect(SW).toMatch(/purgeMediaFromShellCaches/);
+  const shellBlock = SW.slice(
+    SW.indexOf('// App shell — online:'),
+    SW.indexOf("self.addEventListener('message'")
+  );
+  expect(shellBlock).toMatch(/isAppShellCacheableRequest\(url\)/);
+  expect(shellBlock).toMatch(/safeCachePut\(cache, event\.request, response\.clone\(\)/);
+  const activate = SW.slice(
+    SW.indexOf("self.addEventListener('activate'"),
+    SW.indexOf('async function serveCachedMedia')
+  );
+  expect(activate).toMatch(/purgeMediaFromShellCaches/);
 });
 
 test('service worker precaches the local Noto mark font and cache-firsts /fonts/', () => {
